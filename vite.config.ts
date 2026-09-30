@@ -13,6 +13,8 @@ export default createAppConfig({
 }, {
 	// The REUSE licence plugin loops forever on Windows (dirname of a drive root never equals '/').
 	extractLicenseInformation: process.platform === 'win32' ? false : undefined,
+	// Emit css/ebookreader-<entry>.css for every entry, loaded via Util::addStyle
+	createEmptyCSSEntryPoints: true,
 	config: {
 		test: {
 			environment: 'jsdom',

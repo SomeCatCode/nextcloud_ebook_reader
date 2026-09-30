@@ -4,9 +4,13 @@
 -->
 <template>
 	<NcContent appName="ebookreader">
-		<NcAppContent>
-			<RouterView />
-		</NcAppContent>
+		<RouterView v-slot="{ Component, route }">
+			<!-- The library brings its own NcAppNavigation + NcAppContent (+ sidebar) -->
+			<component :is="Component" v-if="route.name === 'library'" />
+			<NcAppContent v-else>
+				<component :is="Component" />
+			</NcAppContent>
+		</RouterView>
 	</NcContent>
 </template>
 

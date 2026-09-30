@@ -3,226 +3,224 @@
   - SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 <template>
-	<NcContent appName="ebookreader">
-		<NcAppNavigation :aria-label="t('ebookreader', 'E-book library')">
-			<template #list>
-				<NcAppNavigationCaption :name="t('ebookreader', 'Library')" />
-				<NcAppNavigationItem
-					v-for="item in mainItems"
-					:key="item.key"
-					:name="item.name"
-					:active="item.active"
-					@click="item.action">
-					<template #icon>
-						<NcIconSvgWrapper :path="item.icon" />
-					</template>
-				</NcAppNavigationItem>
-
-				<NcAppNavigationCaption :name="t('ebookreader', 'Filter')" />
-				<NcAppNavigationItem
-					v-for="group in facetGroups"
-					:key="group.key"
-					:name="group.name"
-					:allowCollapse="true"
-					:open="openGroups[group.key]"
-					@update:open="(v: boolean) => (openGroups[group.key] = v)">
-					<template #icon>
-						<NcIconSvgWrapper :path="group.icon" />
-					</template>
-					<NcAppNavigationItem
-						v-for="entry in group.entries"
-						:key="entry.name"
-						:name="entry.name"
-						:active="store.filters[group.filter] === entry.name"
-						@click="store.toggleFilter(group.filter, entry.name as never)">
-						<template #counter>
-							<NcCounterBubble :count="entry.count" />
-						</template>
-					</NcAppNavigationItem>
-					<NcAppNavigationItem
-						v-if="group.entries.length === 0"
-						:name="t('ebookreader', 'Nothing here yet')"
-						class="library-nav__empty" />
-				</NcAppNavigationItem>
-			</template>
-
-			<template #footer>
-				<div class="library-nav__footer">
-					<NcButton wide :disabled="scanning" @click="onScan">
-						<template #icon>
-							<NcLoadingIcon v-if="scanning" :size="20" />
-							<NcIconSvgWrapper v-else :path="mdiRefresh" />
-						</template>
-						{{ t('ebookreader', 'Scan library') }}
-					</NcButton>
-					<NcButton wide variant="tertiary" @click="showSettings = true">
-						<template #icon>
-							<NcIconSvgWrapper :path="mdiCog" />
-						</template>
-						{{ t('ebookreader', 'Settings') }}
-					</NcButton>
-				</div>
-			</template>
-		</NcAppNavigation>
-
-		<NcAppContent :pageHeading="t('ebookreader', 'E-book library')">
-			<div class="library">
-				<div class="library__toolbar">
-					<NcTextField
-						class="library__search"
-						:modelValue="store.filters.search"
-						:label="t('ebookreader', 'Search books')"
-						trailingButtonIcon="close"
-						:showTrailingButton="store.filters.search !== ''"
-						:trailingButtonLabel="t('ebookreader', 'Clear search')"
-						@update:modelValue="(v: string | number) => store.setSearch(String(v))"
-						@trailingButtonClick="store.setSearch('')" />
-
-					<NcSelect
-						class="library__sort"
-						:modelValue="currentSort"
-						:options="sortOptions"
-						:inputLabel="t('ebookreader', 'Sort by')"
-						:clearable="false"
-						:searchable="false"
-						label="label"
-						@update:modelValue="(o: { id: SortKey }) => o && store.setSort(o.id)" />
-
-					<NcButton
-						:aria-label="store.order === 'asc' ? t('ebookreader', 'Ascending') : t('ebookreader', 'Descending')"
-						:title="store.order === 'asc' ? t('ebookreader', 'Ascending') : t('ebookreader', 'Descending')"
-						variant="tertiary"
-						@click="store.toggleOrder()">
-						<template #icon>
-							<NcIconSvgWrapper :path="store.order === 'asc' ? mdiSortAscending : mdiSortDescending" />
-						</template>
-					</NcButton>
-
-					<NcButton
-						:aria-label="viewMode === 'grid' ? t('ebookreader', 'Switch to list view') : t('ebookreader', 'Switch to grid view')"
-						:title="viewMode === 'grid' ? t('ebookreader', 'Switch to list view') : t('ebookreader', 'Switch to grid view')"
-						variant="tertiary"
-						@click="setViewMode(viewMode === 'grid' ? 'list' : 'grid')">
-						<template #icon>
-							<NcIconSvgWrapper :path="viewMode === 'grid' ? mdiViewList : mdiViewGrid" />
-						</template>
-					</NcButton>
-
-					<NcButton
-						:pressed="store.selectMode"
-						:aria-label="t('ebookreader', 'Select multiple books')"
-						:title="t('ebookreader', 'Select multiple books')"
-						variant="tertiary"
-						@update:pressed="(v: boolean) => store.setSelectMode(v)">
-						<template #icon>
-							<NcIconSvgWrapper :path="mdiCheckboxMultipleMarkedOutline" />
-						</template>
-					</NcButton>
-				</div>
-
-				<div v-if="store.selectMode" class="library__selection">
-					<span>{{ n('ebookreader', '%n book selected', '%n books selected', store.selectedIds.length) }}</span>
-					<NcButton variant="tertiary" @click="store.selectAllLoaded()">
-						{{ t('ebookreader', 'Select all') }}
-					</NcButton>
-					<NcButton variant="tertiary" :disabled="store.selectedIds.length === 0" @click="store.clearSelection()">
-						{{ t('ebookreader', 'Clear selection') }}
-					</NcButton>
-					<NcButton variant="primary" :disabled="store.selectedIds.length === 0" @click="showBulk = true">
-						<template #icon>
-							<NcIconSvgWrapper :path="mdiTagMultipleOutline" />
-						</template>
-						{{ t('ebookreader', 'Edit genres and tags') }}
-					</NcButton>
-				</div>
-
-				<div v-if="activeFilterChips.length" class="library__filters">
-					<button
-						v-for="chip in activeFilterChips"
-						:key="chip.key"
-						type="button"
-						class="library__filter-chip"
-						@click="chip.clear()">
-						{{ chip.label }}
-						<NcIconSvgWrapper :path="mdiClose" :size="16" />
-					</button>
-				</div>
-
-				<NcNoteCard v-if="store.error" type="error">
-					{{ store.error }}
-				</NcNoteCard>
-
-				<div v-if="!store.loaded && store.loading" class="library__center">
-					<NcLoadingIcon :size="44" />
-				</div>
-
-				<NcEmptyContent
-					v-else-if="store.loaded && store.books.length === 0 && !store.loading && !store.hasFilters"
-					:name="t('ebookreader', 'Your library is empty')"
-					:description="emptyDescription">
-					<template #icon>
-						<NcIconSvgWrapper :path="mdiBookshelf" :size="64" />
-					</template>
-					<template #action>
-						<NcButton variant="primary" @click="showSettings = true">
-							{{ t('ebookreader', 'Open settings') }}
-						</NcButton>
-					</template>
-				</NcEmptyContent>
-
-				<NcEmptyContent
-					v-else-if="store.loaded && store.books.length === 0 && !store.loading"
-					:name="t('ebookreader', 'No matching books')"
-					:description="t('ebookreader', 'Try a different search or remove some filters.')">
-					<template #icon>
-						<NcIconSvgWrapper :path="mdiBookSearchOutline" :size="64" />
-					</template>
-					<template #action>
-						<NcButton @click="store.resetFilters()">
-							{{ t('ebookreader', 'Clear filters') }}
-						</NcButton>
-					</template>
-				</NcEmptyContent>
-
-				<template v-else-if="store.books.length">
-					<ContinueReading
-						v-if="showContinue"
-						:books="store.recent"
-						:activeFileId="store.activeFileId"
-						@click="onBookClick" />
-
-					<BookGrid
-						v-if="viewMode === 'grid'"
-						:books="store.books"
-						:activeFileId="store.activeFileId"
-						:selection="store.selection"
-						:selectMode="store.selectMode"
-						@click="onBookClick" />
-					<BookList
-						v-else
-						:books="store.books"
-						:activeFileId="store.activeFileId"
-						:selection="store.selection"
-						:selectMode="store.selectMode"
-						@click="onBookClick" />
-
-					<div ref="sentinel" class="library__sentinel">
-						<NcLoadingIcon v-if="store.loadingMore || store.loading" :size="28" />
-					</div>
+	<NcAppNavigation :aria-label="t('ebookreader', 'E-book library')">
+		<template #list>
+			<NcAppNavigationCaption :name="t('ebookreader', 'Library')" />
+			<NcAppNavigationItem
+				v-for="item in mainItems"
+				:key="item.key"
+				:name="item.name"
+				:active="item.active"
+				@click="item.action">
+				<template #icon>
+					<NcIconSvgWrapper :path="item.icon" />
 				</template>
+			</NcAppNavigationItem>
+
+			<NcAppNavigationCaption :name="t('ebookreader', 'Filter')" />
+			<NcAppNavigationItem
+				v-for="group in facetGroups"
+				:key="group.key"
+				:name="group.name"
+				:allowCollapse="true"
+				:open="openGroups[group.key]"
+				@update:open="(v: boolean) => (openGroups[group.key] = v)">
+				<template #icon>
+					<NcIconSvgWrapper :path="group.icon" />
+				</template>
+				<NcAppNavigationItem
+					v-for="entry in group.entries"
+					:key="entry.name"
+					:name="entry.name"
+					:active="store.filters[group.filter] === entry.name"
+					@click="store.toggleFilter(group.filter, entry.name as never)">
+					<template #counter>
+						<NcCounterBubble :count="entry.count" />
+					</template>
+				</NcAppNavigationItem>
+				<NcAppNavigationItem
+					v-if="group.entries.length === 0"
+					:name="t('ebookreader', 'Nothing here yet')"
+					class="library-nav__empty" />
+			</NcAppNavigationItem>
+		</template>
+
+		<template #footer>
+			<div class="library-nav__footer">
+				<NcButton wide :disabled="scanning" @click="onScan">
+					<template #icon>
+						<NcLoadingIcon v-if="scanning" :size="20" />
+						<NcIconSvgWrapper v-else :path="mdiRefresh" />
+					</template>
+					{{ t('ebookreader', 'Scan library') }}
+				</NcButton>
+				<NcButton wide variant="tertiary" @click="showSettings = true">
+					<template #icon>
+						<NcIconSvgWrapper :path="mdiCog" />
+					</template>
+					{{ t('ebookreader', 'Settings') }}
+				</NcButton>
 			</div>
-		</NcAppContent>
+		</template>
+	</NcAppNavigation>
 
-		<BookDetails
-			v-if="store.activeBook"
-			:key="store.activeBook.fileId"
-			:book="store.activeBook"
-			@close="store.setActive(null)"
-			@filter="onDetailsFilter" />
+	<NcAppContent :pageHeading="t('ebookreader', 'E-book library')">
+		<div class="library">
+			<div class="library__toolbar">
+				<NcTextField
+					class="library__search"
+					:modelValue="store.filters.search"
+					:label="t('ebookreader', 'Search books')"
+					trailingButtonIcon="close"
+					:showTrailingButton="store.filters.search !== ''"
+					:trailingButtonLabel="t('ebookreader', 'Clear search')"
+					@update:modelValue="(v: string | number) => store.setSearch(String(v))"
+					@trailingButtonClick="store.setSearch('')" />
 
-		<BulkTagDialog v-if="showBulk" @close="showBulk = false" />
-		<SettingsDialog v-if="showSettings" @close="showSettings = false" @saved="onSettingsSaved" />
-	</NcContent>
+				<NcSelect
+					class="library__sort"
+					:modelValue="currentSort"
+					:options="sortOptions"
+					:inputLabel="t('ebookreader', 'Sort by')"
+					:clearable="false"
+					:searchable="false"
+					label="label"
+					@update:modelValue="(o: { id: SortKey }) => o && store.setSort(o.id)" />
+
+				<NcButton
+					:aria-label="store.order === 'asc' ? t('ebookreader', 'Ascending') : t('ebookreader', 'Descending')"
+					:title="store.order === 'asc' ? t('ebookreader', 'Ascending') : t('ebookreader', 'Descending')"
+					variant="tertiary"
+					@click="store.toggleOrder()">
+					<template #icon>
+						<NcIconSvgWrapper :path="store.order === 'asc' ? mdiSortAscending : mdiSortDescending" />
+					</template>
+				</NcButton>
+
+				<NcButton
+					:aria-label="viewMode === 'grid' ? t('ebookreader', 'Switch to list view') : t('ebookreader', 'Switch to grid view')"
+					:title="viewMode === 'grid' ? t('ebookreader', 'Switch to list view') : t('ebookreader', 'Switch to grid view')"
+					variant="tertiary"
+					@click="setViewMode(viewMode === 'grid' ? 'list' : 'grid')">
+					<template #icon>
+						<NcIconSvgWrapper :path="viewMode === 'grid' ? mdiViewList : mdiViewGrid" />
+					</template>
+				</NcButton>
+
+				<NcButton
+					:pressed="store.selectMode"
+					:aria-label="t('ebookreader', 'Select multiple books')"
+					:title="t('ebookreader', 'Select multiple books')"
+					variant="tertiary"
+					@update:pressed="(v: boolean) => store.setSelectMode(v)">
+					<template #icon>
+						<NcIconSvgWrapper :path="mdiCheckboxMultipleMarkedOutline" />
+					</template>
+				</NcButton>
+			</div>
+
+			<div v-if="store.selectMode" class="library__selection">
+				<span>{{ n('ebookreader', '%n book selected', '%n books selected', store.selectedIds.length) }}</span>
+				<NcButton variant="tertiary" @click="store.selectAllLoaded()">
+					{{ t('ebookreader', 'Select all') }}
+				</NcButton>
+				<NcButton variant="tertiary" :disabled="store.selectedIds.length === 0" @click="store.clearSelection()">
+					{{ t('ebookreader', 'Clear selection') }}
+				</NcButton>
+				<NcButton variant="primary" :disabled="store.selectedIds.length === 0" @click="showBulk = true">
+					<template #icon>
+						<NcIconSvgWrapper :path="mdiTagMultipleOutline" />
+					</template>
+					{{ t('ebookreader', 'Edit genres and tags') }}
+				</NcButton>
+			</div>
+
+			<div v-if="activeFilterChips.length" class="library__filters">
+				<button
+					v-for="chip in activeFilterChips"
+					:key="chip.key"
+					type="button"
+					class="library__filter-chip"
+					@click="chip.clear()">
+					{{ chip.label }}
+					<NcIconSvgWrapper :path="mdiClose" :size="16" />
+				</button>
+			</div>
+
+			<NcNoteCard v-if="store.error" type="error">
+				{{ store.error }}
+			</NcNoteCard>
+
+			<div v-if="!store.loaded && store.loading" class="library__center">
+				<NcLoadingIcon :size="44" />
+			</div>
+
+			<NcEmptyContent
+				v-else-if="store.loaded && store.books.length === 0 && !store.loading && !store.hasFilters"
+				:name="t('ebookreader', 'Your library is empty')"
+				:description="emptyDescription">
+				<template #icon>
+					<NcIconSvgWrapper :path="mdiBookshelf" :size="64" />
+				</template>
+				<template #action>
+					<NcButton variant="primary" @click="showSettings = true">
+						{{ t('ebookreader', 'Open settings') }}
+					</NcButton>
+				</template>
+			</NcEmptyContent>
+
+			<NcEmptyContent
+				v-else-if="store.loaded && store.books.length === 0 && !store.loading"
+				:name="t('ebookreader', 'No matching books')"
+				:description="t('ebookreader', 'Try a different search or remove some filters.')">
+				<template #icon>
+					<NcIconSvgWrapper :path="mdiBookSearchOutline" :size="64" />
+				</template>
+				<template #action>
+					<NcButton @click="store.resetFilters()">
+						{{ t('ebookreader', 'Clear filters') }}
+					</NcButton>
+				</template>
+			</NcEmptyContent>
+
+			<template v-else-if="store.books.length">
+				<ContinueReading
+					v-if="showContinue"
+					:books="store.recent"
+					:activeFileId="store.activeFileId"
+					@click="onBookClick" />
+
+				<BookGrid
+					v-if="viewMode === 'grid'"
+					:books="store.books"
+					:activeFileId="store.activeFileId"
+					:selection="store.selection"
+					:selectMode="store.selectMode"
+					@click="onBookClick" />
+				<BookList
+					v-else
+					:books="store.books"
+					:activeFileId="store.activeFileId"
+					:selection="store.selection"
+					:selectMode="store.selectMode"
+					@click="onBookClick" />
+
+				<div ref="sentinel" class="library__sentinel">
+					<NcLoadingIcon v-if="store.loadingMore || store.loading" :size="28" />
+				</div>
+			</template>
+		</div>
+	</NcAppContent>
+
+	<BookDetails
+		v-if="store.activeBook"
+		:key="store.activeBook.fileId"
+		:book="store.activeBook"
+		@close="store.setActive(null)"
+		@filter="onDetailsFilter" />
+
+	<BulkTagDialog v-if="showBulk" @close="showBulk = false" />
+	<SettingsDialog v-if="showSettings" @close="showSettings = false" @saved="onSettingsSaved" />
 </template>
 
 <script setup lang="ts">
@@ -259,7 +257,6 @@ import NcAppNavigation from '@nextcloud/vue/components/NcAppNavigation'
 import NcAppNavigationCaption from '@nextcloud/vue/components/NcAppNavigationCaption'
 import NcAppNavigationItem from '@nextcloud/vue/components/NcAppNavigationItem'
 import NcButton from '@nextcloud/vue/components/NcButton'
-import NcContent from '@nextcloud/vue/components/NcContent'
 import NcCounterBubble from '@nextcloud/vue/components/NcCounterBubble'
 import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'

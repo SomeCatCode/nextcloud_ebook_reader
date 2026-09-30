@@ -58,6 +58,7 @@ class PageController extends Controller {
 			$this->initialState->provideInitialState('settings', $this->settings->get($user->getUID()));
 		}
 		Util::addScript(Application::APP_ID, 'ebookreader-main');
+		Util::addStyle(Application::APP_ID, 'ebookreader-main');
 		return new TemplateResponse(Application::APP_ID, 'main');
 	}
 }

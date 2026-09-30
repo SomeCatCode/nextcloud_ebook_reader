@@ -25,5 +25,6 @@ class LoadFilesScriptsListener implements IEventListener {
 			return;
 		}
 		Util::addScript('ebookreader', 'ebookreader-files');
+		Util::addStyle('ebookreader', 'ebookreader-files');
 	}
 }
