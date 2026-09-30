@@ -4081,6 +4081,7 @@
             "post": {
                 "operationId": "scan-scan",
                 "summary": "Re-scan the library folders of the current user",
+                "description": "Books are indexed right away for up to 20 seconds; the rest is handed to background jobs.",
                 "tags": [
                     "scan"
                 ],
@@ -4106,7 +4107,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Number of queued scan jobs",
+                        "description": "E-books found in the library folders, indexed now, and queued for background indexing",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -4128,9 +4129,19 @@
                                                 "data": {
                                                     "type": "object",
                                                     "required": [
+                                                        "found",
+                                                        "indexed",
                                                         "queued"
                                                     ],
                                                     "properties": {
+                                                        "found": {
+                                                            "type": "integer",
+                                                            "format": "int64"
+                                                        },
+                                                        "indexed": {
+                                                            "type": "integer",
+                                                            "format": "int64"
+                                                        },
                                                         "queued": {
                                                             "type": "integer",
                                                             "format": "int64"

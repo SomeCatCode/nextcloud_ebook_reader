@@ -249,7 +249,7 @@ import {
 	mdiViewGrid,
 	mdiViewList,
 } from '@mdi/js'
-import { showError, showSuccess } from '@nextcloud/dialogs'
+import { showError, showSuccess, showWarning } from '@nextcloud/dialogs'
 import { n, t } from '@nextcloud/l10n'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import NcAppContent from '@nextcloud/vue/components/NcAppContent'
@@ -406,11 +406,16 @@ async function onScan(): Promise<void> {
 	scanning.value = true
 	try {
 		const res = await scan()
-		showSuccess(res.queued > 0
-			? n('ebookreader', 'Scan started: %n folder queued', 'Scan started: %n folders queued', res.queued)
-			: t('ebookreader', 'Scan started'))
+		if (res.found === 0) {
+			showWarning(t('ebookreader', 'No e-books found in your library folders. Check the folders in the settings.'))
+		} else if (res.queued > 0) {
+			showSuccess(n('ebookreader', '%n book indexed, the rest continues in the background', '%n books indexed, the rest continues in the background', res.indexed))
+		} else {
+			showSuccess(n('ebookreader', 'Library is up to date: %n book', 'Library is up to date: %n books', res.found))
+		}
+		await store.init()
 	} catch {
-		showError(t('ebookreader', 'Could not start the scan'))
+		showError(t('ebookreader', 'Could not scan the library'))
 	} finally {
 		scanning.value = false
 	}
@@ -420,7 +425,8 @@ async function onScan(): Promise<void> {
  *
  */
 function onSettingsSaved(): void {
-	void store.init()
+	// Library folders may have changed: scan right away (cheap when nothing changed), then reload
+	void onScan()
 }
 
 // ---- infinite scroll --------------------------------------------------

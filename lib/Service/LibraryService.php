@@ -387,43 +387,66 @@ class LibraryService {
 	 * @param ?callable(File, bool): void $progress called for every e-book found (bool = needs indexing)
 	 */
 	public function scanUser(string $userId, bool $inline = false, ?callable $progress = null): int {
+		$stats = $this->scan($userId, $inline ? null : 0.0, $progress);
+		return $stats['indexed'] + $stats['queued'];
+	}
+
+	/**
+	 * Scan triggered from the UI: indexes inline until the time budget is used up and queues the rest,
+	 * so a click shows results right away even when background jobs run rarely (AJAX cron).
+	 * @return array{found: int, indexed: int, queued: int}
+	 */
+	public function scanUserInteractive(string $userId, float $budgetSeconds = 20.0): array {
+		return $this->scan($userId, $budgetSeconds);
+	}
+
+	/**
+	 * @param ?float $inlineSeconds seconds to index inline before queueing (null = all inline, 0 = queue all)
+	 * @param ?callable(File, bool): void $progress
+	 * @return array{found: int, indexed: int, queued: int}
+	 */
+	private function scan(string $userId, ?float $inlineSeconds, ?callable $progress = null): array {
 		$existing = [];
 		foreach ($this->bookMapper->findAllByUser($userId) as $b) {
 			$existing[$b->getFileId()] = $b;
 		}
+		$deadline = $inlineSeconds === null ? INF : microtime(true) + $inlineSeconds;
 		$found = [];
-		$count = 0;
-		$complete = $this->walkLibrary($userId, function (File $file, string $format) use ($userId, $existing, &$found, &$count, $inline, $progress): void {
+		$stats = ['found' => 0, 'indexed' => 0, 'queued' => 0];
+		$complete = $this->walkLibrary($userId, function (File $file, string $format) use ($userId, $existing, &$found, &$stats, $deadline, $progress): void {
 			$id = $file->getId();
 			$found[$id] = true;
+			$stats['found']++;
 			$b = $existing[$id] ?? null;
-			$stale = $b === null || $b->getFileMtime() !== $file->getMTime() || $b->getFileEtag() !== (string)$file->getEtag()
-				|| $b->getFormat() !== $format;
+			$stale = $b === null || $b->getDeletedAt() !== null || $b->getFileMtime() !== $file->getMTime()
+				|| $b->getFileEtag() !== (string)$file->getEtag() || $b->getFormat() !== $format;
 			if ($progress !== null) {
 				$progress($file, $stale);
 			}
 			if (!$stale) {
 				return;
 			}
-			$count++;
-			if ($inline) {
+			if (microtime(true) < $deadline) {
 				try {
 					$this->indexFile($userId, $file);
+					$stats['indexed']++;
+					return;
 				} catch (\Throwable $e) {
 					$this->logger->warning('Indexing failed for file ' . $id . ': ' . $e->getMessage(), ['app' => 'ebookreader', 'exception' => $e]);
+					return;
 				}
-			} else {
-				$this->jobList->add(ScanFileJob::class, ['userId' => $userId, 'fileId' => $id]);
 			}
+			$this->jobList->add(ScanFileJob::class, ['userId' => $userId, 'fileId' => $id]);
+			$stats['queued']++;
 		});
 		if ($complete) {
-			foreach ($existing as $fileId => $_) {
-				if (!isset($found[$fileId])) {
+			foreach ($existing as $fileId => $b) {
+				if (!isset($found[$fileId]) && $b->getDeletedAt() === null) {
 					$this->removeFile($userId, $fileId);
 				}
 			}
 		}
-		return $count;
+		return $stats;
 	}
 
 	/** Queues an indexing job for every e-book below a folder that lies in the library. */

@@ -234,5 +234,10 @@ export interface RenameRequest {
 }
 
 export interface ScanResult {
+	/** E-books found in the library folders */
+	found: number
+	/** Indexed during the request */
+	indexed: number
+	/** Handed to background jobs because the time budget ran out */
 	queued: number
 }

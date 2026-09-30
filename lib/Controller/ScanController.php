@@ -31,15 +31,17 @@ class ScanController extends AbstractOCSController {
 	/**
 	 * Re-scan the library folders of the current user
 	 *
-	 * @return DataResponse<Http::STATUS_OK, array{queued: int}, array{}>
+	 * Books are indexed right away for up to 20 seconds; the rest is handed to background jobs.
+	 *
+	 * @return DataResponse<Http::STATUS_OK, array{found: int, indexed: int, queued: int}, array{}>
 	 * @throws OCSForbiddenException Not logged in
 	 *
-	 * 200: Number of queued scan jobs
+	 * 200: E-books found in the library folders, indexed now, and queued for background indexing
 	 */
 	#[NoAdminRequired]
-	#[UserRateLimit(limit: 5, period: 300)]
+	#[UserRateLimit(limit: 10, period: 300)]
 	#[ApiRoute(verb: 'POST', url: '/api/v1/scan')]
 	public function scan(): DataResponse {
-		return new DataResponse(['queued' => $this->library->scanUser($this->uid())]);
+		return new DataResponse($this->library->scanUserInteractive($this->uid()));
 	}
 }
