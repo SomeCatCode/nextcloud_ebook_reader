@@ -2,8 +2,8 @@ name: Release
 
 # Creates a GitHub release when a version tag is pushed:
 #   git tag v0.1.0 && git push origin v0.1.0
-# The tag must match <version> in appinfo/info.xml. Tags with a suffix
-# (e.g. v0.2.0-beta.1) become pre-releases.
+# The version is taken from the tag and written into appinfo/info.xml for the
+# build. Tags with a suffix (e.g. v0.2.0-beta.1) become pre-releases.
 #
 # Optional repository secrets:
 #   APP_PRIVATE_KEY  - Nextcloud App Store signing key (ebookreader.key); adds ebookreader.tar.gz.sig
@@ -33,18 +33,23 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Check tag matches info.xml version
+      # The tag is the source of truth: its version is written into info.xml
+      # (the only version Nextcloud reads), so a release needs nothing but a tag.
+      - name: Set version from tag
         id: version
         run: |
-          TAG="${GITHUB_REF_NAME#v}"
-          VERSION="$(sed -n 's:.*<version>\(.*\)</version>.*:\1:p' appinfo/info.xml | head -n1)"
-          echo "tag=$TAG info.xml=$VERSION"
-          if [ "$TAG" != "$VERSION" ]; then
-            echo "::error::Tag v$TAG does not match appinfo/info.xml version $VERSION"
+          VERSION="${GITHUB_REF_NAME#v}"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME is not a version tag like v1.2.3 or v1.2.3-beta.1"
             exit 1
           fi
+          CURRENT="$(sed -n 's:.*<version>\(.*\)</version>.*:\1:p' appinfo/info.xml | head -n1)"
+          if [ "$CURRENT" != "$VERSION" ]; then
+            echo "::notice::appinfo/info.xml has $CURRENT, building as $VERSION (from tag). Run 'make bump VERSION=$VERSION' to update the repo."
+          fi
+          sed -i "s:<version>.*</version>:<version>$VERSION</version>:" appinfo/info.xml
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          if [[ "$TAG" == *-* ]]; then echo "prerelease=true" >> "$GITHUB_OUTPUT"; else echo "prerelease=false" >> "$GITHUB_OUTPUT"; fi
+          if [[ "$VERSION" == *-* ]]; then echo "prerelease=true" >> "$GITHUB_OUTPUT"; else echo "prerelease=false" >> "$GITHUB_OUTPUT"; fi
 
       - uses: actions/setup-node@v5
         with:

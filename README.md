@@ -291,22 +291,16 @@ Nextcloud 34 läuft dann mit MariaDB und Redis auf **http://localhost:8080**. Di
 
 Releases baut GitHub Actions automatisch ([release.yml](.github/workflows/release.yml)), sobald ein Versions-Tag gepusht wird:
 
-1. Version setzen. Das ändert `appinfo/info.xml` und `package.json`:
-   ```bash
-   make bump VERSION=0.2.0
-   ```
-2. Committen, taggen und pushen:
-   ```bash
-   git commit -am "Release 0.2.0"
-   ```
-   ```bash
-   git tag v0.2.0
-   ```
-   ```bash
-   git push origin main v0.2.0
-   ```
+```bash
+git tag v0.2.0
+```
+```bash
+git push origin v0.2.0
+```
 
-Die Pipeline führt zuerst alle Tests und Checks aus der CI aus. Dann prüft sie, ob der Tag zur Version in `info.xml` passt, baut das Paket und veröffentlicht es als GitHub-Release mit `ebookreader.tar.gz` und `.sha256`. Die Release-Notes entstehen automatisch aus den Commits. Tags mit Suffix wie `v0.2.0-beta.1` werden als Pre-Release markiert.
+Die Version kommt **aus dem Tag**: Die Pipeline trägt sie beim Bauen selbst in `appinfo/info.xml` ein. Damit die Version auch im Repo stimmt, kannst du sie vorher optional mit `make bump VERSION=0.2.0` setzen und committen. Dann erscheint im Workflow auch kein Hinweis zur abweichenden Version.
+
+Die Pipeline führt zuerst alle Tests und Checks aus der CI aus, baut dann das Paket und veröffentlicht es als GitHub-Release mit `ebookreader.tar.gz` und `.sha256`. Die Release-Notes entstehen automatisch aus den Commits. Tags mit Suffix wie `v0.2.0-beta.1` werden als Pre-Release markiert.
 
 **Nextcloud App Store (optional):** Die Pipeline kann Releases auch signieren und im App Store veröffentlichen. Dafür die App [im App Store registrieren](https://nextcloudappstore.readthedocs.io/en/latest/developer.html) und zwei Repository-Secrets anlegen:
 - `APP_PRIVATE_KEY`: Inhalt von `ebookreader.key`
