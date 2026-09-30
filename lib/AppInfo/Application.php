@@ -39,8 +39,8 @@ class Application extends App implements IBootstrap {
 		'azw3' => 'application/vnd.amazon.mobi8-ebook',
 		'fb2' => 'application/x-fictionbook+xml',
 		'fbz' => 'application/x-zip-compressed-fb2',
-		'cbz' => 'application/vnd.comicbook+zip',
-		'cbr' => 'application/vnd.comicbook-rar',
+		'cbz' => 'application/comicbook+zip',
+		'cbr' => 'application/comicbook+rar',
 	];
 
 	public const PREVIEW_MIME_REGEX = '/^application\/(epub\+zip|x-mobipocket-ebook|vnd\.amazon\.mobi8-ebook|x-fictionbook\+xml|x-zip-compressed-fb2|vnd\.comicbook\+zip|vnd\.comicbook-rar)$/';
@@ -51,7 +51,7 @@ class Application extends App implements IBootstrap {
 
 	public function register(IRegistrationContext $context): void {
 		$context->registerCapability(Capabilities::class);
-		$context->registerPreviewProvider(EbookCoverProvider::class, self::PREVIEW_MIME_REGEX);
+		$context->registerPreviewProvider(EbookCoverProvider::class, EbookCoverProvider::MIME_REGEX);
 
 		$context->registerEventListener(NodeCreatedEvent::class, FileEventListener::class);
 		$context->registerEventListener(NodeWrittenEvent::class, FileEventListener::class);

@@ -9,30 +9,619 @@ declare(strict_types=1);
 
 namespace OCA\EbookReader\Service;
 
+use OCA\EbookReader\AppInfo\Application;
+use OCA\EbookReader\Db\Book;
+use OCA\EbookReader\Db\BookMapper;
+use OCA\EbookReader\Db\Tag;
+use OCA\EbookReader\Editor\BookEditorInterface;
+use OCA\EbookReader\Editor\CbzEditor;
+use OCA\EbookReader\Editor\EditConflictException;
+use OCA\EbookReader\Editor\EditForbiddenException;
+use OCA\EbookReader\Editor\EditorException;
+use OCA\EbookReader\Editor\EditRequest;
+use OCA\EbookReader\Editor\EpubEditor;
+use OCA\EbookReader\Editor\Fb2Editor;
+use OCA\EbookReader\Editor\InvalidEditRequestException;
+use OCA\EbookReader\Metadata\HtmlSanitizer;
+use OCA\EbookReader\Metadata\MetadataService;
+use OCP\AppFramework\Db\DoesNotExistException;
+use OCP\Files\File;
+use OCP\Files\IFilenameValidator;
+use OCP\Files\IRootFolder;
+use OCP\Files\NotFoundException;
+use OCP\Files\NotPermittedException;
+use OCP\IAppConfig;
+use OCP\ITempManager;
+use OCP\Lock\ILockingProvider;
+use OCP\Lock\LockedException;
+use Psr\Log\LoggerInterface;
+
 /** Owner: W3 */
 class EditorService {
-	/** @return array<string, mixed> Structure */
+	public const CONFIG_MAX_EDIT_SIZE_MB = 'max_edit_size_mb';
+	public const DEFAULT_MAX_EDIT_SIZE_MB = 500;
+
+	/** Formats whose files can be rewritten by this app. */
+	private const WRITABLE = ['epub', 'cbz', 'fb2', 'fbz'];
+	/** Formats that only support metadata edits in the database. */
+	private const DB_ONLY = ['mobi', 'azw3', 'cbr'];
+	private const METADATA_KEYS = ['title', 'authors', 'series', 'seriesIndex', 'description', 'language', 'publisher', 'isbn', 'publishedAt', 'genres', 'tags'];
+
+	/** @var list<BookEditorInterface> */
+	private array $editors;
+
+	public function __construct(
+		private LibraryService $library,
+		private ProgressService $progress,
+		private BookMapper $bookMapper,
+		private MetadataService $metadata,
+		private SettingsService $settings,
+		private RenameService $renamer,
+		private IRootFolder $rootFolder,
+		private ITempManager $tempManager,
+		private IAppConfig $appConfig,
+		private IFilenameValidator $filenameValidator,
+		private LoggerInterface $logger,
+	) {
+		$this->editors = [new EpubEditor(), new CbzEditor(), new Fb2Editor()];
+	}
+
+	/**
+	 * @return array<string, mixed> Structure
+	 * @throws NotFoundException
+	 * @throws EditorException
+	 */
 	public function getStructure(string $userId, int $fileId): array {
-		throw new \RuntimeException('Not implemented: W3');
+		$file = $this->library->getFileForUser($userId, $fileId);
+		$format = $this->formatOf($file);
+		$book = $this->findBook($userId, $fileId);
+
+		if (in_array($format, self::WRITABLE, true)) {
+			$this->assertSize($file);
+			$editor = $this->editorFor($format);
+			$tmp = $this->download($file);
+			try {
+				$structure = $editor->readStructure($tmp, $format);
+			} finally {
+				@unlink($tmp);
+			}
+			$editable = $file->isUpdateable();
+		} else {
+			$structure = [
+				'capabilities' => ['metadata' => true, 'cover' => false, 'content' => false, 'toc' => false, 'writesFile' => false],
+				'metadata' => $this->emptyMetadata(),
+				'items' => [],
+				'toc' => [],
+				'warnings' => [],
+			];
+			$editable = true;
+		}
+		if ($book !== null) {
+			$structure['metadata'] = $this->metadataOf($book);
+		}
+		return [
+			'fileId' => $fileId,
+			'format' => $format,
+			'etag' => (string)$file->getEtag(),
+			'editable' => $editable,
+			'capabilities' => $structure['capabilities'],
+			'metadata' => $structure['metadata'],
+			'items' => $structure['items'],
+			'toc' => $structure['toc'],
+			'warnings' => $structure['warnings'],
+		];
 	}
 
 	/**
 	 * @param array<string, mixed> $request EditRequest as array
-	 * @return array{book: \OCA\EbookReader\Db\Book, warnings: list<string>}
+	 * @return array{book: Book, warnings: list<string>}
+	 * @throws EditConflictException
 	 */
 	public function save(string $userId, int $fileId, array $request): array {
-		throw new \RuntimeException('Not implemented: W3');
+		$file = $this->library->getFileForUser($userId, $fileId);
+		$format = $this->formatOf($file);
+		if (!in_array($format, self::WRITABLE, true)) {
+			throw new EditorException('Dieses Format kann nicht in der Datei bearbeitet werden.', 422);
+		}
+		$req = EditRequest::fromArray($request);
+		if ($req->etag === '') {
+			throw new InvalidEditRequestException('etag is required.');
+		}
+		if ($req->etag !== (string)$file->getEtag()) {
+			throw new EditConflictException('Die Datei wurde zwischenzeitlich geändert.');
+		}
+		if ($req->metadata !== null) {
+			$req = $this->withNormalizedMetadata($req);
+		}
+		return $this->write($userId, $file, $format, $req);
 	}
 
 	/**
 	 * @param array<string, mixed> $metadataPatch
-	 * @return array{book: \OCA\EbookReader\Db\Book, warnings: list<string>}
+	 * @return array{book: Book, warnings: list<string>}
+	 * @throws DoesNotExistException
 	 */
 	public function saveMetadataOnly(string $userId, int $fileId, array $metadataPatch): array {
-		throw new \RuntimeException('Not implemented: W3');
+		$file = $this->library->getFileForUser($userId, $fileId);
+		$format = $this->formatOf($file);
+		$book = $this->library->getBook($userId, $fileId);
+		$patch = $this->normalizePatch($metadataPatch);
+		$merged = array_merge($this->metadataOf($book), $patch);
+
+		$warnings = [];
+		if (in_array($format, self::WRITABLE, true)) {
+			if ($file->isUpdateable() && $this->sizeOk($file)) {
+				$req = new EditRequest(etag: (string)$file->getEtag(), saveAsCopy: false, metadata: $merged);
+				$result = $this->write($userId, $file, $format, $req);
+				if (array_key_exists('description', $patch)) {
+					// the file holds plain text; keep the sanitized HTML in the database
+					$this->applyDescription($result['book'], $patch['description']);
+				}
+				return $result;
+			}
+			$warnings[] = 'Die Datei ist schreibgeschützt oder zu groß; die Änderungen wurden nur in der Bibliothek gespeichert.';
+		}
+		return ['book' => $this->updateDatabaseOnly($book, $merged), 'warnings' => $warnings];
 	}
 
-	public function rename(string $userId, int $fileId, ?string $name, bool $usePattern): \OCA\EbookReader\Db\Book {
-		throw new \RuntimeException('Not implemented: W3');
+	/**
+	 * Adds/removes genres and tags of several books.
+	 * @param array<string, mixed> $body {fileIds[], addGenres[], removeGenres[], addTags[], removeTags[]}
+	 * @return array{updated: int, failed: list<array{fileId: int, error: string}>}
+	 */
+	public function bulkTags(string $userId, array $body): array {
+		$list = static function (string $k) use ($body): array {
+			$v = $body[$k] ?? [];
+			$out = [];
+			foreach (is_array($v) ? $v : [] as $x) {
+				if (is_scalar($x) && trim((string)$x) !== '') {
+					$out[] = trim((string)$x);
+				}
+			}
+			return $out;
+		};
+		$ids = [];
+		foreach (is_array($body['fileIds'] ?? null) ? $body['fileIds'] : [] as $id) {
+			if (is_int($id) || (is_string($id) && ctype_digit($id))) {
+				$ids[(int)$id] = true;
+			}
+		}
+		if ($ids === []) {
+			throw new InvalidEditRequestException('fileIds must not be empty.');
+		}
+		if (count($ids) > 500) {
+			throw new InvalidEditRequestException('Too many files.');
+		}
+		[$addG, $remG, $addT, $remT] = [$list('addGenres'), $list('removeGenres'), $list('addTags'), $list('removeTags')];
+		$lower = static fn (array $a): array => array_map('mb_strtolower', $a);
+
+		$updated = 0;
+		$failed = [];
+		foreach (array_keys($ids) as $fileId) {
+			try {
+				$book = $this->library->getBook($userId, $fileId);
+				$cur = $this->metadataOf($book);
+				$genres = $this->mergeSet($cur['genres'], $addG, $lower($remG));
+				$tags = $this->mergeSet($cur['tags'], $addT, $lower($remT));
+				if ($genres === $cur['genres'] && $tags === $cur['tags']) {
+					$updated++;
+					continue;
+				}
+				$this->saveMetadataOnly($userId, $fileId, ['genres' => $genres, 'tags' => $tags]);
+				$updated++;
+			} catch (\Throwable $e) {
+				$this->logger->info('Bulk tagging failed for file ' . $fileId . ': ' . $e->getMessage(), ['app' => Application::APP_ID]);
+				$failed[] = ['fileId' => $fileId, 'error' => $e instanceof EditorException || $e instanceof DoesNotExistException || $e instanceof NotFoundException ? $e->getMessage() : 'Fehler beim Speichern.'];
+			}
+		}
+		return ['updated' => $updated, 'failed' => $failed];
+	}
+
+	/**
+	 * @throws EditorException
+	 * @throws NotFoundException
+	 */
+	public function rename(string $userId, int $fileId, ?string $name, bool $usePattern): Book {
+		$file = $this->library->getFileForUser($userId, $fileId);
+		$book = $this->library->getBook($userId, $fileId);
+		$ext = $this->extensionOf($file->getName());
+
+		if ($usePattern) {
+			$pattern = (string)($this->settings->get($userId)['filenamePattern'] ?? '{author} - {title}');
+			$base = $this->renamer->buildFilename($book, $pattern === '' ? '{author} - {title}' : $pattern);
+		} else {
+			$base = trim((string)$name);
+			if ($ext !== '' && str_ends_with(mb_strtolower($base), mb_strtolower($ext))) {
+				$base = substr($base, 0, -strlen($ext));
+			}
+			$base = $this->renamer->sanitize($base);
+		}
+		if ($base === '') {
+			throw new InvalidEditRequestException('The file name must not be empty.');
+		}
+		try {
+			$base = $this->filenameValidator->sanitizeFilename($base);
+		} catch (\InvalidArgumentException $e) {
+			throw new InvalidEditRequestException('The file name is not valid.', $e);
+		}
+		if ($base === '' || trim($base, '. ') === '') {
+			throw new InvalidEditRequestException('The file name is not valid.');
+		}
+
+		$parent = $file->getParent();
+		$current = $file->getName();
+		$candidate = $base . $ext;
+		if ($candidate !== $current) {
+			$n = 1;
+			while ($parent->nodeExists($candidate)) {
+				$n++;
+				$candidate = $base . ' (' . $n . ')' . $ext;
+				if ($n > 1000) {
+					throw new EditorException('No free file name found.', 409);
+				}
+			}
+			try {
+				$this->filenameValidator->validateFilename($candidate);
+				$file->move($parent->getPath() . '/' . $candidate);
+			} catch (NotPermittedException $e) {
+				throw new EditForbiddenException('Die Datei darf nicht umbenannt werden.', $e);
+			} catch (\OCP\Files\InvalidPathException $e) {
+				throw new InvalidEditRequestException('The file name is not valid: ' . $e->getMessage(), $e);
+			}
+			$this->library->reindexFileForAllUsers($fileId);
+		}
+		return $this->library->getBook($userId, $fileId);
+	}
+
+	// ------------------------------------------------------------------ internals
+
+	/**
+	 * @return array{book: Book, warnings: list<string>}
+	 */
+	private function write(string $userId, File $file, string $format, EditRequest $req): array {
+		if (!$req->saveAsCopy && !$file->isUpdateable()) {
+			throw new EditForbiddenException('Die Datei ist schreibgeschützt. Speichere stattdessen eine Kopie.');
+		}
+		$this->assertSize($file);
+		$editor = $this->editorFor($format);
+		$fileId = $file->getId();
+
+		$src = null;
+		$dst = null;
+		$lock = new \ArrayObject(['held' => 0]);
+		try {
+			try {
+				$file->lock(ILockingProvider::LOCK_SHARED);
+				$lock['held'] = 1;
+			} catch (LockedException $e) {
+				throw new EditorException('Die Datei wird gerade verwendet. Bitte später erneut versuchen.', 423, $e);
+			}
+			$this->assertEtag($userId, $fileId, $req->etag);
+
+			$src = $this->download($file);
+			$dst = $this->tempManager->getTemporaryFile('.' . $format);
+			if ($dst === false) {
+				throw new EditorException('Cannot create a temporary file.', 500);
+			}
+			$result = $editor->write($src, $dst, $req);
+			@unlink($src);
+			$src = null;
+
+			// verify with the regular extractor
+			try {
+				$this->metadata->extractLocal($dst, $format);
+			} catch (\Throwable $e) {
+				throw new EditorException('Die bearbeitete Datei konnte nicht überprüft werden; das Original bleibt unverändert.', 500, $e);
+			}
+
+			if ($lock['held'] === 1) {
+				$file->unlock(ILockingProvider::LOCK_SHARED);
+				$lock['held'] = 0;
+			}
+
+			if ($req->saveAsCopy) {
+				$new = $this->writeCopy($userId, $file, $dst);
+				$book = $this->library->indexFile($userId, $new, true);
+				if ($book === null) {
+					throw new EditorException('Die Kopie konnte nicht indexiert werden.', 500);
+				}
+				return ['book' => $book, 'warnings' => $result['warnings']];
+			}
+
+			// last check right before writing; putContent takes the exclusive lock itself
+			$this->assertEtag($userId, $fileId, $req->etag);
+			$stream = fopen($dst, 'rb');
+			if ($stream === false) {
+				throw new EditorException('Cannot read the temporary file.', 500);
+			}
+			try {
+				$file->putContent($stream);
+			} finally {
+				fclose($stream);
+			}
+			$this->library->reindexFileForAllUsers($fileId);
+			$this->progress->remapAfterEdit($fileId, $result['itemMap']);
+			return ['book' => $this->library->getBook($userId, $fileId), 'warnings' => $result['warnings']];
+		} catch (LockedException $e) {
+			throw new EditorException('Die Datei wird gerade verwendet. Bitte später erneut versuchen.', 423, $e);
+		} catch (NotPermittedException $e) {
+			throw new EditForbiddenException('Keine Berechtigung zum Schreiben.', $e);
+		} finally {
+			if ($lock['held'] === 1) {
+				try {
+					$file->unlock(ILockingProvider::LOCK_SHARED);
+				} catch (\Throwable) {
+				}
+			}
+			foreach ([$src, $dst] as $t) {
+				if (is_string($t) && $t !== '') {
+					@unlink($t);
+				}
+			}
+		}
+	}
+
+	/** Creates "<name> (bearbeitet).<ext>" next to the original (or in the user's root if not writable). */
+	private function writeCopy(string $userId, File $file, string $localPath): File {
+		$folder = $file->getParent();
+		if (!$folder->isCreatable()) {
+			$folder = $this->rootFolder->getUserFolder($userId);
+		}
+		$ext = $this->extensionOf($file->getName());
+		$base = $ext !== '' ? substr($file->getName(), 0, -strlen($ext)) : $file->getName();
+		$name = $folder->getNonExistingName($base . ' (bearbeitet)' . $ext);
+		$stream = fopen($localPath, 'rb');
+		if ($stream === false) {
+			throw new EditorException('Cannot read the temporary file.', 500);
+		}
+		try {
+			$new = $folder->newFile($name, $stream);
+		} finally {
+			fclose($stream);
+		}
+		return $new;
+	}
+
+	private function assertEtag(string $userId, int $fileId, string $etag): void {
+		$fresh = $this->library->getFileForUser($userId, $fileId);
+		if ((string)$fresh->getEtag() !== $etag) {
+			throw new EditConflictException('Die Datei wurde zwischenzeitlich geändert.');
+		}
+	}
+
+	private function download(File $file): string {
+		$tmp = $this->tempManager->getTemporaryFile('.' . $this->safeExt($file->getName()));
+		if ($tmp === false) {
+			throw new EditorException('Cannot create a temporary file.', 500);
+		}
+		$in = $file->fopen('r');
+		$out = fopen($tmp, 'wb');
+		if ($in === false || $out === false) {
+			throw new EditorException('Die Datei kann nicht gelesen werden.', 500);
+		}
+		try {
+			stream_copy_to_stream($in, $out);
+		} finally {
+			fclose($in);
+			fclose($out);
+		}
+		return $tmp;
+	}
+
+	private function safeExt(string $name): string {
+		$e = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+		return preg_match('/^[a-z0-9]{1,5}$/', $e) === 1 ? $e : 'bin';
+	}
+
+	private function maxBytes(): int {
+		$mb = $this->appConfig->getValueInt(Application::APP_ID, self::CONFIG_MAX_EDIT_SIZE_MB, self::DEFAULT_MAX_EDIT_SIZE_MB);
+		return max(1, $mb) * 1024 * 1024;
+	}
+
+	private function sizeOk(File $file): bool {
+		return $file->getSize() <= $this->maxBytes();
+	}
+
+	private function assertSize(File $file): void {
+		if (!$this->sizeOk($file)) {
+			throw new EditorException('Die Datei ist zu groß zum Bearbeiten (Limit ' . intdiv($this->maxBytes(), 1024 * 1024) . ' MB).', 413);
+		}
+	}
+
+	private function editorFor(string $format): BookEditorInterface {
+		foreach ($this->editors as $e) {
+			if ($e->supports($format)) {
+				return $e;
+			}
+		}
+		throw new EditorException('Format not supported: ' . $format, 415);
+	}
+
+	private function formatOf(File $file): string {
+		$name = strtolower($file->getName());
+		if (str_ends_with($name, '.fb2.zip') || str_ends_with($name, '.fbz')) {
+			return 'fbz';
+		}
+		$ext = pathinfo($name, PATHINFO_EXTENSION);
+		if (in_array($ext, ['epub', 'cbz', 'cbr', 'fb2', 'mobi', 'azw3'], true)) {
+			return $ext;
+		}
+		if ($ext === 'azw') {
+			return 'azw3';
+		}
+		$detected = $this->metadata->detectFormat($file->getName(), $file->getMimeType());
+		if ($detected === null || !in_array($detected, array_merge(self::WRITABLE, self::DB_ONLY), true)) {
+			throw new EditorException('Not an e-book.', 415);
+		}
+		return $detected;
+	}
+
+	/** Extension including the dot; ".fb2.zip" is kept as one extension. */
+	private function extensionOf(string $name): string {
+		if (str_ends_with(strtolower($name), '.fb2.zip')) {
+			return substr($name, -8);
+		}
+		$ext = pathinfo($name, PATHINFO_EXTENSION);
+		return $ext === '' ? '' : '.' . $ext;
+	}
+
+	private function findBook(string $userId, int $fileId): ?Book {
+		try {
+			return $this->library->getBook($userId, $fileId);
+		} catch (DoesNotExistException) {
+			return null;
+		}
+	}
+
+	/** @return array<string, mixed> */
+	private function emptyMetadata(): array {
+		return ['title' => null, 'authors' => [], 'series' => null, 'seriesIndex' => null, 'description' => null, 'language' => null, 'publisher' => null, 'isbn' => null, 'publishedAt' => null, 'genres' => [], 'tags' => []];
+	}
+
+	/** @return array<string, mixed> */
+	private function metadataOf(Book $book): array {
+		$genres = [];
+		$tags = [];
+		foreach ($this->library->getTags($book->getId()) as $t) {
+			if ($t->getType() === Tag::TYPE_GENRE) {
+				$genres[] = $t->getName();
+			} else {
+				$tags[] = $t->getName();
+			}
+		}
+		return [
+			'title' => $book->getTitle(),
+			'authors' => $book->getAuthorsArray(),
+			'series' => $book->getSeries(),
+			'seriesIndex' => $book->getSeriesIndex(),
+			'description' => $book->getDescription(),
+			'language' => $book->getLanguage(),
+			'publisher' => $book->getPublisher(),
+			'isbn' => $book->getIsbn(),
+			'publishedAt' => $book->getPublishedAt(),
+			'genres' => $genres,
+			'tags' => $tags,
+		];
+	}
+
+	/**
+	 * Validates and normalizes a (partial) metadata array. Unknown keys are dropped.
+	 * @param array<string, mixed> $in
+	 * @return array<string, mixed>
+	 */
+	private function normalizePatch(array $in): array {
+		$out = [];
+		foreach (self::METADATA_KEYS as $key) {
+			if (!array_key_exists($key, $in)) {
+				continue;
+			}
+			$v = $in[$key];
+			switch ($key) {
+				case 'authors':
+				case 'genres':
+				case 'tags':
+					if (!is_array($v)) {
+						throw new InvalidEditRequestException('"' . $key . '" must be a list.');
+					}
+					$list = [];
+					foreach ($v as $x) {
+						if (!is_scalar($x)) {
+							throw new InvalidEditRequestException('"' . $key . '" must be a list of strings.');
+						}
+						$s = trim((string)$x);
+						if ($s !== '' && !in_array($s, $list, true)) {
+							$list[] = mb_substr($s, 0, $key === 'authors' ? 255 : 128);
+						}
+					}
+					$out[$key] = $list;
+					break;
+				case 'seriesIndex':
+					if ($v === null || $v === '') {
+						$out[$key] = null;
+					} elseif (is_numeric($v)) {
+						$out[$key] = (float)$v;
+					} else {
+						throw new InvalidEditRequestException('"seriesIndex" must be a number.');
+					}
+					break;
+				default:
+					if ($v === null) {
+						$out[$key] = null;
+					} elseif (is_scalar($v)) {
+						$s = trim((string)$v);
+						$out[$key] = $s === '' ? null : $s;
+					} else {
+						throw new InvalidEditRequestException('"' . $key . '" must be a string.');
+					}
+			}
+		}
+		if (isset($out['description']) && is_string($out['description'])) {
+			$out['description'] = HtmlSanitizer::sanitize($out['description']);
+		}
+		return $out;
+	}
+
+	private function withNormalizedMetadata(EditRequest $req): EditRequest {
+		return new EditRequest(
+			etag: $req->etag,
+			saveAsCopy: $req->saveAsCopy,
+			metadata: $this->normalizePatch($req->metadata ?? []),
+			cover: $req->cover,
+			order: $req->order,
+			removed: $req->removed,
+			toc: $req->toc,
+		);
+	}
+
+	/**
+	 * @param list<string> $current
+	 * @param list<string> $add
+	 * @param list<string> $removeLower lower-case names to remove
+	 * @return list<string>
+	 */
+	private function mergeSet(array $current, array $add, array $removeLower): array {
+		$out = [];
+		foreach (array_merge($current, $add) as $name) {
+			if (in_array(mb_strtolower($name), $removeLower, true) && !in_array($name, $add, true)) {
+				continue;
+			}
+			if (!in_array($name, $out, true)) {
+				$out[] = $name;
+			}
+		}
+		return $out;
+	}
+
+	private function applyDescription(Book $book, mixed $description): void {
+		$book->setDescription(is_string($description) && $description !== '' ? $description : null);
+		$book->setUpdatedAt((int)(microtime(true) * 1000.0));
+		$this->bookMapper->update($book);
+	}
+
+	/**
+	 * Stores metadata only in the database (source=app); the file stays untouched.
+	 * @param array<string, mixed> $meta complete metadata
+	 */
+	private function updateDatabaseOnly(Book $book, array $meta): Book {
+		$authors = is_array($meta['authors'] ?? null) ? array_values(array_map('strval', $meta['authors'])) : [];
+		$book->setTitle(isset($meta['title']) ? (string)$meta['title'] : null);
+		$book->setAuthorsArray($authors);
+		$book->setSeries(isset($meta['series']) ? (string)$meta['series'] : null);
+		$book->setSeriesIndex(isset($meta['seriesIndex']) && is_numeric($meta['seriesIndex']) ? (float)$meta['seriesIndex'] : null);
+		$book->setDescription(isset($meta['description']) ? (string)$meta['description'] : null);
+		$book->setLanguage(isset($meta['language']) ? (string)$meta['language'] : null);
+		$book->setPublisher(isset($meta['publisher']) ? (string)$meta['publisher'] : null);
+		$book->setIsbn(isset($meta['isbn']) ? (string)$meta['isbn'] : null);
+		$book->setPublishedAt(isset($meta['publishedAt']) ? substr((string)$meta['publishedAt'], 0, 10) : null);
+		$book->setUpdatedAt((int)(microtime(true) * 1000.0));
+		$this->bookMapper->update($book);
+
+		foreach ([Tag::TYPE_GENRE => 'genres', Tag::TYPE_TAG => 'tags'] as $type => $key) {
+			$names = is_array($meta[$key] ?? null) ? array_values(array_map('strval', $meta[$key])) : [];
+			// the user's list is authoritative: clear file-sourced entries and store everything as app data
+			$this->library->setTags($book->getId(), $type, [], Tag::SOURCE_FILE);
+			$this->library->setTags($book->getId(), $type, $names, Tag::SOURCE_APP);
+		}
+		return $book;
 	}
 }

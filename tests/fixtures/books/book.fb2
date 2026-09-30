@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FictionBook xmlns="http://www.gribuser.ru/xml/fictionbook/2.0" xmlns:l="http://www.w3.org/1999/xlink">
+<description>
+<title-info>
+<genre>sf_fantasy</genre>
+<genre>detective</genre>
+<genre>no_such_code</genre>
+<author><first-name>Ivan</first-name><middle-name>I.</middle-name><last-name>Petrov</last-name></author>
+<book-title>Das FB2-Buch</book-title>
+<annotation><p>Eine <strong>kurze</strong> Beschreibung.</p><empty-line/><p>Noch ein <emphasis>Absatz</emphasis>.</p></annotation>
+<keywords>Drachen, Magie; Lieblingsbuch</keywords>
+<date value="2015-06-01">June 2015</date>
+<coverpage><image l:href="#cover.png"/></coverpage>
+<lang>de</lang>
+<sequence name="FB2-Serie" number="7"/>
+</title-info>
+<document-info><author><nickname>tester</nickname></author><date value="2020-01-01">2020</date><id>fixture-1</id><version>1.0</version></document-info>
+<publish-info><publisher>FB2 Verlag</publisher><year>2016</year><isbn>978-0-306-40615-7</isbn></publish-info>
+</description>
+<body><title><p>Das FB2-Buch</p></title><section><title><p>Eins</p></title><p>Text.</p></section></body>
+<binary id="cover.png" content-type="image/png">iVBORw0KGgoAAAANSUhEUgAAADIAAABLCAIAAAC9cEPvAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAATUlEQVRo3u3OAQ0AMAgAIH0QkxjWqK+hGyQgazr2ebGSlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpbW4dYHVuQBkAi06MsAAAAASUVORK5CYII=</binary>
+</FictionBook>

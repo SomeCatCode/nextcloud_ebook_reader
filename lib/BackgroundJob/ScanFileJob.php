@@ -9,17 +9,53 @@ declare(strict_types=1);
 
 namespace OCA\EbookReader\BackgroundJob;
 
+use OCA\EbookReader\Service\LibraryService;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\QueuedJob;
+use OCP\Files\File;
+use OCP\Files\Folder;
+use OCP\Files\NotFoundException;
+use Psr\Log\LoggerInterface;
 
-/** Owner: W1. Argument: ['userId' => string, 'fileId' => int] */
+/**
+ * Owner: W1. Argument: ['userId' => string, 'fileId' => int].
+ * The file id may also be a folder: then an indexing job is queued for every e-book below it.
+ */
 class ScanFileJob extends QueuedJob {
-	public function __construct(ITimeFactory $time) {
+	public function __construct(
+		ITimeFactory $time,
+		private LibraryService $library,
+		private LoggerInterface $logger,
+	) {
 		parent::__construct($time);
 	}
 
 	/** @param array{userId?: string, fileId?: int} $argument */
+	#[\Override]
 	protected function run($argument): void {
-		throw new \RuntimeException('Not implemented: W1');
+		$userId = $argument['userId'] ?? null;
+		$fileId = $argument['fileId'] ?? null;
+		if (!is_string($userId) || !is_int($fileId)) {
+			return;
+		}
+		try {
+			$node = $this->library->getNodeForUser($userId, $fileId);
+		} catch (NotFoundException) {
+			$this->library->removeFile($userId, $fileId);
+			return;
+		}
+		try {
+			if ($node instanceof File) {
+				if ($this->library->isInLibrary($userId, $node)) {
+					$this->library->indexFile($userId, $node);
+				} else {
+					$this->library->removeFile($userId, $fileId);
+				}
+			} elseif ($node instanceof Folder) {
+				$this->library->queueFolder($userId, $node);
+			}
+		} catch (\Throwable $e) {
+			$this->logger->warning('ScanFileJob failed for file ' . $fileId . ': ' . $e->getMessage(), ['app' => 'ebookreader', 'exception' => $e]);
+		}
 	}
 }

@@ -9,14 +9,21 @@ declare(strict_types=1);
 
 namespace OCA\EbookReader\Listener;
 
+use OCA\Files\Event\LoadAdditionalScriptsEvent;
 use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
+use OCP\Util;
 
 /**
- * Owner: W6
+ * Loads the file action script (open in reader / edit) into the Files app.
+ *
  * @template-implements IEventListener<Event>
  */
 class LoadFilesScriptsListener implements IEventListener {
 	public function handle(Event $event): void {
+		if (!($event instanceof LoadAdditionalScriptsEvent)) {
+			return;
+		}
+		Util::addScript('ebookreader', 'ebookreader-files');
 	}
 }

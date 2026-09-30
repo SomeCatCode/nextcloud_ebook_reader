@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<files psalm-version="6.19.1@e2ca44251c1f1aa2e35452d426895746b47de64e">
+  <file src="lib/AppInfo/Application.php">
+    <InvalidArgument>
+      <code><![CDATA[registerEventListener]]></code>
+      <code><![CDATA[registerEventListener]]></code>
+    </InvalidArgument>
+  </file>
+  <file src="lib/Db/Book.php">
+    <RedundantFunctionCall>
+      <code><![CDATA[array_values]]></code>
+    </RedundantFunctionCall>
+  </file>
+  <file src="lib/Db/BookMapper.php">
+    <RedundantFunctionCall>
+      <code><![CDATA[array_values]]></code>
+    </RedundantFunctionCall>
+  </file>
+  <file src="lib/Editor/CbzEditor.php">
+    <RedundantCast>
+      <code><![CDATA[(string)$k]]></code>
+      <code><![CDATA[(string)$k]]></code>
+    </RedundantCast>
+  </file>
+  <file src="lib/Editor/EpubEditor.php">
+    <InvalidArgument>
+      <code><![CDATA[$navs]]></code>
+      <code><![CDATA[$navs]]></code>
+    </InvalidArgument>
+    <UndefinedPropertyFetch>
+      <code><![CDATA[$el->textContent]]></code>
+      <code><![CDATA[$n->item(0)->textContent]]></code>
+      <code><![CDATA[$n->item(0)->textContent]]></code>
+      <code><![CDATA[$t->item(0)->textContent]]></code>
+    </UndefinedPropertyFetch>
+  </file>
+  <file src="lib/Metadata/CbzExtractor.php">
+    <UndefinedPropertyFetch>
+      <code><![CDATA[$summaryNode->textContent]]></code>
+    </UndefinedPropertyFetch>
+  </file>
+  <file src="lib/Metadata/EpubExtractor.php">
+    <UndefinedPropertyFetch>
+      <code><![CDATA[$descNode->childNodes]]></code>
+      <code><![CDATA[$descNode->textContent]]></code>
+    </UndefinedPropertyFetch>
+  </file>
+  <file src="lib/Metadata/Fb2Extractor.php">
+    <UndefinedPropertyFetch>
+      <code><![CDATA[$bin->textContent]]></code>
+      <code><![CDATA[$dateNode->textContent]]></code>
+    </UndefinedPropertyFetch>
+  </file>
+  <file src="lib/Metadata/HtmlSanitizer.php">
+    <RedundantCondition>
+      <code><![CDATA[$node->localName]]></code>
+    </RedundantCondition>
+    <TypeDoesNotContainType>
+      <code><![CDATA[$node->tagName]]></code>
+    </TypeDoesNotContainType>
+  </file>
+  <file src="lib/Metadata/SafeZip.php">
+    <InvalidOperand>
+      <code><![CDATA[$res]]></code>
+    </InvalidOperand>
+  </file>
+  <file src="lib/Metadata/XmlUtil.php">
+    <UndefinedPropertyFetch>
+      <code><![CDATA[$n->textContent]]></code>
+      <code><![CDATA[$nodes->item(0)?->textContent]]></code>
+    </UndefinedPropertyFetch>
+  </file>
+</files>

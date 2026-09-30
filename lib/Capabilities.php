@@ -12,6 +12,9 @@ namespace OCA\EbookReader;
 use OCP\Capabilities\ICapability;
 
 class Capabilities implements ICapability {
+	/**
+	 * @return array{ebookreader: array{apiVersion: int, apiStable: bool, formats: list<string>, editor: bool}}
+	 */
 	public function getCapabilities(): array {
 		return [
 			'ebookreader' => [

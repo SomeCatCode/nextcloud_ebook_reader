@@ -3,9 +3,634 @@
   - SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 <template>
-	<div>Reader (placeholder)</div>
+	<div class="ebr" :class="{ 'ebr--embedded': embedded }" :data-theme="effectiveTheme">
+		<header v-show="chrome" class="ebr__bar ebr__bar--top">
+			<NcButton
+				v-if="!embedded"
+				:aria-label="t('ebookreader', 'Close')"
+				variant="tertiary"
+				@click="close">
+				<template #icon>
+					<ReaderIcon name="close" />
+				</template>
+			</NcButton>
+			<NcButton
+				:aria-label="t('ebookreader', 'Table of contents')"
+				variant="tertiary"
+				@click="togglePanel('toc')">
+				<template #icon>
+					<ReaderIcon name="menu" />
+				</template>
+			</NcButton>
+			<h1 class="ebr__title" :title="title">
+				{{ title }}
+			</h1>
+			<NcButton
+				v-if="!isComic"
+				:aria-label="t('ebookreader', 'Search')"
+				variant="tertiary"
+				@click="togglePanel('search')">
+				<template #icon>
+					<ReaderIcon name="search" />
+				</template>
+			</NcButton>
+			<NcPopover :shown="settingsOpen" @update:shown="settingsOpen = $event">
+				<template #trigger>
+					<NcButton :aria-label="t('ebookreader', 'Reader settings')" variant="tertiary">
+						<template #icon>
+							<ReaderIcon name="text" />
+						</template>
+					</NcButton>
+				</template>
+				<ReaderSettings :model="viewSettings" :isComic="isComic" @change="onSettingsChange" />
+			</NcPopover>
+			<NcButton
+				v-if="book?.editable"
+				:aria-label="t('ebookreader', 'Edit book')"
+				variant="tertiary"
+				@click="edit">
+				<template #icon>
+					<ReaderIcon name="edit" />
+				</template>
+			</NcButton>
+		</header>
+
+		<div ref="stage" class="ebr__stage" @click.self="onStageClick" />
+
+		<div v-if="state === 'loading'" class="ebr__overlay">
+			<NcLoadingIcon :size="44" />
+		</div>
+		<div v-else-if="state === 'error'" class="ebr__overlay">
+			<NcEmptyContent :name="errorTitle" :description="errorText">
+				<template #action>
+					<NcButton v-if="!embedded" @click="close">
+						{{ t('ebookreader', 'Back') }}
+					</NcButton>
+				</template>
+			</NcEmptyContent>
+		</div>
+
+		<aside v-if="panel" class="ebr__panel" @keydown.esc.stop="panel = null">
+			<div class="ebr__panel-head">
+				<strong>{{ panel === 'toc' ? t('ebookreader', 'Table of contents') : t('ebookreader', 'Search') }}</strong>
+				<NcButton :aria-label="t('ebookreader', 'Close')" variant="tertiary" @click="panel = null">
+					<template #icon>
+						<ReaderIcon name="close" />
+					</template>
+				</NcButton>
+			</div>
+			<div v-if="panel === 'toc'" class="ebr__panel-body">
+				<ReaderToc :items="toc" :currentHref="currentHref" @select="onTocSelect" />
+				<p v-if="!toc.length" class="ebr__muted">
+					{{ t('ebookreader', 'This book has no table of contents.') }}
+				</p>
+			</div>
+			<div v-else class="ebr__panel-body">
+				<form class="ebr__search" @submit.prevent="runSearch">
+					<input
+						v-model="query"
+						type="search"
+						:placeholder="t('ebookreader', 'Search in book')"
+						:aria-label="t('ebookreader', 'Search in book')">
+					<NcButton type="submit" variant="primary">
+						{{ t('ebookreader', 'Search') }}
+					</NcButton>
+				</form>
+				<progress v-if="searching" :value="searchProgress" max="1" />
+				<div v-for="(group, gi) in results" :key="gi" class="ebr__group">
+					<div class="ebr__group-label">
+						{{ group.label }}
+					</div>
+					<button
+						v-for="(hit, hi) in group.subitems"
+						:key="hi"
+						type="button"
+						class="ebr__hit"
+						@click="jumpToHit(hit.cfi)">
+						{{ hit.excerpt.pre }}<mark>{{ hit.excerpt.match }}</mark>{{ hit.excerpt.post }}
+					</button>
+				</div>
+				<p v-if="searched && !searching && !results.length" class="ebr__muted">
+					{{ t('ebookreader', 'No results.') }}
+				</p>
+			</div>
+		</aside>
+
+		<footer v-show="chrome && state === 'ready'" class="ebr__bar ebr__bar--bottom">
+			<input
+				class="ebr__seek"
+				type="range"
+				min="0"
+				max="1000"
+				:value="Math.round(percentage * 1000)"
+				:aria-label="t('ebookreader', 'Reading position')"
+				@change="onSeek(Number(($event.target as HTMLInputElement).value) / 1000)">
+			<span class="ebr__pct">{{ progressLabel }}</span>
+		</footer>
+
+		<NcDialog
+			v-if="conflict"
+			:name="t('ebookreader', 'Newer reading position')"
+			:message="conflictMessage"
+			@closing="keepLocal">
+			<template #actions>
+				<NcButton @click="keepLocal">
+					{{ t('ebookreader', 'Stay here') }}
+				</NcButton>
+				<NcButton variant="primary" @click="jumpToRemote">
+					{{ t('ebookreader', 'Jump') }}
+				</NcButton>
+			</template>
+		</NcDialog>
+	</div>
 </template>
 
 <script setup lang="ts">
-defineProps<{ fileId?: string }>()
+import type { ReaderHandle, ReaderLocator, SearchGroup, TocItem } from '../../packages/reader-core/index.ts'
+import type { ViewSettings } from '../components/reader/ReaderSettings.vue'
+import type { ProgressSync } from '../services/progressSync.ts'
+import type { Book, Locator, Progress, ReaderSettings as ServerReaderSettings } from '../types.ts'
+
+import { translate as t } from '@nextcloud/l10n'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import NcButton from '@nextcloud/vue/components/NcButton'
+import NcDialog from '@nextcloud/vue/components/NcDialog'
+import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
+import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
+import NcPopover from '@nextcloud/vue/components/NcPopover'
+import ReaderIcon from '../components/reader/ReaderIcon.vue'
+import ReaderSettings from '../components/reader/ReaderSettings.vue'
+import ReaderToc from '../components/reader/ReaderToc.vue'
+import { createReader, ReaderError } from '../../packages/reader-core/index.ts'
+import { loadLibarchive } from '../components/reader/libarchive.ts'
+import { fetchBookBlob, getBook, getSettings, putSettings } from '../services/api.ts'
+import { createProgressSync } from '../services/progressSync.ts'
+
+const props = defineProps<{ fileId: string }>()
+
+const logger = {
+	// eslint-disable-next-line no-console
+	warn: (...a: unknown[]) => console.warn(...a),
+	// eslint-disable-next-line no-console
+	error: (...a: unknown[]) => console.error(...a),
+}
+
+const route = useRoute()
+const router = useRouter()
+const embedded = computed(() => route.query.embedded === '1')
+
+const stage = ref<HTMLElement | null>(null)
+const book = ref<Book | null>(null)
+const state = ref<'loading' | 'ready' | 'error'>('loading')
+const errorTitle = ref('')
+const errorText = ref('')
+const chrome = ref(true)
+const panel = ref<'toc' | 'search' | null>(null)
+const settingsOpen = ref(false)
+const toc = ref<TocItem[]>([])
+const currentHref = ref('')
+const percentage = ref(0)
+const pageInfo = ref<{ current: number, total: number } | null>(null)
+const isComic = ref(false)
+const isRtl = ref(false)
+const prefersDark = ref(globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false)
+const conflict = ref<Progress | null>(null)
+
+const viewSettings = reactive<ViewSettings>({
+	theme: 'auto',
+	fontSize: 100,
+	fontFamily: 'default',
+	lineHeight: 1.5,
+	margin: 48,
+	flow: 'paginated',
+	maxColumns: 2,
+	comicSpread: 'single',
+	comicRtl: false,
+	comicZoom: 'fit-page',
+})
+
+let reader: ReaderHandle | null = null
+let sync: ProgressSync | null = null
+let saveTimer: ReturnType<typeof setTimeout> | null = null
+let serverSettings: ServerReaderSettings | null = null
+const unsubs: (() => void)[] = []
+const abort = new AbortController()
+
+const title = computed(() => book.value?.title || book.value?.path.split('/').pop() || '')
+const effectiveTheme = computed(() => viewSettings.theme === 'auto' ? (prefersDark.value ? 'dark' : 'light') : viewSettings.theme)
+const progressLabel = computed(() => {
+	if (pageInfo.value && pageInfo.value.total > 0) {
+		return isComic.value
+			? t('ebookreader', 'Page {current} of {total}', pageInfo.value)
+			: `${Math.round(percentage.value * 100)}% · ${pageInfo.value.current}/${pageInfo.value.total}`
+	}
+	return `${Math.round(percentage.value * 100)}%`
+})
+const conflictMessage = computed(() => t('ebookreader', 'Newer position from {device} – jump?', { device: conflict.value?.device || t('ebookreader', 'another device') }))
+
+/**
+ * @param raw
+ */
+function applyServerSettings(raw: ServerReaderSettings | undefined): void {
+	if (!raw) {
+		return
+	}
+	serverSettings = raw
+	const r = raw as Record<string, unknown>
+	if (['auto', 'light', 'dark', 'sepia'].includes(r.theme as string)) {
+		viewSettings.theme = r.theme as ViewSettings['theme']
+	}
+	if (typeof r.fontSize === 'number') {
+		// tolerate px values (<= 40) stored by other clients
+		viewSettings.fontSize = r.fontSize <= 40 ? Math.round(r.fontSize / 16 * 100) : r.fontSize
+	}
+	if (typeof r.fontFamily === 'string' && r.fontFamily) {
+		viewSettings.fontFamily = r.fontFamily
+	}
+	if (typeof r.lineHeight === 'number') {
+		viewSettings.lineHeight = r.lineHeight
+	}
+	if (typeof r.margin === 'number') {
+		viewSettings.margin = r.margin
+	}
+	if (r.flow === 'scrolled' || r.flow === 'paginated') {
+		viewSettings.flow = r.flow
+	}
+	if (typeof r.maxColumns === 'number') {
+		viewSettings.maxColumns = r.maxColumns
+	}
+	if (r.comicSpread === 'double' || r.comicSpread === 'single') {
+		viewSettings.comicSpread = r.comicSpread
+	}
+	if (typeof r.comicRtl === 'boolean') {
+		viewSettings.comicRtl = r.comicRtl
+	}
+	if (r.comicZoom === 'fit-width' || r.comicZoom === 'fit-page') {
+		viewSettings.comicZoom = r.comicZoom
+	}
+}
+
+/**
+ * @param patch
+ */
+function onSettingsChange(patch: Partial<ViewSettings>): void {
+	Object.assign(viewSettings, patch)
+	if (!reader) {
+		return
+	}
+	if ('theme' in patch) {
+		reader.setTheme(viewSettings.theme)
+	}
+	if ('fontSize' in patch || 'fontFamily' in patch || 'lineHeight' in patch) {
+		reader.setTypography({ fontSize: viewSettings.fontSize, fontFamily: viewSettings.fontFamily, lineHeight: viewSettings.lineHeight })
+	}
+	if (['flow', 'maxColumns', 'margin', 'comicSpread', 'comicRtl', 'comicZoom'].some((k) => k in patch)) {
+		void reader.setLayout({
+			flow: viewSettings.flow,
+			maxColumns: viewSettings.maxColumns,
+			margin: viewSettings.margin,
+			comicSpread: viewSettings.comicSpread,
+			comicRtl: viewSettings.comicRtl,
+			comicZoom: viewSettings.comicZoom,
+		})
+		isRtl.value = isComic.value ? viewSettings.comicRtl : isRtl.value
+	}
+	if (saveTimer) {
+		clearTimeout(saveTimer)
+	}
+	saveTimer = setTimeout(() => {
+		putSettings({ reader: { ...(serverSettings ?? {}), ...viewSettings } as ServerReaderSettings })
+			.then((s) => {
+				serverSettings = s.reader
+			})
+			.catch((e) => logger.warn('ebookreader: could not save reader settings', e))
+	}, 600)
+}
+
+/**
+ * @param item
+ */
+async function onTocSelect(item: TocItem): Promise<void> {
+	panel.value = null
+	await reader?.goTo(item.href)
+}
+
+/**
+ * @param fraction
+ */
+async function onSeek(fraction: number): Promise<void> {
+	if (!reader) {
+		return
+	}
+	const info = reader.getInfo()
+	if (info?.isComic) {
+		await reader.goTo({ href: '', locations: { position: Math.max(1, Math.round(fraction * info.pageCount)) } })
+	} else {
+		await reader.goTo({ href: '', locations: { totalProgression: fraction } })
+	}
+}
+
+const query = ref('')
+const results = ref<SearchGroup[]>([])
+const searching = ref(false)
+const searched = ref(false)
+const searchProgress = ref(0)
+
+/**
+ *
+ */
+async function runSearch(): Promise<void> {
+	if (!reader || !query.value.trim()) {
+		return
+	}
+	results.value = []
+	searching.value = true
+	searched.value = true
+	reader.clearSearch()
+	try {
+		for await (const r of reader.search({ query: query.value.trim() })) {
+			if ('subitems' in r) {
+				results.value.push(r)
+			} else {
+				searchProgress.value = r.progress
+			}
+		}
+	} catch (e) {
+		logger.warn('ebookreader: search failed', e)
+	} finally {
+		searching.value = false
+	}
+}
+
+/**
+ * @param cfi
+ */
+async function jumpToHit(cfi: string): Promise<void> {
+	if (window.innerWidth < 900) {
+		panel.value = null
+	}
+	await reader?.goToCfi(cfi)
+}
+
+/**
+ *
+ */
+function goLeft(): void {
+	void (isRtl.value ? reader?.next() : reader?.prev())
+}
+
+/**
+ *
+ */
+function goRight(): void {
+	void (isRtl.value ? reader?.prev() : reader?.next())
+}
+
+/**
+ * @param which
+ */
+function togglePanel(which: 'toc' | 'search'): void {
+	panel.value = panel.value === which ? null : which
+}
+
+/**
+ * @param zone
+ */
+function onTap(zone: 'left' | 'center' | 'right'): void {
+	settingsOpen.value = false
+	if (zone === 'center' || (viewSettings.flow === 'scrolled' && !isComic.value)) {
+		chrome.value = !chrome.value
+	} else if (zone === 'left') {
+		goLeft()
+	} else {
+		goRight()
+	}
+}
+
+/**
+ * @param e
+ */
+function onStageClick(e: MouseEvent): void {
+	const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+	const f = (e.clientX - rect.left) / rect.width
+	onTap(f < 0.3 ? 'left' : f > 0.7 ? 'right' : 'center')
+}
+
+/**
+ * @param key
+ * @param e
+ */
+function handleKey(key: string, e?: KeyboardEvent): void {
+	if (e && (e.target as HTMLElement)?.matches?.('input, textarea, select')) {
+		return
+	}
+	switch (key) {
+		case 'ArrowLeft':
+			goLeft()
+			break
+		case 'ArrowRight':
+			goRight()
+			break
+		case 'PageDown':
+		case ' ':
+		case 'ArrowDown':
+			if (key === 'ArrowDown' && viewSettings.flow === 'scrolled' && !isComic.value) {
+				return
+			}
+			void reader?.next()
+			break
+		case 'PageUp':
+		case 'ArrowUp':
+			if (key === 'ArrowUp' && viewSettings.flow === 'scrolled' && !isComic.value) {
+				return
+			}
+			void reader?.prev()
+			break
+		case 'Escape':
+			if (settingsOpen.value) {
+				settingsOpen.value = false
+			} else if (panel.value) {
+				panel.value = null
+			} else if (!embedded.value) {
+				close()
+			}
+			break
+		default:
+			return
+	}
+	e?.preventDefault()
+}
+
+/**
+ * @param e
+ */
+function onWindowKey(e: KeyboardEvent): void {
+	handleKey(e.key, e)
+}
+
+/**
+ *
+ */
+function close(): void {
+	void sync?.flush()
+	if (window.history.state?.back) {
+		router.back()
+	} else {
+		void router.push('/')
+	}
+}
+
+/**
+ *
+ */
+function edit(): void {
+	void sync?.flush()
+	void router.push(`/edit/${props.fileId}`)
+}
+
+/**
+ *
+ */
+function jumpToRemote(): void {
+	const c = conflict.value
+	conflict.value = null
+	sync?.discardPending()
+	if (c) {
+		void reader?.goTo(c.locator as ReaderLocator)
+	}
+}
+
+/**
+ *
+ */
+function keepLocal(): void {
+	conflict.value = null
+	void sync?.forceLocal()
+}
+
+/**
+ * @param e
+ */
+function fail(e: unknown): void {
+	state.value = 'error'
+	if (e instanceof ReaderError && e.code === 'drm') {
+		errorTitle.value = t('ebookreader', 'This book is DRM protected')
+		errorText.value = t('ebookreader', 'Books with DRM can not be opened in the reader.')
+	} else if (e instanceof ReaderError && e.code === 'unsupported') {
+		errorTitle.value = t('ebookreader', 'Unsupported format')
+		errorText.value = t('ebookreader', 'This file format can not be opened in the reader.')
+	} else {
+		errorTitle.value = t('ebookreader', 'The book could not be opened')
+		errorText.value = t('ebookreader', 'The file seems to be damaged or is not a valid book.')
+		logger.error('ebookreader:', e)
+	}
+}
+
+onMounted(async () => {
+	window.addEventListener('keydown', onWindowKey)
+	try {
+		const fileId = Number(props.fileId)
+		const [b, settings] = await Promise.all([getBook(fileId), getSettings().catch(() => null)])
+		book.value = b
+		applyServerSettings(settings?.reader)
+		isComic.value = b.format === 'cbz' || b.format === 'cbr'
+		isRtl.value = isComic.value && viewSettings.comicRtl
+
+		sync = createProgressSync(fileId, {
+			onConflict: (c) => {
+				conflict.value = c
+			},
+		})
+		const [blob, remote] = await Promise.all([
+			fetchBookBlob(b, abort.signal),
+			sync.loadRemote().catch(() => b.progress),
+		])
+		if (!stage.value) {
+			return
+		}
+		reader = createReader(stage.value, {
+			theme: viewSettings.theme,
+			typography: { fontSize: viewSettings.fontSize, fontFamily: viewSettings.fontFamily, lineHeight: viewSettings.lineHeight },
+			layout: {
+				flow: viewSettings.flow,
+				maxColumns: viewSettings.maxColumns,
+				margin: viewSettings.margin,
+				comicSpread: viewSettings.comicSpread,
+				comicRtl: viewSettings.comicRtl,
+				comicZoom: viewSettings.comicZoom,
+			},
+			loadLibarchive,
+		})
+		unsubs.push(
+			reader.on('relocate', ({ locator, percentage: p, page }) => {
+				percentage.value = p
+				pageInfo.value = page ?? null
+				currentHref.value = locator.href
+				sync?.update(locator as Locator, p)
+			}),
+			reader.on('tap', ({ zone }) => onTap(zone)),
+			reader.on('key', ({ key }) => handleKey(key)),
+		)
+		const file = new File([blob], b.path.split('/').pop() ?? `book.${b.format}`, { type: blob.type })
+		await reader.open(file, b.format, (remote?.locator ?? null) as ReaderLocator | null)
+		const info = reader.getInfo()
+		isComic.value = info?.isComic ?? isComic.value
+		isRtl.value = info?.rtl ?? isRtl.value
+		toc.value = reader.getToc()
+		state.value = 'ready'
+	} catch (e) {
+		if ((e as Error)?.name === 'AbortError') {
+			return
+		}
+		fail(e)
+	}
+})
+
+onBeforeUnmount(() => {
+	abort.abort()
+	window.removeEventListener('keydown', onWindowKey)
+	unsubs.forEach((u) => u())
+	if (saveTimer) {
+		clearTimeout(saveTimer)
+	}
+	sync?.destroy()
+	reader?.destroy()
+})
 </script>
+
+<style scoped>
+.ebr {
+	position: fixed; inset: 0; z-index: 10000; display: flex; flex-direction: column;
+	background: var(--ebr-bg); color: var(--ebr-fg);
+	--ebr-bg: #fff; --ebr-fg: #1a1a1a;
+}
+.ebr[data-theme='sepia'] { --ebr-bg: #f4ecd8; --ebr-fg: #5b4636; }
+.ebr[data-theme='dark'] { --ebr-bg: #1c1c1e; --ebr-fg: #d8d8d8; }
+.ebr--embedded { position: absolute; z-index: 1; }
+.ebr__stage { position: relative; flex: 1 1 auto; min-height: 0; }
+.ebr__bar {
+	position: absolute; left: 0; right: 0; z-index: 2; display: flex; align-items: center; gap: 4px;
+	padding: 4px 8px; background: color-mix(in srgb, var(--ebr-bg) 92%, transparent);
+	backdrop-filter: blur(6px); color: var(--ebr-fg);
+}
+.ebr__bar--top { top: 0; border-bottom: 1px solid color-mix(in srgb, var(--ebr-fg) 15%, transparent); }
+.ebr__bar--bottom { bottom: 0; padding: 8px 16px; border-top: 1px solid color-mix(in srgb, var(--ebr-fg) 15%, transparent); }
+.ebr__title { flex: 1 1 auto; margin: 0; font-size: 1rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
+.ebr__seek { flex: 1 1 auto; }
+.ebr__pct { min-width: 90px; text-align: end; font-variant-numeric: tabular-nums; }
+.ebr__overlay { position: absolute; inset: 0; z-index: 3; display: flex; align-items: center; justify-content: center; background: var(--ebr-bg); }
+.ebr__panel {
+	position: absolute; top: 52px; bottom: 0; inset-inline-start: 0; z-index: 4; width: min(380px, 100%);
+	display: flex; flex-direction: column; background: var(--color-main-background); color: var(--color-main-text);
+	box-shadow: 2px 0 12px rgba(0, 0, 0, .3);
+}
+.ebr__panel-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 8px 8px 16px; }
+.ebr__panel-body { flex: 1 1 auto; overflow: auto; padding: 0 8px 16px; }
+.ebr__muted { opacity: .7; padding: 12px; }
+.ebr__search { display: flex; gap: 8px; padding: 8px 4px; }
+.ebr__search input { flex: 1 1 auto; }
+.ebr__group-label { font-weight: 600; padding: 8px 4px 4px; }
+.ebr__hit { display: block; width: 100%; text-align: start; background: none; border: 0; padding: 6px 4px; cursor: pointer; color: inherit; border-radius: 8px; }
+.ebr__hit:hover { background: var(--color-background-hover); }
+</style>

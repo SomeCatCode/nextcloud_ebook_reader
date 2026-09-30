@@ -9,14 +9,22 @@ declare(strict_types=1);
 
 namespace OCA\EbookReader\Listener;
 
+use OCA\EbookReader\AppInfo\Application;
+use OCA\Viewer\Event\LoadViewer;
 use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
+use OCP\Util;
 
 /**
- * Owner: W4
+ * Loads the Viewer handler script whenever the Viewer app is loaded.
+ *
  * @template-implements IEventListener<Event>
  */
 class LoadViewerListener implements IEventListener {
 	public function handle(Event $event): void {
+		if (!($event instanceof LoadViewer)) {
+			return;
+		}
+		Util::addScript(Application::APP_ID, Application::APP_ID . '-viewer');
 	}
 }

@@ -37,4 +37,13 @@ final class BookMetadata {
 		public readonly ?string $coverMime = null,
 	) {
 	}
+
+	/**
+	 * Returns a copy with the given properties replaced (named property => new value).
+	 * @param array<string, mixed> $changes
+	 */
+	public function with(array $changes): self {
+		/** @psalm-suppress InvalidArgument */
+		return new self(...array_merge(get_object_vars($this), $changes));
+	}
 }

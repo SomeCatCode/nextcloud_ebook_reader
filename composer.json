@@ -3,9 +3,19 @@
 	"description": "E-book library, reader and editor for Nextcloud",
 	"type": "project",
 	"license": "AGPL-3.0-or-later",
-	"authors": [{ "name": "Felix Kurth", "email": "f.kurth@lan1.de" }],
+	"authors": [
+		{
+			"name": "Felix Kurth",
+			"email": "f.kurth@lan1.de"
+		}
+	],
 	"require": {
-		"php": ">=8.2"
+		"php": ">=8.2",
+		"ext-zip": "*",
+		"ext-gd": "*",
+		"ext-dom": "*",
+		"ext-libxml": "*",
+		"ext-mbstring": "*"
 	},
 	"require-dev": {
 		"nextcloud/ocp": "dev-stable34",
@@ -15,15 +25,21 @@
 		"nextcloud/openapi-extractor": "^1.0"
 	},
 	"autoload": {
-		"psr-4": { "OCA\\EbookReader\\": "lib/" }
+		"psr-4": {
+			"OCA\\EbookReader\\": "lib/"
+		}
 	},
 	"autoload-dev": {
-		"psr-4": { "OCA\\EbookReader\\Tests\\": "tests/" }
+		"psr-4": {
+			"OCA\\EbookReader\\Tests\\": "tests/"
+		}
 	},
 	"config": {
 		"sort-packages": true,
 		"optimize-autoloader": true,
-		"platform": { "php": "8.2.27" }
+		"platform": {
+			"php": "8.2.27"
+		}
 	},
 	"minimum-stability": "dev",
 	"prefer-stable": true,

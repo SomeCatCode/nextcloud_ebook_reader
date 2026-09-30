@@ -7,6 +7,7 @@
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xmlns="https://getpsalm.org/schema/config"
 	xsi:schemaLocation="https://getpsalm.org/schema/config vendor/vimeo/psalm/config.xsd"
+    errorBaseline="psalm-baseline.xml"
 >
 	<projectFiles>
 		<directory name="lib" />
@@ -17,17 +18,37 @@
 	<extraFiles>
 		<directory name="vendor/nextcloud/ocp" />
 	</extraFiles>
+	<enableExtensions>
+		<extension name="dom" />
+		<extension name="simplexml" />
+	</enableExtensions>
 	<issueHandlers>
+		<!-- #[\Override] exists only since PHP 8.3; the app supports PHP 8.2 -->
+		<MissingOverrideAttribute errorLevel="suppress" />
+		<MissingDependency>
+			<errorLevel type="suppress">
+				<directory name="lib" />
+			</errorLevel>
+		</MissingDependency>
 		<UndefinedClass>
 			<errorLevel type="suppress">
 				<referencedClass name="OCA\Files\Event\LoadAdditionalScriptsEvent" />
 				<referencedClass name="OCA\Viewer\Event\LoadViewer" />
+				<referencedClass name="GdImage" />
 			</errorLevel>
 		</UndefinedClass>
 		<UndefinedDocblockClass>
 			<errorLevel type="suppress">
-				<referencedClass name="Doctrine\DBAL\Schema\Schema" />
+				<referencedClass name="Doctrine\DBAL\Schema\Table" />
 			</errorLevel>
 		</UndefinedDocblockClass>
+		<!-- OCP\Image extends OC\Image at runtime; nextcloud/ocp does not ship OC\Image -->
+		<UndefinedMethod>
+			<errorLevel type="suppress">
+				<referencedMethod name="OCP\Image::loadFromData" />
+				<referencedMethod name="OCP\Image::valid" />
+				<referencedMethod name="OCP\Image::scaleDownToFit" />
+			</errorLevel>
+		</UndefinedMethod>
 	</issueHandlers>
 </psalm>
