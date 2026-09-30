@@ -45,6 +45,12 @@ openapi: php-image
 	docker run --rm -v "$(ROOT):/app" -w /app $(PHP_IMAGE) sh -c "composer install --no-interaction --prefer-dist && composer run openapi"
 
 # Tarball with the built js/ but without sources, tests, docker and dev tooling.
+# Set the app version in appinfo/info.xml and package.json: make bump VERSION=0.2.0
+bump:
+	@test -n "$(VERSION)" || (echo "usage: make bump VERSION=x.y.z" && exit 1)
+	sed -i 's:<version>.*</version>:<version>$(VERSION)</version>:' appinfo/info.xml
+	npm version $(VERSION) --no-git-tag-version --allow-same-version
+
 appstore: build
 	rm -rf build/artifacts/$(APP_ID)
 	mkdir -p build/artifacts/$(APP_ID)
@@ -55,6 +61,9 @@ appstore: build
 		--exclude='./packages' \
 		--exclude='./package.json' --exclude='./package-lock.json' --exclude='./vite.config.ts' --exclude='./tsconfig.json' \
 		--exclude='./composer.json' --exclude='./composer.lock' --exclude='./psalm.xml' --exclude='./phpunit.xml' \
-		--exclude='./.php-cs-fixer.dist.php' --exclude='./Makefile' . | tar -x -C build/artifacts/$(APP_ID)
+		--exclude='./.php-cs-fixer.dist.php' --exclude='./Makefile' \
+		--exclude='./.tools' --exclude='./dist' --exclude='./scripts' --exclude='./eslint.config.js' \
+		--exclude='./psalm-baseline.xml' --exclude='./.gitignore' --exclude='./.gitattributes' \
+		--exclude='./*.map' --exclude='./js/*.map' . | tar -x -C build/artifacts/$(APP_ID)
 	tar -czf build/artifacts/$(APP_ID).tar.gz -C build/artifacts $(APP_ID)
 	@echo "Created build/artifacts/$(APP_ID).tar.gz"

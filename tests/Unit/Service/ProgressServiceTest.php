@@ -16,8 +16,8 @@ use OCA\EbookReader\Db\ProgressMapper;
 use OCA\EbookReader\Service\ProgressService;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Utility\ITimeFactory;
-use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
 class ProgressServiceTest extends TestCase {

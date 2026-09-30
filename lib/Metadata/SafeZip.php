@@ -23,7 +23,9 @@ final class SafeZip {
 	private array $lower = [];
 	private bool $closed = false;
 
-	private function __construct(private \ZipArchive $zip) {
+	private function __construct(
+		private \ZipArchive $zip,
+	) {
 	}
 
 	/** @throws UnsafeArchiveException */
@@ -146,7 +148,7 @@ final class SafeZip {
 		if ($stat === false || (int)$stat['size'] > $maxSize) {
 			throw new UnsafeArchiveException('Archive entry too large: ' . $real);
 		}
-		$data = $this->zip->getFromIndex($this->index[$real], (int)$stat["size"]);
+		$data = $this->zip->getFromIndex($this->index[$real], (int)$stat['size']);
 		if ($data === false) {
 			return null;
 		}

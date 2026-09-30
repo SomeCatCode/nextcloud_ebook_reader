@@ -1,0 +1,97 @@
+name: Release
+
+# Creates a GitHub release when a version tag is pushed:
+#   git tag v0.1.0 && git push origin v0.1.0
+# The tag must match <version> in appinfo/info.xml. Tags with a suffix
+# (e.g. v0.2.0-beta.1) become pre-releases.
+#
+# Optional repository secrets:
+#   APP_PRIVATE_KEY  - Nextcloud App Store signing key (ebookreader.key); adds ebookreader.tar.gz.sig
+#   APPSTORE_TOKEN   - Nextcloud App Store API token; publishes the release to apps.nextcloud.com
+#                      (requires APP_PRIVATE_KEY and a registered app certificate)
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: ci
+    runs-on: ubuntu-latest
+    env:
+      APP_ID: ebookreader
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check tag matches info.xml version
+        id: version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          VERSION="$(sed -n 's:.*<version>\(.*\)</version>.*:\1:p' appinfo/info.xml | head -n1)"
+          echo "tag=$TAG info.xml=$VERSION"
+          if [ "$TAG" != "$VERSION" ]; then
+            echo "::error::Tag v$TAG does not match appinfo/info.xml version $VERSION"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [[ "$TAG" == *-* ]]; then echo "prerelease=true" >> "$GITHUB_OUTPUT"; else echo "prerelease=false" >> "$GITHUB_OUTPUT"; fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Build app package
+        run: make appstore
+
+      - name: Checksum
+        working-directory: build/artifacts
+        run: sha256sum "$APP_ID.tar.gz" > "$APP_ID.tar.gz.sha256"
+
+      - name: Sign package (App Store)
+        id: sign
+        env:
+          APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+        if: env.APP_PRIVATE_KEY != ''
+        working-directory: build/artifacts
+        run: |
+          printf '%s' "$APP_PRIVATE_KEY" > "$RUNNER_TEMP/app.key"
+          openssl dgst -sha512 -sign "$RUNNER_TEMP/app.key" "$APP_ID.tar.gz" | openssl base64 -A > "$APP_ID.tar.gz.sig"
+          rm -f "$RUNNER_TEMP/app.key"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: E-Book Reader ${{ steps.version.outputs.version }}
+          prerelease: ${{ steps.version.outputs.prerelease }}
+          generate_release_notes: true
+          fail_on_unmatched_files: false
+          files: |
+            build/artifacts/ebookreader.tar.gz
+            build/artifacts/ebookreader.tar.gz.sha256
+            build/artifacts/ebookreader.tar.gz.sig
+
+      - name: Publish to Nextcloud App Store
+        env:
+          APPSTORE_TOKEN: ${{ secrets.APPSTORE_TOKEN }}
+        if: env.APPSTORE_TOKEN != '' && steps.sign.outputs.signed == 'true'
+        run: |
+          DOWNLOAD="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${APP_ID}.tar.gz"
+          SIGNATURE="$(cat build/artifacts/${APP_ID}.tar.gz.sig)"
+          # Pre-releases are detected by the App Store from the version suffix; nightly is for nightly builds only.
+          jq -n --arg d "$DOWNLOAD" --arg s "$SIGNATURE" \
+            '{download: $d, signature: $s, nightly: false}' > "$RUNNER_TEMP/release.json"
+          curl --fail-with-body -sS -X POST https://apps.nextcloud.com/api/v1/apps/releases \
+            -H "Authorization: Token $APPSTORE_TOKEN" -H "Content-Type: application/json" \
+            --data @"$RUNNER_TEMP/release.json"

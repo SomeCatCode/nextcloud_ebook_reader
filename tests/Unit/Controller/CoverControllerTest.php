@@ -46,7 +46,15 @@ class CoverControllerTest extends TestCase {
 		$time->method('now')->willReturn(\DateTimeImmutable::createFromFormat('U.u', '1800000000.000000'));
 		$body = &$this->body;
 		return new class($this->request, $user, $this->library, $this->covers, $this->books, $time, $body) extends CoverController {
-			public function __construct(IRequest $r, ?string $u, LibraryService $l, CoverService $c, BookMapper $b, ITimeFactory $t, private string &$fake) {
+			public function __construct(
+				IRequest $r,
+				?string $u,
+				LibraryService $l,
+				CoverService $c,
+				BookMapper $b,
+				ITimeFactory $t,
+				private string &$fake,
+			) {
 				parent::__construct($r, $u, $l, $c, $b, $t);
 			}
 

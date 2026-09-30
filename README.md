@@ -6,6 +6,8 @@ Bibliothek, Reader und Editor für E-Books und Comics direkt in deiner Nextcloud
 ![PHP 8.2+](https://img.shields.io/badge/PHP-8.2%2B-777bb4?logo=php&logoColor=white)
 ![Lizenz AGPL-3.0](https://img.shields.io/badge/Lizenz-AGPL--3.0--or--later-blue)
 ![Status Alpha](https://img.shields.io/badge/Status-Alpha-orange)
+[![CI](https://github.com/SomeCatCode/nextcloud_ebook_reader/actions/workflows/ci.yml/badge.svg)](https://github.com/SomeCatCode/nextcloud_ebook_reader/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/SomeCatCode/nextcloud_ebook_reader?include_prereleases)](https://github.com/SomeCatCode/nextcloud_ebook_reader/releases)
 
 > [!WARNING]
 > **Alpha-Version.** Die App ist vollständig implementiert und durch automatische Tests abgedeckt, wurde aber noch nicht in einer produktiven Nextcloud-Instanz erprobt. Bitte zuerst in einer Testinstanz ausprobieren und Backups deiner Bücher behalten. Der Editor verändert Dateien, auch wenn Nextcloud dabei automatisch eine Version anlegt.
@@ -72,7 +74,10 @@ Die App ist noch nicht im Nextcloud App Store. Für die Installation hast du zwe
 
 ### Variante A: Aus einem Release-Paket (empfohlen)
 
-1. Lade `ebookreader.tar.gz` von der [Releases-Seite](../../releases) herunter.
+1. Lade `ebookreader.tar.gz` von der [Releases-Seite](https://github.com/SomeCatCode/nextcloud_ebook_reader/releases/latest) herunter. Optional kannst du es mit der mitgelieferten `.sha256`-Datei prüfen:
+   ```bash
+   sha256sum -c ebookreader.tar.gz.sha256
+   ```
 2. Entpacke das Paket in das App-Verzeichnis deiner Nextcloud, meist `custom_apps/` oder `apps/`:
    ```bash
    tar -xzf ebookreader.tar.gz -C /var/www/nextcloud/custom_apps/
@@ -93,7 +98,7 @@ Dafür brauchst du Node.js ≥ 22 und npm.
 cd /var/www/nextcloud/custom_apps
 ```
 ```bash
-git clone https://github.com/<dein-account>/nextcloud_ebook_reader.git ebookreader
+git clone https://github.com/SomeCatCode/nextcloud_ebook_reader.git ebookreader
 ```
 ```bash
 cd ebookreader && npm ci && npm run build
@@ -110,11 +115,99 @@ make appstore
 ```
 Das Paket liegt danach unter `build/artifacts/ebookreader.tar.gz`.
 
-### Docker (offizielles `nextcloud`-Image)
+### Variante C: Nextcloud in Docker
 
-Das Paket in das gemountete `custom_apps`-Verzeichnis entpacken und dann:
+In allen Docker-Varianten gilt: Die App gehört nach **`/var/www/html/custom_apps/ebookreader`** im Nextcloud-Container und muss dem Benutzer **`www-data`** gehören. `occ` läuft immer als `www-data`.
+
+Zuerst das Paket herunterladen und entpacken:
 ```bash
-docker exec -u www-data <container> php occ app:enable ebookreader
+curl -LO https://github.com/SomeCatCode/nextcloud_ebook_reader/releases/latest/download/ebookreader.tar.gz
+```
+```bash
+tar -xzf ebookreader.tar.gz
+```
+Im aktuellen Verzeichnis liegt danach der Ordner `ebookreader/`.
+
+#### C1: Offizielles `nextcloud`-Image, per `docker cp`
+
+Das funktioniert mit jedem laufenden Container, ohne die Compose-Datei zu ändern. `nextcloud` steht hier für den Namen deines Containers (`docker ps` zeigt ihn):
+```bash
+docker cp ebookreader nextcloud:/var/www/html/custom_apps/
+```
+```bash
+docker exec -u root nextcloud chown -R www-data:www-data /var/www/html/custom_apps/ebookreader
+```
+```bash
+docker exec -u www-data nextcloud php occ app:enable ebookreader
+```
+
+Die App liegt damit im Volume von `/var/www/html` und übersteht Neustarts und Image-Updates.
+
+#### C2: Offizielles Image, per Compose eingebunden
+
+Damit liegt die App als Ordner neben deiner `docker-compose.yml` und lässt sich dort aktualisieren. Den entpackten Ordner `ebookreader/` neben die Compose-Datei legen und im Nextcloud-Service einbinden:
+```yaml
+services:
+  app:
+    image: nextcloud:34-apache
+    volumes:
+      - nextcloud:/var/www/html
+      - ./ebookreader:/var/www/html/custom_apps/ebookreader
+    # ...
+```
+Dann neu starten und die App aktivieren:
+```bash
+docker compose up -d
+```
+```bash
+docker compose exec -u www-data app php occ app:enable ebookreader
+```
+Falls Nextcloud beim Aktivieren über fehlende Rechte klagt, einmal die Besitzrechte setzen:
+```bash
+docker compose exec -u root app chown -R www-data:www-data /var/www/html/custom_apps/ebookreader
+```
+
+#### C3: Nextcloud All-in-One (AIO)
+
+Bei AIO heißt der Container `nextcloud-aio-nextcloud`:
+```bash
+sudo docker cp ebookreader nextcloud-aio-nextcloud:/var/www/html/custom_apps/
+```
+```bash
+sudo docker exec -u root nextcloud-aio-nextcloud chown -R www-data:www-data /var/www/html/custom_apps/ebookreader
+```
+```bash
+sudo docker exec -u www-data nextcloud-aio-nextcloud php occ app:enable ebookreader
+```
+Cron, PHP-Extensions und Schreibrechte auf `config/` sind bei AIO schon eingerichtet.
+
+#### Hintergrundjobs im Docker-Setup
+
+Das offizielle Image führt Cron nicht selbst aus. Damit neue Bücher zuverlässig eingelesen werden, braucht es einen eigenen Cron-Container mit denselben Volumes:
+```yaml
+  cron:
+    image: nextcloud:34-apache
+    entrypoint: /cron.sh
+    volumes:
+      - nextcloud:/var/www/html
+      - ./ebookreader:/var/www/html/custom_apps/ebookreader   # nur bei C2
+    depends_on:
+      - app
+```
+Danach in Nextcloud unter **Verwaltung → Grundeinstellungen → Hintergrundjobs** „Cron“ auswählen. Bei AIO ist das bereits erledigt.
+
+#### Update im Docker-Setup
+
+Den neuen Release herunterladen und den alten Ordner ersetzen, bei C1/C3 per `docker cp` nach vorherigem Löschen, bei C2 im Ordner neben der Compose-Datei. Danach die Datenbank-Migrationen ausführen:
+```bash
+docker exec -u www-data nextcloud php occ upgrade
+```
+
+#### `occ`-Befehle im Container
+
+Alle `occ`-Befehle weiter unten funktionieren im Container genauso, mit vorangestelltem `docker exec`, zum Beispiel:
+```bash
+docker exec -u www-data nextcloud php occ ebookreader:scan --all
 ```
 
 ### Nach der Installation: Dateitypen
@@ -193,6 +286,33 @@ Nextcloud 34 läuft dann mit MariaDB und Redis auf **http://localhost:8080**. Di
 | `make lint` | ESLint, vue-tsc, `php -l`, Psalm |
 | `make openapi` | `openapi.json` neu erzeugen |
 | `make appstore` | Installationspaket bauen |
+
+### Release erstellen
+
+Releases baut GitHub Actions automatisch ([release.yml](.github/workflows/release.yml)), sobald ein Versions-Tag gepusht wird:
+
+1. Version setzen. Das ändert `appinfo/info.xml` und `package.json`:
+   ```bash
+   make bump VERSION=0.2.0
+   ```
+2. Committen, taggen und pushen:
+   ```bash
+   git commit -am "Release 0.2.0"
+   ```
+   ```bash
+   git tag v0.2.0
+   ```
+   ```bash
+   git push origin main v0.2.0
+   ```
+
+Die Pipeline führt zuerst alle Tests und Checks aus der CI aus. Dann prüft sie, ob der Tag zur Version in `info.xml` passt, baut das Paket und veröffentlicht es als GitHub-Release mit `ebookreader.tar.gz` und `.sha256`. Die Release-Notes entstehen automatisch aus den Commits. Tags mit Suffix wie `v0.2.0-beta.1` werden als Pre-Release markiert.
+
+**Nextcloud App Store (optional):** Die Pipeline kann Releases auch signieren und im App Store veröffentlichen. Dafür die App [im App Store registrieren](https://nextcloudappstore.readthedocs.io/en/latest/developer.html) und zwei Repository-Secrets anlegen:
+- `APP_PRIVATE_KEY`: Inhalt von `ebookreader.key`
+- `APPSTORE_TOKEN`: API-Token aus dem App-Store-Konto
+
+Ohne diese Secrets werden die beiden Schritte übersprungen.
 
 Test-Bücher (EPUB, FB2, CBZ, MOBI …) erzeugt `php tests/fixtures/generate.php` reproduzierbar nach `tests/fixtures/books/`.
 

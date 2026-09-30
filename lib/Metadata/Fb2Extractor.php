@@ -95,7 +95,7 @@ class Fb2Extractor implements ExtractorInterface {
 			$label = $this->genreLabel($code);
 			if ($label !== null && !in_array($label, $genres, true)) {
 				$genres[] = $label;
-			} elseif ($label === null && !in_array(strtolower(trim($code)), ["", "other", "unrecognised"], true)) {
+			} elseif ($label === null && !in_array(strtolower(trim($code)), ['', 'other', 'unrecognised'], true)) {
 				$unknown[] = $code; // not in the FB2 vocabulary: keep as tag
 			}
 		}

@@ -29,7 +29,7 @@ use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 
-require_once __DIR__ . "/OcHooksEmitterStub.php";
+require_once __DIR__ . '/OcHooksEmitterStub.php';
 
 class LibraryServiceTest extends TestCase {
 	private BookMapper&MockObject $books;

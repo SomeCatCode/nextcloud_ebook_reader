@@ -61,7 +61,7 @@ class MobiExtractor implements ExtractorInterface {
 			$o = unpack('No', substr($list, $i * 8, 4));
 			$offsets[] = $o['o'];
 		}
-		$fileSize = fstat($fh)["size"] ?? 0;
+		$fileSize = fstat($fh)['size'] ?? 0;
 		$start = $offsets[0];
 		$end = $numRecords > 1 ? $offsets[1] : $fileSize;
 		if ($end <= $start || $end - $start > self::MAX_RECORD0 || $start < 78) {
@@ -90,7 +90,7 @@ class MobiExtractor implements ExtractorInterface {
 		$firstImage = $im['i'];
 
 		$fullName = null;
-		if ($fn['o'] > 0 && $fn['l'] > 0 && $fn['o'] + $fn['l'] <= strlen($rec0)) {
+		if ($fn['o'] > 0 && $fn['l'] > 0 && strlen($rec0) >= $fn['o'] + $fn['l']) {
 			$fullName = XmlUtil::clean($read(substr($rec0, $fn['o'], $fn['l'])));
 		}
 
@@ -214,6 +214,6 @@ class MobiExtractor implements ExtractorInterface {
 		if ($encoding === 65001) {
 			return $s;
 		}
-		return mb_convert_encoding($s, "UTF-8", "Windows-1252") ?: $s;
+		return mb_convert_encoding($s, 'UTF-8', 'Windows-1252') ?: $s;
 	}
 }

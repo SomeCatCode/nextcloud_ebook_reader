@@ -84,7 +84,7 @@ class CbzExtractor implements ExtractorInterface {
 
 		$description = null;
 		if (($fields['SummaryRaw'] ?? '') !== '') {
-			$clean = HtmlSanitizer::sanitize($fields["SummaryRaw"]);
+			$clean = HtmlSanitizer::sanitize($fields['SummaryRaw']);
 			$description = $clean === '' ? null : $clean;
 		}
 		$num = $fields['Number'] ?? null;
