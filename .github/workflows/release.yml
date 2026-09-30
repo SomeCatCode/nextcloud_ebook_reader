@@ -27,11 +27,11 @@ jobs:
 
   release:
     needs: ci
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       APP_ID: ebookreader
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Check tag matches info.xml version
         id: version
@@ -46,7 +46,7 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           if [[ "$TAG" == *-* ]]; then echo "prerelease=true" >> "$GITHUB_OUTPUT"; else echo "prerelease=false" >> "$GITHUB_OUTPUT"; fi
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm

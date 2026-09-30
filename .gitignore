@@ -1,14 +1,14 @@
-node_modules/
-vendor/
-js/
-build/
-.phpunit.cache/
-.php-cs-fixer.cache
+# Anchored to the repo root on purpose: packages/reader-core/vendor/ (vendored foliate-js) must be committed
+/node_modules/
+/vendor/
+/js/
+/css/
+/build/
+/dist/
+/.tools/
+/.phpunit.cache/
+/.php-cs-fixer.cache
 *.log
 .idea/
 .vscode/
 .DS_Store
-css/
-
-.tools/
-dist/
