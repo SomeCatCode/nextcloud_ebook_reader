@@ -487,4 +487,58 @@ class ConvertServiceTest extends TestCase {
 		$this->sidecar->expects($this->never())->method('deleteFor');
 		$this->convert(Fixtures::path('plain.cbz'), 'cbz', 'cbt');
 	}
+
+	// ---- adoptClientResult (browser conversion finished on the server) -------------------------
+
+	private function adoptSetup(): File&MockObject {
+		file_put_contents($this->tmpRoot . '/a.cbr', 'rar');
+		file_put_contents($this->tmpRoot . '/a.cbz', 'zip');
+		$this->library->method('getBook')->willReturn($this->book(5, 'cbr', 'a.cbr'));
+		$original = $this->fileMock($this->tmpRoot . '/a.cbr', 'a.cbr', 5);
+		$this->library->method('getFileForUser')->willReturn($original);
+		$uploaded = $this->fileMock($this->tmpRoot . '/a.cbz', 'a.cbz', 101);
+		$this->folder->method('get')->willReturnCallback(fn (string $n): File => $n === 'a.cbz' ? $uploaded : throw new \OCP\Files\NotFoundException());
+		$this->lastBook = $this->book(101, 'cbz', 'a.cbz');
+		return $original;
+	}
+
+	public function testAdoptIndexesUploadCopiesSidecarAndDeletesOriginal(): void {
+		$original = $this->adoptSetup();
+		$this->sidecar->expects($this->once())->method('copyAlong')->with($this->folder, 'a.cbr', $this->folder, 'a.cbz');
+		$this->sidecar->expects($this->once())->method('deleteFor')->with($this->folder, 'a.cbr');
+		$original->expects($this->once())->method('delete');
+		$res = $this->service->adoptClientResult('u', 5, 'a.cbz', true, ['p1.jpg', 'p2.jpg'], ['0001.jpg', '0002.jpg']);
+		$this->assertSame(101, $res['fileId']);
+		$this->assertTrue($res['originalDeleted']);
+	}
+
+	public function testAdoptWithoutDeleteKeepsOriginal(): void {
+		$original = $this->adoptSetup();
+		$original->expects($this->never())->method('delete');
+		$res = $this->service->adoptClientResult('u', 5, 'a.cbz', false);
+		$this->assertFalse($res['originalDeleted']);
+	}
+
+	public function testAdoptRejectsUnsafeNamesAndFormats(): void {
+		$this->adoptSetup();
+		foreach (['../a.cbz', 'sub/a.cbz', 'a.cbr', 'b.cbr', 'a.txt', ''] as $name) {
+			try {
+				$this->service->adoptClientResult('u', 5, $name, false);
+				$this->fail('accepted ' . $name);
+			} catch (ConvertException $e) {
+				$this->assertSame(400, $e->getStatus(), $name);
+			}
+		}
+	}
+
+	public function testAdoptMissingUploadIs404(): void {
+		$this->adoptSetup();
+		$this->expectException(ConvertException::class);
+		try {
+			$this->service->adoptClientResult('u', 5, 'other.cbz', false);
+		} catch (ConvertException $e) {
+			$this->assertSame(404, $e->getStatus());
+			throw $e;
+		}
+	}
 }

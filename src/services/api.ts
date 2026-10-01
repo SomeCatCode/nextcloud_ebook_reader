@@ -460,6 +460,21 @@ export async function embedMetadata(fileId: number, async: boolean): Promise<{ t
 }
 
 /**
+ * Finishes a browser-side conversion on the server: indexes the uploaded file right away,
+ * copies the sidecar, carries over rating/status/position and deletes the original if requested.
+ *
+ * @param fileId file id of the original
+ * @param body uploaded file name (same folder) and page names for the position mapping
+ * @param body.name
+ * @param body.deleteOriginal
+ * @param body.oldPages
+ * @param body.newPages
+ */
+export function adoptConversion(fileId: number, body: { name: string, deleteOriginal: boolean, oldPages: string[], newPages: string[] }): Promise<{ book: Book, fileId: number, path: string, originalDeleted: boolean }> {
+	return request('post', `/books/${fileId}/convert/adopt`, { body })
+}
+
+/**
  * Async conversion on the server. Returns `{ sync }` if an older server converted synchronously.
  *
  * @param fileId

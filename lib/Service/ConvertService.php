@@ -17,6 +17,7 @@ use OCA\EbookReader\Metadata\ComicInfoParser;
 use OCA\EbookReader\Metadata\SidecarService;
 use OCA\EbookReader\Metadata\UnsafeArchiveException;
 use OCP\Files\File;
+use OCP\Files\NotFoundException;
 use OCP\Files\NotPermittedException;
 use OCP\ITempManager;
 use Psr\Log\LoggerInterface;
@@ -245,6 +246,64 @@ class ConvertService {
 			}
 		}
 		return ['book' => $newBook, 'fileId' => $newBook->getFileId(), 'path' => $newBook->getPath()];
+	}
+
+	/**
+	 * Finishes a conversion that ran in the browser: the client has uploaded the new file next to
+	 * the original. Indexes it right away (regardless of its size, unlike the queued indexing of
+	 * large uploads), copies the metadata sidecar, carries over rating, read status, app tags and
+	 * the reading position, and only then deletes the original (with its sidecar) if requested.
+	 *
+	 * @param list<string> $oldPages page entry names of the original in reading order
+	 * @param list<string> $newPages page entry names of the converted file in the same order
+	 * @return array{book: Book, fileId: int, path: string, originalDeleted: bool}
+	 */
+	public function adoptClientResult(string $userId, int $fileId, string $newName, bool $deleteOriginal, array $oldPages = [], array $newPages = []): array {
+		$book = $this->library->getBook($userId, $fileId);
+		$file = $this->library->getFileForUser($userId, $fileId);
+		if (!self::isSource($book->getFormat())) {
+			throw new ConvertException('Only comics can be converted', 415);
+		}
+		if ($newName === '' || str_contains($newName, '/') || str_contains($newName, '\\') || $newName === $file->getName()) {
+			throw new ConvertException('Invalid file name', 400);
+		}
+		$target = self::normaliseKey(strtolower(pathinfo($newName, PATHINFO_EXTENSION)));
+		if (!in_array($target, self::FORMATS, true) || $target === $book->getFormat() || $target === 'cbr') {
+			throw new ConvertException('Unknown target format', 400);
+		}
+		$parent = $file->getParent();
+		try {
+			$newFile = $parent->get($newName);
+		} catch (NotFoundException $e) {
+			throw new ConvertException('The converted file was not found next to the original', 404, $e);
+		}
+		if (!$newFile instanceof File || $newFile->getId() === $file->getId()) {
+			throw new ConvertException('The converted file was not found next to the original', 404);
+		}
+		if ($deleteOriginal && !$file->isDeletable()) {
+			throw new ConvertException('The original cannot be deleted', 403);
+		}
+		$limit = static fn (array $names): array => array_values(array_slice(array_filter($names, static fn ($n): bool => is_string($n) && $n !== '' && strlen($n) <= 1024), 0, 5000));
+
+		$this->sidecar->copyAlong($parent, $file->getName(), $parent, $newName);
+		$newBook = $this->library->indexFile($userId, $newFile, true);
+		if ($newBook === null) {
+			throw new ConvertException('The converted file could not be indexed', 500);
+		}
+		$newBook = $this->carryOver($userId, $book, $newBook, $limit($newPages), $limit($oldPages));
+
+		$originalDeleted = false;
+		if ($deleteOriginal) {
+			try {
+				$oldName = $file->getName();
+				$file->delete();
+				$this->sidecar->deleteFor($parent, $oldName);
+				$originalDeleted = true;
+			} catch (\Throwable $e) {
+				$this->logger->warning('Original comic could not be deleted after conversion: ' . $e->getMessage(), ['app' => 'ebookreader']);
+			}
+		}
+		return ['book' => $newBook, 'fileId' => $newBook->getFileId(), 'path' => $newBook->getPath(), 'originalDeleted' => $originalDeleted];
 	}
 
 	// ---- steps ----------------------------------------------------------------------------------

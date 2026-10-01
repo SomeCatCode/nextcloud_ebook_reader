@@ -123,6 +123,43 @@ class ConvertController extends AbstractOCSController {
 		});
 	}
 
+	/**
+	 * Finish a conversion that ran in the browser
+	 *
+	 * The client uploaded the converted file next to the original. The server indexes it right away
+	 * (also large files), copies the metadata sidecar, carries over rating, status, app tags and the
+	 * reading position, and deletes the original afterwards if requested.
+	 *
+	 * @param int $fileId File id of the original
+	 * @param string $name File name of the uploaded result (same folder as the original)
+	 * @param bool $deleteOriginal Move the original to the trash once the new book is indexed
+	 * @param list<string> $oldPages Page entry names of the original in reading order
+	 * @param list<string> $newPages Page entry names of the result in the same order
+	 * @return DataResponse<Http::STATUS_OK|Http::STATUS_BAD_REQUEST|Http::STATUS_FORBIDDEN|Http::STATUS_NOT_FOUND|Http::STATUS_UNSUPPORTED_MEDIA_TYPE|Http::STATUS_INTERNAL_SERVER_ERROR, array<string, mixed>, array{}>
+	 *
+	 * 200: New book indexed, originalDeleted tells whether the original was removed
+	 * 400: Invalid file name or format
+	 * 403: The original cannot be deleted
+	 * 404: Book or uploaded file not found
+	 * 415: The book is not a comic
+	 * 500: Internal error
+	 */
+	#[NoAdminRequired]
+	#[UserRateLimit(limit: 30, period: 3600)]
+	#[ApiRoute(verb: 'POST', url: '/api/v1/books/{fileId}/convert/adopt', requirements: ['fileId' => '\d+'])]
+	public function adopt(int $fileId, string $name = '', bool $deleteOriginal = false, array $oldPages = [], array $newPages = []): DataResponse {
+		$userId = $this->uid();
+		return $this->guard(function () use ($userId, $fileId, $name, $deleteOriginal, $oldPages, $newPages): DataResponse {
+			$res = $this->convert->adoptClientResult($userId, $fileId, $name, $deleteOriginal, $oldPages, $newPages);
+			return new DataResponse([
+				'book' => $this->serializer->serializeWithProgress($userId, $res['book']),
+				'fileId' => $res['fileId'],
+				'path' => $res['path'],
+				'originalDeleted' => $res['originalDeleted'],
+			]);
+		});
+	}
+
 	private function guard(callable $fn): DataResponse {
 		try {
 			return $fn();

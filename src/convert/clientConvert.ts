@@ -15,11 +15,11 @@ import axios from '@nextcloud/axios'
 import { zipSync } from 'fflate'
 import { makeArchiveLoader } from '../../packages/reader-core/src/comic-rar.ts'
 import { loadLibarchive } from '../components/reader/libarchive.ts'
-import { davUrlForPath, getBook, getProgress, patchAppData, putProgress, scan } from '../services/api.ts'
+import { adoptConversion, davUrlForPath } from '../services/api.ts'
 import { writeSevenZip, writeTar } from './archiveWriters.ts'
 import { ConvertError } from './convertApi.ts'
 import { buildComicInfo, buildEpub, comicInfoCoverIndex, comicInfoIsRtl } from './epub.ts'
-import { pageEntries, pageName, remapLocator } from './pages.ts'
+import { pageEntries, pageName } from './pages.ts'
 import { browserCanConvert, targetPath } from './targets.ts'
 
 export interface ClientConvertOptions {
@@ -130,6 +130,8 @@ export async function convertInBrowser(book: Book, target: ConvertFormat, option
 	const loader = await makeArchiveLoader(blob, { loadLibarchive }, book.format)
 	let result: Blob
 	let oldPages: string[]
+	/** page names in the result (same order as oldPages), used to carry over the reading position */
+	let newPages: string[]
 	try {
 		oldPages = pageEntries(loader.entries.map((e) => e.filename))
 		if (oldPages.length === 0) {
@@ -160,6 +162,7 @@ export async function convertInBrowser(book: Book, target: ConvertFormat, option
 			tags: book.tags,
 		}
 		const comicInfo = infoText ?? buildComicInfo(meta)
+		newPages = target === 'epub' ? [] : pages.map((p) => p.name)
 		if (target === 'epub') {
 			const epubPages: EpubPage[] = []
 			for (const p of pages) {
@@ -206,64 +209,10 @@ export async function convertInBrowser(book: Book, target: ConvertFormat, option
 	}
 
 	onStep?.('index')
-	await scan().catch(() => undefined)
-	const indexed = fileId > 0 && await waitForBook(fileId)
-	if (indexed) {
-		await carryOver(book, fileId, oldPages, target)
-	}
-	let originalDeleted = false
-	if (options.deleteOriginal && indexed) {
-		await axios.delete(davUrlForPath(book.path))
-		originalDeleted = true
-	}
-	return { fileId, path, indexed, originalDeleted }
-}
-
-/**
- * The file listener indexes new files right away; wait a few seconds for it.
- *
- * @param fileId
- */
-async function waitForBook(fileId: number): Promise<boolean> {
-	for (let i = 0; i < 8; i++) {
-		try {
-			await getBook(fileId)
-			return true
-		} catch {
-			await new Promise((resolve) => setTimeout(resolve, 750))
-		}
-	}
-	return false
-}
-
-/**
- * Best effort: rating, read status and the reading position of the old book.
- *
- * @param old
- * @param newFileId
- * @param oldPages
- * @param target
- */
-async function carryOver(old: Book, newFileId: number, oldPages: string[], target: ConvertFormat): Promise<void> {
-	try {
-		const progress = await getProgress(old.fileId)
-		if (progress) {
-			const locator = remapLocator(progress.locator, oldPages, target)
-			if (locator) {
-				await putProgress(newFileId, {
-					locator,
-					percentage: progress.percentage,
-					device: progress.device,
-					clientUpdatedAt: progress.clientUpdatedAt,
-				})
-			}
-		}
-	} catch {
-		// the position is a convenience
-	}
-	try {
-		await patchAppData(newFileId, { rating: old.rating, readStatus: old.readStatus })
-	} catch {
-		// ignore
-	}
+	// The server indexes the uploaded file right away (also large files, which the file listener
+	// would only queue), copies the sidecar, carries over rating/status/position and then deletes
+	// the original if requested.
+	const name = path.split('/').pop() ?? ''
+	const adopted = await adoptConversion(book.fileId, { name, deleteOriginal: options.deleteOriginal, oldPages, newPages })
+	return { fileId: adopted.fileId || fileId, path: adopted.path || path, indexed: true, originalDeleted: adopted.originalDeleted }
 }
