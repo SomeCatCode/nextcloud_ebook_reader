@@ -52,10 +52,11 @@ class ProgressControllerTest extends TestCase {
 		return $p;
 	}
 
-	public function testGetMissingIs404(): void {
+	public function testGetMissingIsOkWithNull(): void {
 		$this->service->method('get')->willReturn(null);
-		$this->expectException(OCSNotFoundException::class);
-		$this->controller->show(5);
+		$r = $this->controller->show(5);
+		$this->assertSame(Http::STATUS_OK, $r->getStatus());
+		$this->assertNull($r->getData());
 	}
 
 	public function testPutOk(): void {

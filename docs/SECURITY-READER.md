@@ -13,15 +13,20 @@
 
 ## Implemented setup (defense in depth)
 
-1. **No scripts in section iframes.** Vendored copy patched (2 lines, marked `EBOOKREADER PATCH`, see VENDORED.md):
-   `sandbox="allow-same-origin"`. No `allow-scripts`, `allow-popups`, `allow-top-navigation`, `allow-forms`.
+1. **Sandbox `allow-same-origin allow-scripts`** (changed in 0.1.3). The first version used `sandbox="allow-same-origin"` only.
+   In practice Chromium then refuses to run *foliate's own* event listeners registered inside the section documents
+   ("Blocked script execution in 'blob:...' because the document's frame is sandboxed"), which broke navigation and comic
+   rendering - not just in WebKit as upstream's comment suggests. Book scripts are therefore blocked by the layers below instead
+   of the sandbox: section CSP meta (3), inherited Nextcloud page CSP (no inline and no `blob:` scripts), SVG sanitizing (3)
+   and not loading EPUB script resources (2). `sandboxScripts: false` restores the strict sandbox. No `allow-popups`,
+   `allow-top-navigation`, `allow-forms`.
 2. **EPUB script resources are not loaded** (`book.transformTarget` `load` event: `allow = false` for script items).
 3. **Per-section CSP meta** (`packages/reader-core/src/secure-sections.ts`): every HTML/XHTML section is re-serialised through
    `DOMParser` and gets `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src blob: data:; media-src blob: data:; style-src blob: 'unsafe-inline'; font-src blob: data:">`
    as first child of `<head>`. This blocks remote resource loading (tracking pixels, remote fonts/images = privacy) and script execution even if
    an iframe were ever granted `allow-scripts`. The parser-based insertion cannot be bypassed by a fake `<head>` in a comment (covered by unit tests).
-   Applied by wrapping each `section.load()` (works for EPUB, MOBI, FB2, CBZ/CBR alike). SVG top-level sections are left as they are
-   (a CSP meta is not honoured in SVG); they are protected by the sandbox only.
+   Applied by wrapping each `section.load()` (works for EPUB, MOBI, FB2, CBZ/CBR alike). SVG top-level sections cannot carry a CSP meta;
+   they are sanitized instead (sanitizeSvg: scripts, foreignObject, on* handlers and javascript:/data:text/html links removed, unit-tested).
 4. **Links**: click handling stays in foliate (`external-link` -> `window.open`, not triggered because reader-core does not forward it; internal links navigate inside the reader).
 5. **Server CSP** (`lib/Listener/CspListener.php`): only on requests under `/apps/ebookreader`, `/apps/files`, `/apps/viewer`, `/f/` it adds `blob:` to
    frame-src, worker-src, img/media/font/style-src, `data:` to font-src, `blob:` to connect-src (reader-core `fetch`es the section blob to inject the CSP) and

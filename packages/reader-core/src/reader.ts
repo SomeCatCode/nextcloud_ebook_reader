@@ -15,6 +15,7 @@ import type {
 	ReaderLayout,
 	ReaderLocator,
 	ReaderOptions,
+	ReaderSource,
 	ReaderThemeName,
 	ReaderTypography,
 	SearchGroup,
@@ -34,9 +35,13 @@ const SIDE_ZONE = 0.3
  * @param options
  */
 export function createReader(container: HTMLElement, options: ReaderOptions = {}): ReaderHandle {
-	if (options.sandboxScripts) {
-		(globalThis as Any).__EBOOKREADER_SANDBOX = 'allow-same-origin allow-scripts'
-	}
+	// foliate registers its click/key/touch listeners inside the section documents; without
+	// allow-scripts Chromium and WebKit refuse to run them ("Blocked script execution"), which
+	// breaks navigation and comic rendering. Book scripts stay blocked by the section CSP,
+	// the inherited Nextcloud CSP and SVG sanitizing (see secure-sections.ts).
+	(globalThis as Any).__EBOOKREADER_SANDBOX = options.sandboxScripts === false
+		? 'allow-same-origin'
+		: 'allow-same-origin allow-scripts'
 	let theme: ReaderThemeName = options.theme ?? 'auto'
 	let typography: ReaderTypography = { ...options.typography }
 	let layout: ReaderLayout = { flow: 'paginated', maxColumns: 2, margin: 48, comicSpread: 'single', comicZoom: 'fit-page', ...options.layout }
@@ -53,7 +58,7 @@ export function createReader(container: HTMLElement, options: ReaderOptions = {}
 	let view: Any = null
 	let opened: OpenedBook | null = null
 	let info: BookInfo | null = null
-	let lastFile: { file: Blob, format: ReaderFormat } | null = null
+	let lastFile: { file: ReaderSource, format: ReaderFormat } | null = null
 	let lastLocator: ReaderLocator | null = null
 	let sectionFraction: number | undefined
 	let destroyed = false

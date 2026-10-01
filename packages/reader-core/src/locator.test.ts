@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { planNavigation, toLocator } from './locator.ts'
-import { injectCsp, SECTION_CSP } from './secure-sections.ts'
+import { injectCsp, sanitizeSvg, SECTION_CSP } from './secure-sections.ts'
 
 const ids = ['OEBPS/ch1.xhtml', 'OEBPS/ch2.xhtml', 'OEBPS/ch3.xhtml']
 
@@ -93,5 +93,22 @@ describe('injectCsp', () => {
 		const out = injectCsp('<html><body><p>unclosed', 'application/xhtml+xml')
 		expect(out.type).toBe('text/html')
 		expect(out.text).toContain('Content-Security-Policy')
+	})
+})
+
+describe('sanitizeSvg', () => {
+	it('removes scripts, handlers and javascript links but keeps drawing content', () => {
+		const svg = '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" onload="alert(1)">'
+			+ '<script>alert(2)</script><foreignObject><div xmlns="http://www.w3.org/1999/xhtml">x</div></foreignObject>'
+			+ '<a xlink:href="java&#x09;script:alert(3)"><rect width="10" height="10" onclick="alert(4)"/></a>'
+			+ '<image href="blob:abc"/></svg>'
+		const out = sanitizeSvg(svg)
+		expect(out).not.toMatch(/alert|<script|foreignObject|onload|onclick|javascript/i)
+		expect(out).toContain('<rect')
+		expect(out).toContain('blob:abc')
+	})
+
+	it('returns an empty svg for unparsable input', () => {
+		expect(sanitizeSvg('<svg><not closed')).toBe('<svg xmlns="http://www.w3.org/2000/svg"/>')
 	})
 })

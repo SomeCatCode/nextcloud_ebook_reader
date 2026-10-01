@@ -43,8 +43,9 @@ export interface ReaderOptions {
 	typography?: ReaderTypography
 	layout?: ReaderLayout
 	/**
-	 * WebKit workaround: grant allow-scripts to section iframes (foliate default). Off by default.
-	 * Sections still get a script-blocking CSP meta, but SVG sections are then NOT protected.
+	 * Grant allow-scripts to the section iframes (default true). foliate's own listeners inside the
+	 * section documents need it; book scripts are still blocked by the section CSP meta, the
+	 * inherited page CSP and SVG sanitizing. `false` = strict sandbox (breaks navigation in Chromium).
 	 */
 	sandboxScripts?: boolean
 	/** Provides libarchive's worker source + wasm URL (CBR). Resolved lazily. */
@@ -92,8 +93,22 @@ export interface ReaderEvents {
 	key: { key: string }
 }
 
+/**
+ * A comic whose pages are fetched one by one (e.g. from the server) instead of downloading and
+ * unpacking the whole archive in the browser.
+ */
+export interface RemoteComicSource {
+	kind: 'remote-comic'
+	name: string
+	/** Page entry names in reading order (used as section ids / locator hrefs) and their sizes */
+	pages: { name: string, size: number }[]
+	loadPage: (index: number) => Promise<Blob>
+}
+
+export type ReaderSource = Blob | File | RemoteComicSource
+
 export interface ReaderHandle {
-	open(file: Blob | File, format: ReaderFormat, initial?: ReaderLocator | null): Promise<void>
+	open(file: ReaderSource, format: ReaderFormat, initial?: ReaderLocator | null): Promise<void>
 	goTo(target: ReaderLocator | string): Promise<boolean>
 	next(): Promise<void>
 	prev(): Promise<void>

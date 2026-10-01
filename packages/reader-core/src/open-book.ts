@@ -6,7 +6,7 @@
  * Equivalent of foliate-js view.js `makeBook`, but format driven (no sniffing by file name)
  * and with CBR support. foliate-js modules are imported lazily.
  */
-import type { ReaderFormat, ReaderLayout, ReaderOptions } from './types.ts'
+import type { ReaderFormat, ReaderLayout, ReaderOptions, ReaderSource, RemoteComicSource } from './types.ts'
 import { makeRarLoader } from './comic-rar.ts'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -34,6 +34,51 @@ async function makeZipLoader(file: Blob): Promise<ZipLoader> {
 		loadText: (name) => map.has(name) ? map.get(name)!.getData(new TextWriter()) as Promise<string> : null,
 		loadBlob: (name, type) => map.has(name) ? map.get(name)!.getData(new BlobWriter(type)) as Promise<Blob> : null,
 		getSize: (name) => map.get(name)?.uncompressedSize ?? 0,
+	}
+}
+
+const PREFETCH_PAGES = 2
+
+/**
+ * @param source
+ */
+export function isRemoteComic(source: ReaderSource): source is RemoteComicSource {
+	return (source as RemoteComicSource).kind === 'remote-comic'
+}
+
+/**
+ * Loader for foliate's comic book that fetches single pages and prefetches the next ones,
+ * so only the pages actually viewed are transferred.
+ *
+ * @param source
+ */
+export function makeRemoteComicLoader(source: RemoteComicSource): ZipLoader {
+	const index = new Map(source.pages.map((p, i) => [p.name, i]))
+	const inflight = new Map<number, Promise<Blob>>()
+	const fetchPage = (i: number): Promise<Blob> => {
+		let p = inflight.get(i)
+		if (!p) {
+			p = source.loadPage(i)
+			inflight.set(i, p)
+			// keep only a small window of pages in memory; foliate keeps its own object URLs
+			p.finally(() => setTimeout(() => inflight.delete(i), 30_000)).catch(() => inflight.delete(i))
+		}
+		return p
+	}
+	return {
+		entries: source.pages.map((p) => ({ filename: p.name })),
+		loadText: () => null,
+		loadBlob: (name) => {
+			const i = index.get(name)
+			if (i === undefined) {
+				return null
+			}
+			for (let n = 1; n <= PREFETCH_PAGES && i + n < source.pages.length; n++) {
+				fetchPage(i + n).catch(() => {})
+			}
+			return fetchPage(i)
+		},
+		getSize: (name) => source.pages[index.get(name) ?? -1]?.size ?? 0,
 	}
 }
 
@@ -93,7 +138,7 @@ export interface OpenedBook {
  * @param opts
  * @param layout
  */
-export async function openBook(file: Blob, format: ReaderFormat, opts: ReaderOptions, layout: ReaderLayout): Promise<OpenedBook> {
+export async function openBook(file: ReaderSource, format: ReaderFormat, opts: ReaderOptions, layout: ReaderLayout): Promise<OpenedBook> {
 	try {
 		return await openBookUnchecked(file, format, opts, layout)
 	} catch (e) {
@@ -110,7 +155,17 @@ export async function openBook(file: Blob, format: ReaderFormat, opts: ReaderOpt
  * @param opts
  * @param layout
  */
-async function openBookUnchecked(file: Blob, format: ReaderFormat, opts: ReaderOptions, layout: ReaderLayout): Promise<OpenedBook> {
+async function openBookUnchecked(source: ReaderSource, format: ReaderFormat, opts: ReaderOptions, layout: ReaderLayout): Promise<OpenedBook> {
+	if (isRemoteComic(source)) {
+		const { makeComicBook } = await import('../vendor/foliate-js/comic-book.js')
+		const book = makeComicBook(makeRemoteComicLoader(source), { name: source.name })
+		if (layout.comicSpread !== 'double') {
+			book.rendition.spread = 'none'
+		}
+		book.dir = layout.comicRtl ? 'rtl' : 'ltr'
+		return { book, isComic: true, close: () => book.destroy?.() }
+	}
+	const file = source
 	const name = (file as File).name ?? `book.${format}`
 	switch (format) {
 		case 'epub': {

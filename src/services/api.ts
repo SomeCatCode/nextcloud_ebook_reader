@@ -352,6 +352,40 @@ export function davUrlForPath(path: string): string {
  * @param book
  * @param signal
  */
+export interface ComicPages {
+	etag: string
+	pages: { name: string, size: number }[]
+}
+
+/**
+ * Page list of a CBZ served page by page by the server (ComicController).
+ *
+ * @param fileId
+ * @param signal
+ */
+export async function getComicPages(fileId: number, signal?: AbortSignal): Promise<ComicPages> {
+	const res = await axios.get<ComicPages>(generateUrl('/apps/ebookreader/comic/{fileId}/pages', { fileId }), { signal })
+	return res.data
+}
+
+/**
+ * URL of one comic page, scaled down on the server to about `width` device pixels.
+ *
+ * @param fileId
+ * @param index 0-based page index from getComicPages()
+ * @param width
+ * @param etag file etag from getComicPages(), makes the URL cacheable per file version
+ */
+export function comicPageUrl(fileId: number, index: number, width: number, etag: string): string {
+	return generateUrl('/apps/ebookreader/comic/{fileId}/page/{index}', { fileId, index })
+		+ '?' + new URLSearchParams({ w: String(Math.round(width)), v: etag }).toString()
+}
+
+/**
+ *
+ * @param book
+ * @param signal
+ */
 export async function fetchBookBlob(book: Pick<Book, 'path'>, signal?: AbortSignal): Promise<Blob> {
 	const res = await fetch(davUrlForPath(book.path), { credentials: 'same-origin', signal })
 	if (!res.ok) {

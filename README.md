@@ -22,6 +22,7 @@ Bibliothek, Reader und Editor für E-Books und Comics direkt in deiner Nextcloud
 - Paginierte oder scrollende Darstellung, Themes **hell / sepia / dunkel**, Schriftart, Schriftgröße, Zeilenhöhe
 - Inhaltsverzeichnis, Volltextsuche, Tastatur (←/→, Bild↑/↓), Tipp-Zonen und Wischgesten
 - Comics: Einzel- oder Doppelseite, Leserichtung rechts-nach-links (Manga)
+- **CBZ-Comics werden seitenweise vom Server geladen**, passend zur Bildschirmgröße verkleinert und auf dem Server zwischengespeichert. Die erste Seite erscheint sofort, auch bei großen Dateien, und das Handy muss nicht das ganze Archiv laden.
 - **Lesefortschritt wird auf dem Server gespeichert** und ist auf jedem Gerät an derselben Stelle. Bei Konflikten fragt die App, ob du zur neueren Position springen möchtest.
 
 ### Bibliothek

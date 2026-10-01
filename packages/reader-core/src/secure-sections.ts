@@ -6,10 +6,13 @@
 /**
  * Hardening of section documents (see docs/SECURITY-READER.md).
  *
- * 1. The vendored paginator/fixed-layout create their iframes with sandbox="allow-same-origin"
- *    (no allow-scripts), so EPUB scripts never run.
- * 2. Every HTML section document gets a CSP <meta> as first child of <head>: no remote loads
- *    (privacy) and, as defense in depth, no script execution.
+ * 1. Every HTML section document gets a CSP <meta> as first child of <head>: no script execution
+ *    and no remote loads (privacy). The blob: documents also inherit the page CSP of Nextcloud,
+ *    which allows neither inline scripts nor blob: scripts.
+ * 2. SVG sections (no CSP meta possible) are sanitized: scripts, handlers, javascript: links removed.
+ * 3. Script resources of EPUBs are never loaded (transformTarget isScript -> allow = false).
+ * The iframes get sandbox="allow-same-origin allow-scripts" because foliate's own listeners run
+ * inside the section documents; see docs/SECURITY-READER.md.
  */
 
 export const SECTION_CSP = 'default-src \'none\'; img-src blob: data:; media-src blob: data:; style-src blob: \'unsafe-inline\'; font-src blob: data:'
@@ -57,12 +60,43 @@ interface BookLike {
 }
 
 /**
+ * Strip everything executable from an SVG document: CSP <meta> is not honoured in SVG documents,
+ * so scripts, event handler attributes and javascript: links are removed instead.
+ *
+ * @param text
+ */
+export function sanitizeSvg(text: string): string {
+	const doc = new DOMParser().parseFromString(text, 'image/svg+xml')
+	if (doc.querySelector('parsererror')) {
+		return '<svg xmlns="http://www.w3.org/2000/svg"/>'
+	}
+	for (const el of Array.from(doc.querySelectorAll('*'))) {
+		const name = el.localName.toLowerCase()
+		if (name === 'script' || name === 'foreignobject' || name === 'iframe' || name === 'embed' || name === 'object') {
+			el.remove()
+			continue
+		}
+		for (const attr of Array.from(el.attributes)) {
+			const attrName = attr.name.toLowerCase()
+			const value = attr.value.replace(/[\s\u0000-\u001f]/g, '').toLowerCase()
+			if (attrName.startsWith('on') || ((attrName === 'href' || attrName.endsWith(':href') || attrName === 'src') && (value.startsWith('javascript:') || value.startsWith('data:text/html')))) {
+				el.removeAttributeNode(attr)
+			}
+		}
+	}
+	return new XMLSerializer().serializeToString(doc)
+}
+
+/**
  * @param url
  */
 async function rewrite(url: string): Promise<string> {
 	const res = await fetch(url)
 	const blob = await res.blob()
-	if (/svg/i.test(blob.type) || /^(image|audio|video)\//i.test(blob.type)) {
+	if (/svg/i.test(blob.type)) {
+		return URL.createObjectURL(new Blob([sanitizeSvg(await blob.text())], { type: 'image/svg+xml' }))
+	}
+	if (/^(image|audio|video)\//i.test(blob.type)) {
 		return url
 	}
 	const out = injectCsp(await blob.text(), blob.type)
