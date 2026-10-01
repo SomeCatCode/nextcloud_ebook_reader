@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace OCA\EbookReader\Metadata;
 
+use OCA\EbookReader\Service\ArchiveTools;
 use OCP\Files\File;
 use OCP\ITempManager;
 use Psr\Log\LoggerInterface;
@@ -23,6 +24,8 @@ class MetadataService {
 		'fbz' => 'fbz',
 		'cbz' => 'cbz',
 		'cbr' => 'cbr',
+		'cb7' => 'cb7',
+		'cbt' => 'cbt',
 	];
 
 	private const MIMES = [
@@ -37,6 +40,8 @@ class MetadataService {
 		'application/vnd.comicbook-rar' => 'cbr',
 		'application/comicbook+rar' => 'cbr',
 		'application/x-cbr' => 'cbr',
+		'application/x-cb7' => 'cb7',
+		'application/x-cbt' => 'cbt',
 	];
 
 	/** @var list<ExtractorInterface> */
@@ -46,12 +51,14 @@ class MetadataService {
 	public function __construct(
 		private ?ITempManager $tempManager = null,
 		private ?LoggerInterface $logger = null,
+		?ArchiveTools $archiveTools = null,
 	) {
 		$this->extractors = [
 			new EpubExtractor(),
 			new MobiExtractor(),
 			new Fb2Extractor(),
 			new CbzExtractor(),
+			new CbrExtractor($archiveTools),
 		];
 		$this->filenameExtractor = new FilenameExtractor();
 	}
@@ -90,7 +97,7 @@ class MetadataService {
 				continue;
 			}
 			try {
-				$meta = $extractor->extract($localPath);
+				$meta = $extractor instanceof CbrExtractor ? $extractor->extract($localPath, $format) : $extractor->extract($localPath);
 			} catch (DrmProtectedException $e) {
 				$this->logger?->info('E-book is DRM protected, using file name only: ' . ($displayName ?? ''), ['app' => 'ebookreader']);
 			} catch (\Throwable $e) {

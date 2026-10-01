@@ -335,6 +335,79 @@
                     }
                 }
             },
+            "OrganizeItem": {
+                "type": "object",
+                "required": [
+                    "fileId",
+                    "from",
+                    "to",
+                    "status"
+                ],
+                "properties": {
+                    "fileId": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "from": {
+                        "type": "string"
+                    },
+                    "to": {
+                        "type": "string"
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "move",
+                            "unchanged",
+                            "conflict",
+                            "error",
+                            "moved",
+                            "failed"
+                        ]
+                    },
+                    "message": {
+                        "type": "string"
+                    }
+                }
+            },
+            "OrganizePreview": {
+                "type": "object",
+                "required": [
+                    "items"
+                ],
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/OrganizeItem"
+                        }
+                    }
+                }
+            },
+            "OrganizeResult": {
+                "type": "object",
+                "required": [
+                    "items",
+                    "moved",
+                    "failed"
+                ],
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/OrganizeItem"
+                        }
+                    },
+                    "moved": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "failed": {
+                        "type": "integer",
+                        "format": "int64"
+                    }
+                }
+            },
             "Progress": {
                 "type": "object",
                 "required": [
@@ -600,6 +673,55 @@
                             "type": "integer",
                             "format": "int64",
                             "default": 0
+                        }
+                    },
+                    {
+                        "name": "include",
+                        "in": "query",
+                        "description": "Entries \"genre:<name>\", \"tag:<name>\", \"author:<name>\", \"series:<name>\" or \"format:<fmt>\" the book must match (see match)",
+                        "schema": {
+                            "nullable": true,
+                            "default": null,
+                            "oneOf": [
+                                {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "string"
+                                    }
+                                },
+                                {
+                                    "type": "string"
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "name": "exclude",
+                        "in": "query",
+                        "description": "Entries in the same form; books having any of them are excluded",
+                        "schema": {
+                            "nullable": true,
+                            "default": null,
+                            "oneOf": [
+                                {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "string"
+                                    }
+                                },
+                                {
+                                    "type": "string"
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "name": "match",
+                        "in": "query",
+                        "description": "\"all\" (every include must match) or \"any\" (at least one)",
+                        "schema": {
+                            "type": "string",
+                            "default": "all"
                         }
                     },
                     {
@@ -3314,6 +3436,360 @@
                 }
             }
         },
+        "/ocs/v2.php/apps/ebookreader/api/v1/organize/preview": {
+            "post": {
+                "operationId": "organize-preview",
+                "summary": "Preview where books would be moved to by a pattern",
+                "tags": [
+                    "organize"
+                ],
+                "security": [
+                    {
+                        "bearer_auth": []
+                    },
+                    {
+                        "basic_auth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": false,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "fileIds": {
+                                        "type": "array",
+                                        "default": [],
+                                        "description": "Nextcloud file ids (max 500)",
+                                        "items": {
+                                            "type": "integer",
+                                            "format": "int64"
+                                        }
+                                    },
+                                    "pattern": {
+                                        "type": "string",
+                                        "default": "",
+                                        "description": "Path pattern, e.g. \"{author}/{series}/{series_index:2} - {title}\""
+                                    },
+                                    "targetFolder": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "default": null,
+                                        "description": "Base folder inside a library folder (default: first library folder)"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "OCS-APIRequest",
+                        "in": "header",
+                        "description": "Required to be true for the API request to pass",
+                        "required": true,
+                        "schema": {
+                            "type": "boolean",
+                            "default": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Preview computed",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "$ref": "#/components/schemas/OrganizePreview"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid selection, pattern or target folder",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not logged in",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Current user is not logged in",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/ocs/v2.php/apps/ebookreader/api/v1/organize/apply": {
+            "post": {
+                "operationId": "organize-apply",
+                "summary": "Move and rename books by a pattern",
+                "tags": [
+                    "organize"
+                ],
+                "security": [
+                    {
+                        "bearer_auth": []
+                    },
+                    {
+                        "basic_auth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": false,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "fileIds": {
+                                        "type": "array",
+                                        "default": [],
+                                        "description": "Nextcloud file ids (max 500)",
+                                        "items": {
+                                            "type": "integer",
+                                            "format": "int64"
+                                        }
+                                    },
+                                    "pattern": {
+                                        "type": "string",
+                                        "default": "",
+                                        "description": "Path pattern, e.g. \"{author}/{series}/{series_index:2} - {title}\""
+                                    },
+                                    "targetFolder": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "default": null,
+                                        "description": "Base folder inside a library folder (default: first library folder)"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "OCS-APIRequest",
+                        "in": "header",
+                        "description": "Required to be true for the API request to pass",
+                        "required": true,
+                        "schema": {
+                            "type": "boolean",
+                            "default": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Books moved (see the status of each item)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "$ref": "#/components/schemas/OrganizeResult"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid selection, pattern or target folder",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not logged in",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Current user is not logged in",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/ocs/v2.php/apps/ebookreader/api/v1/progress/recent": {
             "get": {
                 "operationId": "progress-recent",
@@ -4659,7 +5135,7 @@
         },
         {
             "name": "comic",
-            "description": "Serves CBZ comics page by page, so the browser does not have to download and unpack the whole archive. Pages are scaled down to the requested width bucket and cached in app data."
+            "description": "Serves comics (CBZ, CBT, and CBR/CB7 when a tool is installed) page by page, so the browser does not have to download and unpack the whole archive. Pages are scaled down to the requested width bucket and cached in app data."
         },
         {
             "name": "cover",

@@ -24,6 +24,8 @@ export const EBOOK_MIMES = [
 	'application/vnd.comicbook-rar',
 	'application/comicbook+zip',
 	'application/comicbook+rar',
+	'application/x-cb7',
+	'application/x-cbt',
 ]
 
 interface ViewerGlobal {

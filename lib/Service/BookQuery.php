@@ -17,6 +17,10 @@ final class BookQuery {
 	public const STATUSES = ['unread', 'reading', 'finished'];
 	public const DEFAULT_LIMIT = 50;
 	public const MAX_LIMIT = 200;
+	public const FILTER_TYPES = ['genre', 'tag', 'author', 'series', 'format'];
+	public const MATCH_ALL = 'all';
+	public const MATCH_ANY = 'any';
+	public const MAX_FILTER_ENTRIES = 50;
 
 	public function __construct(
 		public readonly ?string $search = null,
@@ -30,7 +34,66 @@ final class BookQuery {
 		public readonly string $order = 'asc',
 		public readonly int $limit = self::DEFAULT_LIMIT,
 		public readonly int $offset = 0,
+		/** @var list<array{type: string, name: string}> */
+		public readonly array $include = [],
+		/** @var list<array{type: string, name: string}> */
+		public readonly array $exclude = [],
+		public readonly string $match = self::MATCH_ALL,
 	) {
+	}
+
+	/**
+	 * All include entries: the explicit ones plus the legacy single params (genre, tag, author, series, format).
+	 * @return list<array{type: string, name: string}>
+	 */
+	public function effectiveIncludes(): array {
+		$out = $this->include;
+		foreach (['format' => $this->format, 'genre' => $this->genre, 'tag' => $this->tag, 'author' => $this->author, 'series' => $this->series] as $type => $name) {
+			if ($name !== null) {
+				$out[] = ['type' => $type, 'name' => $name];
+			}
+		}
+		return $out;
+	}
+
+	/**
+	 * Parses "type:name" filter entries (array, or one comma-separated string). Malformed entries are ignored.
+	 * @return list<array{type: string, name: string}>
+	 */
+	public static function parseFilterEntries(mixed $raw): array {
+		if (is_string($raw)) {
+			// split only at commas followed by a "type:" prefix so names containing commas survive
+			$raw = preg_split('/,(?=\s*(?:' . implode('|', self::FILTER_TYPES) . '):)/iu', $raw) ?: [];
+		}
+		if (!is_array($raw)) {
+			return [];
+		}
+		$out = [];
+		$seen = [];
+		foreach ($raw as $entry) {
+			if (!is_string($entry)) {
+				continue;
+			}
+			$pos = strpos($entry, ':');
+			if ($pos === false) {
+				continue;
+			}
+			$type = strtolower(trim(substr($entry, 0, $pos)));
+			$name = trim(substr($entry, $pos + 1));
+			if ($name === '' || !in_array($type, self::FILTER_TYPES, true)) {
+				continue;
+			}
+			$key = $type . '|' . mb_strtolower($name);
+			if (isset($seen[$key])) {
+				continue;
+			}
+			$seen[$key] = true;
+			$out[] = ['type' => $type, 'name' => $name];
+			if (count($out) >= self::MAX_FILTER_ENTRIES) {
+				break;
+			}
+		}
+		return $out;
 	}
 
 	/**
@@ -61,6 +124,11 @@ final class BookQuery {
 		$limit = max(1, min(self::MAX_LIMIT, $limit));
 		$offset = isset($params['offset']) && is_numeric($params['offset']) ? max(0, (int)$params['offset']) : 0;
 
+		$match = strtolower($str($params['match'] ?? null) ?? self::MATCH_ALL);
+		if ($match !== self::MATCH_ANY) {
+			$match = self::MATCH_ALL;
+		}
+
 		return new self(
 			search: $str($params['search'] ?? null),
 			format: $str($params['format'] ?? null),
@@ -73,6 +141,9 @@ final class BookQuery {
 			order: $order,
 			limit: $limit,
 			offset: $offset,
+			include: self::parseFilterEntries($params['include'] ?? null),
+			exclude: self::parseFilterEntries($params['exclude'] ?? null),
+			match: $match,
 		);
 	}
 }

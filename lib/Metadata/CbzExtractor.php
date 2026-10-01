@@ -41,30 +41,11 @@ class CbzExtractor implements ExtractorInterface {
 		}
 		usort($images, static fn (string $a, string $b): int => strnatcasecmp($a, $b));
 
-		$fields = [];
-		$coverIndex = 0;
-		if ($comicInfo !== null) {
-			$doc = XmlUtil::load($zip->read($comicInfo) ?? '');
-			if ($doc !== null) {
-				$xp = new \DOMXPath($doc);
-				foreach (['Title', 'Series', 'Number', 'Summary', 'Writer', 'Publisher', 'Year', 'Month', 'Day', 'LanguageISO', 'Genre', 'Tags'] as $f) {
-					$fields[$f] = XmlUtil::text($xp, "/*/*[local-name()='$f']");
-				}
-				$summaryNode = $xp->query("/*/*[local-name()='Summary']")->item(0);
-				if ($summaryNode !== null) {
-					$fields['SummaryRaw'] = $summaryNode->textContent;
-				}
-				$pages = $xp->query("//*[local-name()='Pages']/*[local-name()='Page'][@Type='FrontCover']");
-				$pageEl = $pages === false ? null : $pages->item(0);
-				if ($pageEl instanceof \DOMElement && ctype_digit($pageEl->getAttribute('Image'))) {
-					$coverIndex = (int)$pageEl->getAttribute('Image');
-				}
-			}
-		}
+		$parsed = ComicInfoParser::parse($comicInfo === null ? null : $zip->read($comicInfo));
 
 		$coverData = null;
 		$coverMime = null;
-		$order = array_unique(array_merge([$coverIndex], [0, 1]));
+		$order = array_unique(array_merge([$parsed['coverIndex']], [0, 1]));
 		foreach ($order as $i) {
 			if (!isset($images[$i])) {
 				continue;
@@ -82,41 +63,6 @@ class CbzExtractor implements ExtractorInterface {
 			}
 		}
 
-		$description = null;
-		if (($fields['SummaryRaw'] ?? '') !== '') {
-			$clean = HtmlSanitizer::sanitize($fields['SummaryRaw']);
-			$description = $clean === '' ? null : $clean;
-		}
-		$num = $fields['Number'] ?? null;
-		$seriesIndex = $num !== null && is_numeric($num) ? (float)$num : null;
-
-		$publishedAt = null;
-		$year = $fields['Year'] ?? null;
-		if ($year !== null && preg_match('/^\d{4}$/', $year) === 1) {
-			$publishedAt = $year;
-			$month = $fields['Month'] ?? null;
-			if ($month !== null && ctype_digit($month) && (int)$month >= 1 && (int)$month <= 12) {
-				$publishedAt .= '-' . sprintf('%02d', (int)$month);
-				$day = $fields['Day'] ?? null;
-				if ($day !== null && ctype_digit($day) && (int)$day >= 1 && (int)$day <= 31) {
-					$publishedAt .= '-' . sprintf('%02d', (int)$day);
-				}
-			}
-		}
-
-		return new BookMetadata(
-			title: $fields['Title'] ?? null,
-			authors: XmlUtil::splitList($fields['Writer'] ?? null),
-			series: $fields['Series'] ?? null,
-			seriesIndex: $seriesIndex,
-			description: $description,
-			language: $fields['LanguageISO'] ?? null,
-			publisher: $fields['Publisher'] ?? null,
-			publishedAt: $publishedAt,
-			genres: XmlUtil::splitList($fields['Genre'] ?? null),
-			tags: XmlUtil::splitList($fields['Tags'] ?? null),
-			coverData: $coverData,
-			coverMime: $coverMime,
-		);
+		return ComicInfoParser::toMetadata($parsed, $coverData, $coverMime);
 	}
 }

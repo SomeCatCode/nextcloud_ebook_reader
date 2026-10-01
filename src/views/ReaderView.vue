@@ -165,7 +165,7 @@ import ReaderToc from '../components/reader/ReaderToc.vue'
 import { createReader, ReaderError } from '../../packages/reader-core/index.ts'
 import { loadLibarchive } from '../components/reader/libarchive.ts'
 import { getBook, getSettings, putSettings } from '../services/api.ts'
-import { loadBookSource } from '../services/bookSource.ts'
+import { loadBookSource, needsClientCover, uploadClientCover } from '../services/bookSource.ts'
 import { createProgressSync } from '../services/progressSync.ts'
 
 const props = defineProps<{ fileId: string }>()
@@ -535,7 +535,7 @@ onMounted(async () => {
 		const [b, settings] = await Promise.all([getBook(fileId), getSettings().catch(() => null)])
 		book.value = b
 		applyServerSettings(settings?.reader)
-		isComic.value = b.format === 'cbz' || b.format === 'cbr'
+		isComic.value = ['cbz', 'cbr', 'cb7', 'cbt'].includes(b.format)
 		isRtl.value = isComic.value && viewSettings.comicRtl
 
 		sync = createProgressSync(fileId, {
@@ -579,6 +579,11 @@ onMounted(async () => {
 		isRtl.value = info?.rtl ?? isRtl.value
 		toc.value = reader.getToc()
 		state.value = 'ready'
+		if (needsClientCover(b, source)) {
+			// the server could not extract a cover (CBR/CB7 without tool): send the first page
+			const r = reader
+			uploadClientCover(b.fileId, () => r.getCover())
+		}
 	} catch (e) {
 		if ((e as Error)?.name === 'AbortError') {
 			return

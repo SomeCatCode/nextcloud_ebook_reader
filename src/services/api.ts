@@ -7,7 +7,11 @@ import type {
 	BulkTagResult,
 	EditRequest,
 	Facets,
+	FilterTerm,
 	MetadataPatch,
+	OrganizePreview,
+	OrganizeRequest,
+	OrganizeResult,
 	Progress,
 	ProgressBatchItem,
 	ProgressBatchResult,
@@ -122,7 +126,16 @@ async function request<T>(method: Method, path: string, options: RequestOptions 
  * @param query
  */
 export function listBooks(query: BookQuery = {}): Promise<BookList> {
-	return request<BookList>('get', '/books', { params: query })
+	const { include, exclude, ...rest } = query
+	const termToParam = (t: FilterTerm): string => `${t.type}:${t.name}`
+	return request<BookList>('get', '/books', {
+		params: {
+			...rest,
+			// axios serialises arrays as include[]=a&include[]=b
+			include: include?.length ? include.map(termToParam) : undefined,
+			exclude: exclude?.length ? exclude.map(termToParam) : undefined,
+		},
+	})
 }
 
 /**
@@ -295,6 +308,22 @@ export function putStructure(fileId: number, req: EditRequest): Promise<SaveResu
  */
 export function renameBook(fileId: number, req: RenameRequest): Promise<Book> {
 	return request<Book>('post', `/books/${fileId}/rename`, { body: req })
+}
+
+// ---- Organise --------------------------------------------------------
+
+/**
+ * @param req
+ */
+export function organizePreview(req: OrganizeRequest): Promise<OrganizePreview> {
+	return request<OrganizePreview>('post', '/organize/preview', { body: req })
+}
+
+/**
+ * @param req
+ */
+export function organizeApply(req: OrganizeRequest): Promise<OrganizeResult> {
+	return request<OrganizeResult>('post', '/organize/apply', { body: req })
 }
 
 // ---- URL helpers (non-OCS) -------------------------------------------

@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace OCA\EbookReader\Tests\Unit\Metadata;
 
 use OCA\EbookReader\Metadata\MetadataService;
+use OCA\EbookReader\Service\ArchiveTools;
 use OCP\Files\File;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -26,6 +27,10 @@ class MetadataServiceTest extends TestCase {
 	public static function formats(): array {
 		return [
 			'epub' => ['a.epub', 'application/epub+zip', 'epub'],
+			'cb7' => ['Book.CB7', 'application/octet-stream', 'cb7'],
+			'cbt' => ['book.cbt', '', 'cbt'],
+			'cb7 by mime' => ['book', 'application/x-cb7', 'cb7'],
+			'cbt by mime' => ['book', 'application/x-cbt', 'cbt'],
 			'upper' => ['A.EPUB', 'application/octet-stream', 'epub'],
 			'mobi' => ['a.mobi', '', 'mobi'],
 			'azw3' => ['a.azw3', '', 'azw3'],
@@ -68,7 +73,8 @@ class MetadataServiceTest extends TestCase {
 	}
 
 	public function testCbrUsesFilenameOnly(): void {
-		$m = (new MetadataService())->extractLocal(Fixtures::path('plain.cbz'), 'cbr', 'Sammelband.cbr');
+		// without any archive tool a CBR is indexed by file name only
+		$m = (new MetadataService(null, null, new ArchiveTools([])))->extractLocal(Fixtures::path('plain.cbz'), 'cbr', 'Sammelband.cbr');
 		$this->assertSame('Sammelband', $m->title);
 		$this->assertNull($m->coverData);
 	}

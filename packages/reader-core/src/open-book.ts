@@ -4,10 +4,10 @@
  */
 /**
  * Equivalent of foliate-js view.js `makeBook`, but format driven (no sniffing by file name)
- * and with CBR support. foliate-js modules are imported lazily.
+ * and with CBR/CB7/CBT support. foliate-js modules are imported lazily.
  */
 import type { ReaderFormat, ReaderLayout, ReaderOptions, ReaderSource, RemoteComicSource } from './types.ts'
-import { makeRarLoader } from './comic-rar.ts'
+import { makeArchiveLoader } from './comic-rar.ts'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type FoliateBook = any
@@ -177,8 +177,10 @@ async function openBookUnchecked(source: ReaderSource, format: ReaderFormat, opt
 			return { book: await new EPUB(loader).init(), isComic: false, close: () => {} }
 		}
 		case 'cbz':
-		case 'cbr': {
-			const loader = format === 'cbz' ? await makeZipLoader(file) : await makeRarLoader(file, opts)
+		case 'cbr':
+		case 'cb7':
+		case 'cbt': {
+			const loader = format === 'cbz' ? await makeZipLoader(file) : await makeArchiveLoader(file, opts, format)
 			const { makeComicBook } = await import('../vendor/foliate-js/comic-book.js')
 			const book = makeComicBook(loader, { name })
 			if (layout.comicSpread !== 'double') {

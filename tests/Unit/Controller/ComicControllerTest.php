@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace OCA\EbookReader\Tests\Unit\Controller;
 
 use OCA\EbookReader\Controller\ComicController;
+use OCA\EbookReader\Service\ArchiveTools;
 use OCA\EbookReader\Service\LibraryService;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\DataDisplayResponse;
@@ -60,7 +61,7 @@ class ComicControllerTest extends TestCase {
 		$request = $this->createMock(IRequest::class);
 		$request->method('getHeader')->willReturn('');
 		return new ComicController($request, $session, $this->library, $this->createMock(ITempManager::class),
-			$appData, $cacheFactory, $this->createMock(LoggerInterface::class));
+			$appData, $cacheFactory, $this->createMock(LoggerInterface::class), new ArchiveTools([]));
 	}
 
 	private function fileFor(string $localPath, string $name): File&MockObject {

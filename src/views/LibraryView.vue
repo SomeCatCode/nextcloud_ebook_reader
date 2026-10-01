@@ -32,10 +32,34 @@
 					v-for="entry in group.entries"
 					:key="entry.name"
 					:name="entry.name"
-					:active="store.filters[group.filter] === entry.name"
-					@click="store.toggleFilter(group.filter, entry.name as never)">
+					:active="store.termState({ type: group.filter, name: entry.name }) === 'include'"
+					:class="{ 'library-nav__excluded': store.termState({ type: group.filter, name: entry.name }) === 'exclude' }"
+					@click="store.cycleTerm({ type: group.filter, name: entry.name })">
+					<template v-if="store.termState({ type: group.filter, name: entry.name }) === 'exclude'" #icon>
+						<NcIconSvgWrapper :path="mdiMinusCircleOutline" />
+					</template>
 					<template #counter>
 						<NcCounterBubble :count="entry.count" />
+					</template>
+					<template #actions>
+						<NcActionButton @click="store.setTermState({ type: group.filter, name: entry.name }, 'include')">
+							<template #icon>
+								<NcIconSvgWrapper :path="mdiPlusCircleOutline" />
+							</template>
+							{{ t('ebookreader', 'Include') }}
+						</NcActionButton>
+						<NcActionButton @click="store.setTermState({ type: group.filter, name: entry.name }, 'exclude')">
+							<template #icon>
+								<NcIconSvgWrapper :path="mdiMinusCircleOutline" />
+							</template>
+							{{ t('ebookreader', 'Exclude') }}
+						</NcActionButton>
+						<NcActionButton @click="store.onlyTerm({ type: group.filter, name: entry.name })">
+							<template #icon>
+								<NcIconSvgWrapper :path="mdiTarget" />
+							</template>
+							{{ t('ebookreader', 'Only this') }}
+						</NcActionButton>
 					</template>
 				</NcAppNavigationItem>
 				<NcAppNavigationItem
@@ -127,6 +151,12 @@
 				<NcButton variant="tertiary" :disabled="store.selectedIds.length === 0" @click="store.clearSelection()">
 					{{ t('ebookreader', 'Clear selection') }}
 				</NcButton>
+				<NcButton :disabled="store.selectedIds.length === 0" @click="organizeIds = store.selectedIds">
+					<template #icon>
+						<NcIconSvgWrapper :path="mdiFolderMoveOutline" />
+					</template>
+					{{ t('ebookreader', 'Rename / organise…') }}
+				</NcButton>
 				<NcButton variant="primary" :disabled="store.selectedIds.length === 0" @click="showBulk = true">
 					<template #icon>
 						<NcIconSvgWrapper :path="mdiTagMultipleOutline" />
@@ -135,17 +165,7 @@
 				</NcButton>
 			</div>
 
-			<div v-if="activeFilterChips.length" class="library__filters">
-				<button
-					v-for="chip in activeFilterChips"
-					:key="chip.key"
-					type="button"
-					class="library__filter-chip"
-					@click="chip.clear()">
-					{{ chip.label }}
-					<NcIconSvgWrapper :path="mdiClose" :size="16" />
-				</button>
-			</div>
+			<FilterBar />
 
 			<NcNoteCard v-if="store.error" type="error">
 				{{ store.error }}
@@ -196,7 +216,8 @@
 					:activeFileId="store.activeFileId"
 					:selection="store.selection"
 					:selectMode="store.selectMode"
-					@click="onBookClick" />
+					@click="onBookClick"
+					@filter="onDetailsFilter" />
 				<BookList
 					v-else
 					:books="store.books"
@@ -217,15 +238,21 @@
 		:key="store.activeBook.fileId"
 		:book="store.activeBook"
 		@close="store.setActive(null)"
-		@filter="onDetailsFilter" />
+		@filter="onDetailsFilter"
+		@organize="(id: number) => (organizeIds = [id])"
+		@converted="onConverted" />
 
 	<BulkTagDialog v-if="showBulk" @close="showBulk = false" />
+	<OrganizeDialog
+		v-if="organizeIds.length"
+		:fileIds="organizeIds"
+		@close="organizeIds = []"
+		@done="store.setSelectMode(false)" />
 	<SettingsDialog v-if="showSettings" @close="showSettings = false" @saved="onSettingsSaved" />
 </template>
 
 <script setup lang="ts">
-import type { FilterKey } from '../stores/library.ts'
-import type { Book, SortKey } from '../types.ts'
+import type { Book, FilterTerm, SortKey } from '../types.ts'
 
 import {
 	mdiAccountOutline,
@@ -236,22 +263,27 @@ import {
 	mdiBookSearchOutline,
 	mdiBookshelf,
 	mdiCheckboxMultipleMarkedOutline,
-	mdiClose,
 	mdiCog,
 	mdiDramaMasks,
 	mdiFileOutline,
+	mdiFolderMoveOutline,
 	mdiLibraryShelves,
+	mdiMinusCircleOutline,
+	mdiPlusCircleOutline,
 	mdiRefresh,
 	mdiSortAscending,
 	mdiSortDescending,
 	mdiTagMultipleOutline,
 	mdiTagOutline,
+	mdiTarget,
 	mdiViewGrid,
 	mdiViewList,
 } from '@mdi/js'
 import { showError, showSuccess, showWarning } from '@nextcloud/dialogs'
 import { n, t } from '@nextcloud/l10n'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import NcActionButton from '@nextcloud/vue/components/NcActionButton'
 import NcAppContent from '@nextcloud/vue/components/NcAppContent'
 import NcAppNavigation from '@nextcloud/vue/components/NcAppNavigation'
 import NcAppNavigationCaption from '@nextcloud/vue/components/NcAppNavigationCaption'
@@ -269,15 +301,21 @@ import BookGrid from '../components/library/BookGrid.vue'
 import BookList from '../components/library/BookList.vue'
 import BulkTagDialog from '../components/library/BulkTagDialog.vue'
 import ContinueReading from '../components/library/ContinueReading.vue'
+import FilterBar from '../components/library/FilterBar.vue'
 import SettingsDialog from '../components/library/SettingsDialog.vue'
+import OrganizeDialog from '../components/organize/OrganizeDialog.vue'
 import { scan } from '../services/api.ts'
-import { useLibraryStore } from '../stores/library.ts'
+import { queryToState, useLibraryStore } from '../stores/library.ts'
 
 const VIEW_KEY = 'ebookreader.libraryView'
 
 const store = useLibraryStore()
 
+const route = useRoute()
+const router = useRouter()
+
 const showBulk = ref(false)
+const organizeIds = ref<number[]>([])
 const showSettings = ref(false)
 const scanning = ref(false)
 const sentinel = ref<HTMLElement | null>(null)
@@ -325,13 +363,13 @@ const currentSort = computed(() => sortOptions.value.find((o) => o.id === store.
 
 const mainItems = computed(() => {
 	const f = store.filters
-	const onlyStatus = (s: string | null) => f.status === s
-		&& !f.format && !f.genre && !f.tag && !f.author && !f.series && !f.search
+	const onlyStatus = (st: string | null) => f.status === st
+		&& f.include.length === 0 && f.exclude.length === 0 && !f.search
 	return [
 		{ key: 'all', name: t('ebookreader', 'All books'), icon: mdiLibraryShelves, active: !store.hasFilters, action: () => store.resetFilters() },
-		{ key: 'reading', name: t('ebookreader', 'Continue reading'), icon: mdiBookClockOutline, active: onlyStatus('reading'), action: () => store.setFilter('status', f.status === 'reading' ? null : 'reading') },
-		{ key: 'unread', name: t('ebookreader', 'Unread'), icon: mdiBookOutline, active: onlyStatus('unread'), action: () => store.setFilter('status', f.status === 'unread' ? null : 'unread') },
-		{ key: 'finished', name: t('ebookreader', 'Finished'), icon: mdiBookCheckOutline, active: onlyStatus('finished'), action: () => store.setFilter('status', f.status === 'finished' ? null : 'finished') },
+		{ key: 'reading', name: t('ebookreader', 'Continue reading'), icon: mdiBookClockOutline, active: onlyStatus('reading'), action: () => store.setStatus(f.status === 'reading' ? null : 'reading') },
+		{ key: 'unread', name: t('ebookreader', 'Unread'), icon: mdiBookOutline, active: onlyStatus('unread'), action: () => store.setStatus(f.status === 'unread' ? null : 'unread') },
+		{ key: 'finished', name: t('ebookreader', 'Finished'), icon: mdiBookCheckOutline, active: onlyStatus('finished'), action: () => store.setStatus(f.status === 'finished' ? null : 'finished') },
 	]
 })
 
@@ -351,29 +389,6 @@ const facetGroups = computed(() => [
 	{ key: 'formats', filter: 'format' as const, name: t('ebookreader', 'Formats'), icon: mdiFileOutline, entries: store.facets.formats },
 ])
 
-const statusLabels = computed<Record<string, string>>(() => ({
-	unread: t('ebookreader', 'Unread'),
-	reading: t('ebookreader', 'Reading'),
-	finished: t('ebookreader', 'Finished'),
-}))
-
-const activeFilterChips = computed(() => {
-	const f = store.filters
-	const chips: { key: string, label: string, clear: () => void }[] = []
-	const add = (key: FilterKey, label: string, value: string | null) => {
-		if (value) {
-			chips.push({ key, label: `${label}: ${key === 'status' ? statusLabels.value[value] : value}`, clear: () => store.setFilter(key, null as never) })
-		}
-	}
-	add('status', t('ebookreader', 'Status'), f.status)
-	add('genre', t('ebookreader', 'Genre'), f.genre)
-	add('tag', t('ebookreader', 'Tag'), f.tag)
-	add('author', t('ebookreader', 'Author'), f.author)
-	add('series', t('ebookreader', 'Series'), f.series)
-	add('format', t('ebookreader', 'Format'), f.format)
-	return chips
-})
-
 const showContinue = computed(() => !store.hasFilters && store.recent.length > 0)
 
 const emptyDescription = computed(() => t('ebookreader', 'Books are found in your library folders (default: /Books). Put e-books there or choose other folders in the settings, then scan the library.'))
@@ -392,12 +407,52 @@ function onBookClick(book: Book): void {
 }
 
 /**
- * @param key
- * @param value
+ * Chip click in the grid or the details: add as include filter; the sidebar
+ * closes on narrow screens so the result is visible.
+ *
+ * @param term
  */
-function onDetailsFilter(key: FilterKey, value: string): void {
-	store.setFilter(key, value as never)
+function onDetailsFilter(term: FilterTerm): void {
+	if (store.termState(term) !== 'include') {
+		store.setTermState(term, 'include')
+	}
+	if (window.innerWidth < 1024) {
+		store.setActive(null)
+	}
 }
+
+/**
+ * A converted book is a new file: reload and show its details.
+ *
+ * @param fileId
+ */
+async function onConverted(fileId: number): Promise<void> {
+	await Promise.all([store.reload(), store.loadFacets()])
+	store.setActive(fileId)
+}
+
+// ---- URL <-> filter state ---------------------------------------------
+
+/**
+ * @param q
+ */
+function queryKey(q: Record<string, unknown>): string {
+	return JSON.stringify(Object.keys(q).sort().map((k) => [k, q[k]]))
+}
+
+watch(() => store.urlQuery, (q) => {
+	if (queryKey(q) !== queryKey(route.query)) {
+		void router.replace({ query: q })
+	}
+}, { deep: true })
+
+// Back/forward or a pasted link changed the URL
+watch(() => route.query, (q) => {
+	if (queryKey(q) !== queryKey(store.urlQuery)) {
+		store.applyState(queryToState(q))
+		void store.reload()
+	}
+})
 
 /**
  *
@@ -444,6 +499,11 @@ function observeSentinel(): void {
 }
 
 onMounted(() => {
+	if (Object.keys(route.query).length > 0) {
+		store.applyState(queryToState(route.query))
+	} else if (Object.keys(store.urlQuery).length > 0) {
+		void router.replace({ query: store.urlQuery })
+	}
 	void store.init()
 	if (typeof IntersectionObserver !== 'undefined') {
 		observer = new IntersectionObserver((entries) => {
@@ -498,24 +558,11 @@ onBeforeUnmount(() => {
 		min-width: 140px;
 	}
 
-	&__selection,
-	&__filters {
+	&__selection {
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
 		gap: 8px;
-	}
-
-	&__filter-chip {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		padding: 2px 8px 2px 12px;
-		border: none;
-		border-radius: var(--border-radius-pill);
-		background: var(--color-primary-element-light);
-		cursor: pointer;
-		min-height: 0;
 	}
 
 	&__center {
@@ -532,6 +579,11 @@ onBeforeUnmount(() => {
 }
 
 .library-nav {
+	&__excluded :deep(.app-navigation-entry__name) {
+		text-decoration: line-through;
+		opacity: 0.7;
+	}
+
 	&__footer {
 		display: flex;
 		flex-direction: column;

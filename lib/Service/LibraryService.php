@@ -490,23 +490,18 @@ class LibraryService {
 		$e = $qb->expr();
 		$qb->where($e->eq('b.user_id', $qb->createNamedParameter($userId)))
 			->andWhere($e->isNull('b.deleted_at'));
-		if ($q->format !== null) {
-			$qb->andWhere($e->eq('b.format', $qb->createNamedParameter($q->format)));
-		}
 		if ($q->status !== null) {
 			$qb->andWhere($e->eq('b.read_status', $qb->createNamedParameter($q->status)));
 		}
-		if ($q->genre !== null) {
-			$qb->andWhere($e->in('b.id', $this->tagSubquery($qb, Tag::TYPE_GENRE, $this->db->escapeLikeParameter($q->genre))));
+		$includes = [];
+		foreach ($q->effectiveIncludes() as $entry) {
+			$includes[] = $this->entryCondition($qb, $entry['type'], $entry['name'], false);
 		}
-		if ($q->tag !== null) {
-			$qb->andWhere($e->in('b.id', $this->tagSubquery($qb, Tag::TYPE_TAG, $this->db->escapeLikeParameter($q->tag))));
+		if ($includes !== []) {
+			$qb->andWhere($q->match === BookQuery::MATCH_ANY ? $e->orX(...$includes) : $e->andX(...$includes));
 		}
-		if ($q->author !== null) {
-			$qb->andWhere($e->iLike('b.authors', $qb->createNamedParameter('%' . $this->db->escapeLikeParameter($q->author) . '%')));
-		}
-		if ($q->series !== null) {
-			$qb->andWhere($e->iLike('b.series', $qb->createNamedParameter($this->db->escapeLikeParameter($q->series))));
+		foreach ($q->exclude as $entry) {
+			$qb->andWhere($this->entryCondition($qb, $entry['type'], $entry['name'], true));
 		}
 		if ($q->search !== null) {
 			$terms = array_slice(preg_split('/\s+/u', trim($q->search)) ?: [], 0, 8);
@@ -524,6 +519,29 @@ class LibraryService {
 					$e->in('b.id', $this->tagSubquery($qb, null, $like)),
 				));
 			}
+		}
+	}
+
+	/**
+	 * SQL condition for one filter entry (type genre|tag|author|series|format), case-insensitive.
+	 * $negate builds the opposite (books without it, NULL columns count as "without").
+	 */
+	private function entryCondition(IQueryBuilder $qb, string $type, string $name, bool $negate): string {
+		$e = $qb->expr();
+		switch ($type) {
+			case 'genre':
+			case 'tag':
+				$sub = $this->tagSubquery($qb, $type === 'genre' ? Tag::TYPE_GENRE : Tag::TYPE_TAG, $this->db->escapeLikeParameter($name));
+				return $negate ? $e->notIn('b.id', $sub) : $e->in('b.id', $sub);
+			case 'author':
+				$cond = $e->iLike('b.authors', $qb->createNamedParameter('%' . $this->db->escapeLikeParameter($name) . '%'));
+				return $negate ? '(' . $e->isNull('b.authors') . ' OR NOT (' . $cond . '))' : $cond;
+			case 'series':
+				$cond = $e->iLike('b.series', $qb->createNamedParameter($this->db->escapeLikeParameter($name)));
+				return $negate ? '(' . $e->isNull('b.series') . ' OR NOT (' . $cond . '))' : $cond;
+			default:
+				$p = $qb->createNamedParameter(strtolower($name));
+				return $negate ? $e->neq($qb->createFunction('LOWER(b.format)'), $p) : $e->eq($qb->createFunction('LOWER(b.format)'), $p);
 		}
 	}
 

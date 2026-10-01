@@ -11,6 +11,8 @@ namespace OCA\EbookReader\Controller;
 
 use OCA\EbookReader\AppInfo\Application;
 use OCA\EbookReader\Editor\EditorUtil;
+use OCA\EbookReader\Metadata\ComicArchive;
+use OCA\EbookReader\Service\ArchiveTools;
 use OCA\EbookReader\Service\LibraryService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
@@ -31,7 +33,7 @@ use OCP\IUserSession;
 use Psr\Log\LoggerInterface;
 
 /**
- * Serves CBZ comics page by page, so the browser does not have to download and unpack
+ * Serves comics (CBZ, CBT, and CBR/CB7 when a tool is installed) page by page, so the browser does not have to download and unpack
  * the whole archive. Pages are scaled down to the requested width bucket and cached in app data.
  */
 class ComicController extends Controller {
@@ -50,12 +52,13 @@ class ComicController extends Controller {
 		private IAppData $appData,
 		private ICacheFactory $cacheFactory,
 		private LoggerInterface $logger,
+		private ArchiveTools $archiveTools,
 	) {
 		parent::__construct(Application::APP_ID, $request);
 	}
 
 	/**
-	 * Page list of a CBZ in reading order (natural sort, like the editor and foliate).
+	 * Page list of a comic in reading order (natural sort, like the editor and foliate).
 	 *
 	 * @param int $fileId File id
 	 */
@@ -130,7 +133,15 @@ class ComicController extends Controller {
 		} catch (NotFoundException) {
 			return null;
 		}
-		return strtolower(pathinfo($file->getName(), PATHINFO_EXTENSION)) === 'cbz' ? $file : null;
+		$format = $this->formatOf($file);
+		// CBZ and CBT are read in PHP; CBR/CB7 only if a tool (7z/unrar/bsdtar) is installed. Otherwise 404:
+		// the client then downloads the file and unpacks it in the browser.
+		return $format !== null && $this->archiveTools->canRead($format) ? $file : null;
+	}
+
+	private function formatOf(File $file): ?string {
+		$ext = strtolower(pathinfo($file->getName(), PATHINFO_EXTENSION));
+		return in_array($ext, ['cbz', 'cbt', 'cbr', 'cb7'], true) ? $ext : null;
 	}
 
 	private function bucket(int $w): int {
@@ -156,6 +167,17 @@ class ComicController extends Controller {
 		}
 		[$path, $tmp] = $this->localPath($file);
 		try {
+			$format = $this->formatOf($file) ?? 'cbz';
+			if ($format !== 'cbz') {
+				$archive = ComicArchive::open($path, $format, $this->archiveTools);
+				try {
+					$pages = array_map(static fn (string $name): array => ['name' => $name, 'size' => 0], $archive->pages());
+				} finally {
+					$archive->close();
+				}
+				$cache->set($key, $pages, 3600);
+				return $pages;
+			}
 			$zip = EditorUtil::openZip($path);
 			$pages = [];
 			for ($i = 0; $i < $zip->numFiles; $i++) {
@@ -193,11 +215,21 @@ class ComicController extends Controller {
 	private function render(File $file, string $name, int $width, ISimpleFolder $folder, string $cacheName): array {
 		[$path, $tmp] = $this->localPath($file);
 		try {
-			$zip = EditorUtil::openZip($path);
-			try {
-				$data = EditorUtil::readEntry($zip, $name, self::MAX_PAGE);
-			} finally {
-				$zip->close();
+			$format = $this->formatOf($file) ?? 'cbz';
+			if ($format === 'cbz') {
+				$zip = EditorUtil::openZip($path);
+				try {
+					$data = EditorUtil::readEntry($zip, $name, self::MAX_PAGE);
+				} finally {
+					$zip->close();
+				}
+			} else {
+				$archive = ComicArchive::open($path, $format, $this->archiveTools);
+				try {
+					$data = $archive->read($name, self::MAX_PAGE);
+				} finally {
+					$archive->close();
+				}
 			}
 		} finally {
 			if ($tmp !== null) {
@@ -262,7 +294,7 @@ class ComicController extends Controller {
 				return [$local, null];
 			}
 		}
-		$tmp = $this->tempManager->getTemporaryFile('.zip');
+		$tmp = $this->tempManager->getTemporaryFile('.' . ($this->formatOf($file) ?? 'zip'));
 		if ($tmp === false) {
 			throw new \RuntimeException('temp file');
 		}

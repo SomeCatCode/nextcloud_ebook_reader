@@ -29,13 +29,22 @@
 			{{ authors }}
 		</div>
 		<div v-if="book.genres.length" class="book-card__chips">
-			<span v-for="g in book.genres.slice(0, 2)" :key="g" class="book-card__chip">{{ g }}</span>
+			<button
+				v-for="g in book.genres.slice(0, 2)"
+				:key="g"
+				type="button"
+				class="book-card__chip"
+				:title="t('ebookreader', 'Show books with “{name}”', { name: g })"
+				@click.stop="$emit('filter', { type: 'genre', name: g })"
+				@keydown.stop>
+				{{ g }}
+			</button>
 		</div>
 	</article>
 </template>
 
 <script setup lang="ts">
-import type { Book } from '../../types.ts'
+import type { Book, FilterTerm } from '../../types.ts'
 
 import { mdiCheckCircle, mdiCircleOutline } from '@mdi/js'
 import { t } from '@nextcloud/l10n'
@@ -51,7 +60,7 @@ const props = defineProps<{
 	selectMode?: boolean
 }>()
 
-defineEmits<{ click: [book: Book] }>()
+defineEmits<{ click: [book: Book], filter: [term: FilterTerm] }>()
 
 const title = computed(() => bookTitle(props.book))
 const authors = computed(() => bookAuthors(props.book))
@@ -152,7 +161,11 @@ const percent = computed(() => progressPercent(props.book))
 
 	&__chip {
 		max-width: 100%;
+		min-height: 0;
 		padding: 0 8px;
+		border: none;
+		cursor: pointer;
+		color: inherit;
 		border-radius: var(--border-radius-pill);
 		background: var(--color-background-dark);
 		font-size: 11px;
@@ -160,6 +173,10 @@ const percent = computed(() => progressPercent(props.book))
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+
+		&:hover {
+			background: var(--color-primary-element-light-hover);
+		}
 	}
 }
 </style>

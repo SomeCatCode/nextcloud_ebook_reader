@@ -113,3 +113,17 @@
   `occ ebookreader:scan` indexes inline by default, `--queue` only enqueues jobs. Cover of CBR books is never cleared by a re-index (client posts it).
 - `EbookCoverProvider::isAvailable()` takes `OCP\Files\FileInfo` (as in `IProviderV2`; the stub's `File` type was not contravariant).
 - Registrations wanted in `Application.php`: none beyond the existing ones (all listeners/jobs/commands/preview provider are already registered).
+
+## V2-A
+- `targetFolder` (organise) must lie inside one of the user's library folders (stricter than "inside the user's storage"), otherwise 400; books moved outside the library would be tombstoned by the next scan. Missing folders below it are created on apply.
+- Filter conditions are built inside `LibraryService::entryCondition()` with the query builder (IN / NOT IN sub-selects instead of literal EXISTS); no SQL-level unit test (needs a real DB), parsing is covered by `BookQueryTest`.
+- Organise status `error` is also returned for unknown fileIds; `failed` includes "no free file name". New `OrganizeException` (lib/Service) maps to HTTP 400.
+
+## V2-B
+- `BookDetails.vue` imports `../convert/ConvertDialog.vue`, which V2-C delivers. Until it exists, `npm run build` fails on that import (vue-tsc does not, because of the `*.vue` shim). Nothing was created at that path.
+- `BookFormat` in `src/types.ts` gained `cb7` and `cbt`. This makes `ReaderView.vue(576)` fail typecheck (`ReaderFormat` lacks `cb7`/`cbt`); that file is owned by V2-C.
+- Old single-value store API (`setFilter`, `toggleFilter`, `FilterKey`, `filters.genre` etc.) is removed. Replaced by `termState`, `setTermState`, `cycleTerm`, `onlyTerm`, `setMatch`, `setStatus`. `sort`/`order` stay separate refs next to `filters` (not inside it).
+- `match` is only sent to the API when there are at least 2 includes.
+- URL query keys: `include`, `exclude` (repeated `type:name`), `match=any`, `q`, `status`, `sort`, `order`; defaults omitted. When opening the library without a query, the persisted store state is written to the URL instead of being reset.
+- `BookDetails` emits `organize(fileId)` and `converted(fileId)`; `LibraryView` hosts `OrganizeDialog` and handles the reload.
+- Sorting needed no change (all six keys already existed); no series grouping added.

@@ -351,6 +351,13 @@ export function createReader(container: HTMLElement, options: ReaderOptions = {}
 		clearSearch() {
 			view?.clearSearch?.()
 		},
+		async getCover() {
+			try {
+				return (await opened?.book.getCover?.()) ?? null
+			} catch {
+				return null
+			}
+		},
 		on(event, cb) {
 			let set = listeners.get(event)
 			if (!set) {
