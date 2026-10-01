@@ -132,6 +132,27 @@ class BookMapper extends QBMapper {
 			->executeStatement();
 	}
 
+	/**
+	 * Tombstones older than the timestamp (ms), id-paged, for cleaning up dependent rows before they are purged.
+	 * @return list<array{id: int, user_id: string, file_id: int}>
+	 */
+	public function findTombstonesOlderThan(int $deletedBeforeMs, int $afterId = 0, int $limit = 1000): array {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('id', 'user_id', 'file_id')->from($this->getTableName())
+			->where($qb->expr()->isNotNull('deleted_at'))
+			->andWhere($qb->expr()->lt('deleted_at', $qb->createNamedParameter($deletedBeforeMs, IQueryBuilder::PARAM_INT)))
+			->andWhere($qb->expr()->gt('id', $qb->createNamedParameter($afterId, IQueryBuilder::PARAM_INT)))
+			->orderBy('id', 'ASC')
+			->setMaxResults($limit);
+		$res = $qb->executeQuery();
+		$out = [];
+		while ($row = $res->fetch()) {
+			$out[] = ['id' => (int)$row['id'], 'user_id' => (string)$row['user_id'], 'file_id' => (int)$row['file_id']];
+		}
+		$res->closeCursor();
+		return $out;
+	}
+
 	/** @return list<int> file ids that have no non-deleted rows any more but still had rows before (for cover cleanup) */
 	public function findDistinctFileIdsByUser(string $userId): array {
 		$qb = $this->db->getQueryBuilder();

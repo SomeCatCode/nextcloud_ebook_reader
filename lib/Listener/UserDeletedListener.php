@@ -11,6 +11,8 @@ namespace OCA\EbookReader\Listener;
 
 use OCA\EbookReader\Db\BookMapper;
 use OCA\EbookReader\Db\ProgressMapper;
+use OCA\EbookReader\Db\ShelfBookMapper;
+use OCA\EbookReader\Db\ShelfMapper;
 use OCA\EbookReader\Db\TagMapper;
 use OCA\EbookReader\Db\TaskMapper;
 use OCA\EbookReader\Service\CoverService;
@@ -22,7 +24,7 @@ use OCP\User\Events\UserDeletedEvent;
 use Psr\Log\LoggerInterface;
 
 /**
- * Owner: W1. Deletes books, tags, progress and orphaned covers of a deleted user.
+ * Owner: W1. Deletes books, tags, shelves, progress and orphaned covers of a deleted user.
  * @template-implements IEventListener<Event>
  */
 class UserDeletedListener implements IEventListener {
@@ -34,6 +36,8 @@ class UserDeletedListener implements IEventListener {
 		private CoverService $covers,
 		private IAppData $appData,
 		private LoggerInterface $logger,
+		private ShelfMapper $shelfMapper,
+		private ShelfBookMapper $shelfBookMapper,
 	) {
 	}
 
@@ -55,6 +59,13 @@ class UserDeletedListener implements IEventListener {
 		$this->step($userId, 'delete books', fn () => $this->bookMapper->deleteByUser($userId));
 		$this->step($userId, 'delete progress', fn () => $this->progressMapper->deleteByUser($userId));
 		$this->step($userId, 'delete tasks', fn () => $this->taskMapper->deleteByUser($userId));
+		$this->step($userId, 'delete shelves', function () use ($userId): void {
+			$ids = $this->shelfMapper->findIdsByUser($userId);
+			if ($ids !== []) {
+				$this->shelfBookMapper->deleteByShelves($ids);
+			}
+			$this->shelfMapper->deleteByUser($userId);
+		});
 
 		// Covers and comic page caches are shared between users of the same file: only drop them when nobody else has an active row.
 		$orphans = [];

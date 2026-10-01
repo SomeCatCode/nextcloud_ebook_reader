@@ -22,7 +22,13 @@ import type {
 	RenameRequest,
 	SaveResult,
 	ScanResult,
+	SeriesEntry,
+	SeriesQuery,
 	Settings,
+	Shelf,
+	ShelfBooksResult,
+	ShelfType,
+	SmartQuery,
 	Structure,
 	SyncResult,
 	Task,
@@ -136,16 +142,92 @@ async function request<T>(method: Method, path: string, options: RequestOptions 
  * @param query
  */
 export function listBooks(query: BookQuery = {}): Promise<BookList> {
+	return request<BookList>('get', '/books', { params: queryParams(query) })
+}
+
+/**
+ * @param query
+ */
+function queryParams(query: BookQuery | SeriesQuery): Record<string, unknown> {
 	const { include, exclude, ...rest } = query
 	const termToParam = (t: FilterTerm): string => `${t.type}:${t.name}`
-	return request<BookList>('get', '/books', {
-		params: {
-			...rest,
-			// axios serialises arrays as include[]=a&include[]=b
-			include: include?.length ? include.map(termToParam) : undefined,
-			exclude: exclude?.length ? exclude.map(termToParam) : undefined,
-		},
-	})
+	return {
+		...rest,
+		// axios serialises arrays as include[]=a&include[]=b
+		include: include?.length ? include.map(termToParam) : undefined,
+		exclude: exclude?.length ? exclude.map(termToParam) : undefined,
+	}
+}
+
+/**
+ * Series cards for the current filters (same filter parameters as the book list).
+ *
+ * @param query
+ */
+export async function listSeries(query: SeriesQuery = {}): Promise<SeriesEntry[]> {
+	const res = await request<{ series: SeriesEntry[] }>('get', '/series', { params: queryParams(query) })
+	return res.series
+}
+
+// ---- Shelves ------------------------------------------------------------
+
+/**
+ *
+ */
+export async function listShelves(): Promise<Shelf[]> {
+	return (await request<{ shelves: Shelf[] }>('get', '/shelves')).shelves
+}
+
+/**
+ * @param body
+ * @param body.name
+ * @param body.type
+ * @param body.query
+ */
+export function createShelf(body: { name: string, type: ShelfType, query?: SmartQuery }): Promise<Shelf> {
+	return request<Shelf>('post', '/shelves', { body })
+}
+
+/**
+ * @param id
+ * @param body
+ * @param body.name
+ * @param body.query
+ * @param body.sortOrder
+ */
+export function patchShelf(id: number, body: { name?: string, query?: SmartQuery, sortOrder?: number }): Promise<Shelf> {
+	return request<Shelf>('patch', `/shelves/${id}`, { body })
+}
+
+/**
+ * @param id
+ */
+export async function deleteShelf(id: number): Promise<void> {
+	await request<unknown>('delete', `/shelves/${id}`)
+}
+
+/**
+ * @param id
+ * @param fileIds
+ */
+export function addToShelf(id: number, fileIds: number[]): Promise<ShelfBooksResult> {
+	return request<ShelfBooksResult>('post', `/shelves/${id}/books`, { body: { fileIds } })
+}
+
+/**
+ * @param id
+ * @param fileIds
+ */
+export function removeFromShelf(id: number, fileIds: number[]): Promise<{ removed: number }> {
+	return request<{ removed: number }>('delete', `/shelves/${id}/books`, { body: { fileIds } })
+}
+
+/**
+ * @param id
+ * @param fileIds
+ */
+export async function reorderShelf(id: number, fileIds: number[]): Promise<void> {
+	await request<unknown>('put', `/shelves/${id}/books/order`, { body: { fileIds } })
 }
 
 /**

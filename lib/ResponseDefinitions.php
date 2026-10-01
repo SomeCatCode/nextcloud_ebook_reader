@@ -95,6 +95,37 @@ namespace OCA\EbookReader;
  *     total: int,
  * }
  *
+ * @psalm-type EbookReaderSmartQuery = array{
+ *     include: list<string>,
+ *     exclude: list<string>,
+ *     match: 'all'|'any',
+ *     search: string,
+ *     status: ?string,
+ *     sort: string,
+ *     order: 'asc'|'desc',
+ * }
+ *
+ * @psalm-type EbookReaderShelf = array{
+ *     id: int,
+ *     name: string,
+ *     type: 'manual'|'smart',
+ *     query: ?EbookReaderSmartQuery,
+ *     count: int,
+ *     coverFileIds: list<int>,
+ *     sortOrder: int,
+ *     createdAt: int,
+ *     updatedAt: int,
+ * }
+ *
+ * @psalm-type EbookReaderSeries = array{
+ *     name: string,
+ *     count: int,
+ *     readCount: int,
+ *     coverFileIds: list<int>,
+ *     firstFileId: int,
+ *     lastAddedAt: int,
+ * }
+ *
  * @psalm-type EbookReaderOrganizeItem = array{
  *     fileId: int,
  *     from: string,

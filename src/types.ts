@@ -66,9 +66,9 @@ export interface Book {
 
 export type MetadataOverrideField = 'title' | 'authors' | 'series' | 'seriesIndex' | 'description' | 'language' | 'publisher' | 'isbn' | 'publishedAt'
 
-export type SortKey = 'title' | 'author' | 'series' | 'rating' | 'added' | 'read'
+export type SortKey = 'title' | 'author' | 'series' | 'rating' | 'added' | 'read' | 'shelf'
 
-export type FilterType = 'genre' | 'tag' | 'author' | 'series' | 'format'
+export type FilterType = 'genre' | 'tag' | 'author' | 'series' | 'format' | 'shelf'
 
 export interface FilterTerm {
 	type: FilterType
@@ -85,6 +85,8 @@ export interface BookQuery {
 	status?: ReadStatus
 	sort?: SortKey
 	order?: 'asc' | 'desc'
+	/** 0: only books without a series, 1: only books with one */
+	inSeries?: 0 | 1
 	limit?: number
 	offset?: number
 }
@@ -346,3 +348,48 @@ export interface ArchiveEntries {
 	etag: string
 	entries: { name: string, size: number }[]
 }
+
+// ---- Shelves, series (CONTRACTS-v4 sections 1 and 2) -----------------------
+
+export type ShelfType = 'manual' | 'smart'
+
+/** Saved library filter state of a smart shelf; terms are "type:name" strings. */
+export interface SmartQuery {
+	include: string[]
+	exclude: string[]
+	match: MatchMode
+	search: string
+	status: ReadStatus | null
+	sort: string
+	order: 'asc' | 'desc'
+}
+
+export interface Shelf {
+	id: number
+	name: string
+	type: ShelfType
+	query: SmartQuery | null
+	count: number
+	/** max 4 */
+	coverFileIds: number[]
+	sortOrder: number
+	createdAt: number
+	updatedAt: number
+}
+
+export interface ShelfBooksResult {
+	added: number
+	skipped: number
+}
+
+export interface SeriesEntry {
+	name: string
+	count: number
+	readCount: number
+	/** max 3, lowest series index first */
+	coverFileIds: number[]
+	firstFileId: number
+	lastAddedAt: number
+}
+
+export type SeriesQuery = Omit<BookQuery, 'inSeries' | 'limit' | 'offset' | 'sort'> & { sort?: 'name' | 'added' }
