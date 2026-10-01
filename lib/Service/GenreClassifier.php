@@ -71,6 +71,13 @@ class GenreClassifier {
 		if ($name === '') {
 			return null;
 		}
+		if (str_contains($name, FilterTerms::SEPARATOR)) {
+			// hierarchy "Fantasy/High Fantasy": trim spaces around the separator, max. 5 levels
+			$name = FilterTerms::normalizeHierarchy($name);
+			if ($name === null) {
+				return null;
+			}
+		}
 		return mb_substr($name, 0, self::MAX_NAME_LENGTH);
 	}
 

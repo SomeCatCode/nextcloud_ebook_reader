@@ -53,6 +53,8 @@ class EditorService {
 	private const WRITABLE_CAPABILITIES = ['metadata' => true, 'cover' => true, 'content' => true, 'toc' => true, 'writesFile' => true];
 	private const DB_ONLY_CAPABILITIES = ['metadata' => true, 'cover' => false, 'content' => false, 'toc' => false, 'writesFile' => false];
 	public const PARTS = ['all', 'metadata'];
+	public const BULK_MAX_FILES = 500;
+	private const BULK_MAX_AUTHORS = 50;
 	private const METADATA_KEYS = ['title', 'authors', 'series', 'seriesIndex', 'description', 'language', 'publisher', 'isbn', 'publishedAt', 'genres', 'tags'];
 
 	/** @var list<BookEditorInterface> */
@@ -481,8 +483,279 @@ class EditorService {
 			}
 			return $out;
 		};
+		$ids = $this->bulkFileIds($body['fileIds'] ?? null);
+		[$addG, $remG, $addT, $remT] = [$list('addGenres'), $list('removeGenres'), $list('addTags'), $list('removeTags')];
+		$lower = static fn (array $a): array => array_map('mb_strtolower', $a);
+
+		$res = $this->runBulk($userId, $ids, function (array $cur) use ($addG, $remG, $addT, $remT, $lower): array {
+			return [
+				'genres' => $this->mergeSet($cur['genres'], $addG, $lower($remG)),
+				'tags' => $this->mergeSet($cur['tags'], $addT, $lower($remT)),
+			];
+		}, null);
+		return ['updated' => $res['updated'] + $res['unchanged'], 'failed' => $res['failed'], 'writeQueued' => $res['writeQueued']];
+	}
+
+	/**
+	 * Validates and normalizes a bulk metadata request. The result is itself a valid request (idempotent), so it can be
+	 * stored in a task and run later.
+	 *
+	 * @param array<string, mixed> $body
+	 * @return array<string, mixed> normalized request (fileIds, authors, series, publisher, language, genres, tags; only the provided sections)
+	 * @throws InvalidEditRequestException
+	 */
+	public function normalizeBulkMetadata(array $body): array {
+		$out = ['fileIds' => $this->bulkFileIds($body['fileIds'] ?? null)];
+
+		$name = static function (mixed $v, string $what, int $max): string {
+			if (!is_scalar($v)) {
+				throw new InvalidEditRequestException('"' . $what . '" must be a string.');
+			}
+			$s = trim((string)$v);
+			if (mb_strlen($s) > $max) {
+				throw new InvalidEditRequestException('"' . $what . '" is too long (max ' . $max . ' characters).');
+			}
+			return $s;
+		};
+		$names = static function (mixed $v, string $what, int $maxCount) use ($name): array {
+			if (!is_array($v)) {
+				throw new InvalidEditRequestException('"' . $what . '" must be a list.');
+			}
+			$list = [];
+			$seen = [];
+			foreach ($v as $x) {
+				$s = $name($x, $what, 512);
+				if ($s !== '' && !isset($seen[mb_strtolower($s)])) {
+					$seen[mb_strtolower($s)] = true;
+					$list[] = $s;
+				}
+			}
+			if (count($list) > $maxCount) {
+				throw new InvalidEditRequestException('Too many entries in "' . $what . '" (max ' . $maxCount . ').');
+			}
+			return $list;
+		};
+		$section = static function (string $key) use ($body): ?array {
+			if (!array_key_exists($key, $body) || $body[$key] === null) {
+				return null;
+			}
+			if (!is_array($body[$key])) {
+				throw new InvalidEditRequestException('"' . $key . '" must be an object.');
+			}
+			return $body[$key];
+		};
+
+		$authors = $section('authors');
+		if ($authors !== null) {
+			$mode = $authors['mode'] ?? null;
+			if (!in_array($mode, ['replace', 'add', 'remove'], true)) {
+				throw new InvalidEditRequestException('"authors.mode" must be replace, add or remove.');
+			}
+			$values = $names($authors['values'] ?? [], 'authors.values', self::BULK_MAX_AUTHORS);
+			if ($mode !== 'replace' && $values === []) {
+				throw new InvalidEditRequestException('"authors.values" must not be empty.');
+			}
+			$out['authors'] = ['mode' => $mode, 'values' => $values];
+		}
+
+		$series = $section('series');
+		if ($series !== null) {
+			$mode = $series['mode'] ?? null;
+			if ($mode === 'clear') {
+				$out['series'] = ['mode' => 'clear'];
+			} elseif ($mode === 'set') {
+				$seriesName = $name($series['name'] ?? '', 'series.name', 512);
+				if ($seriesName === '') {
+					throw new InvalidEditRequestException('"series.name" must not be empty.');
+				}
+				$index = ['mode' => 'keep'];
+				$idx = $series['index'] ?? null;
+				if ($idx !== null) {
+					if (!is_array($idx) || !in_array($idx['mode'] ?? null, ['keep', 'sequence', 'sortTitle'], true)) {
+						throw new InvalidEditRequestException('"series.index.mode" must be keep, sequence or sortTitle.');
+					}
+					$index = ['mode' => $idx['mode']];
+					if ($idx['mode'] !== 'keep') {
+						$start = $idx['start'] ?? 1;
+						$step = $idx['step'] ?? 1;
+						if (!is_numeric($start) || (float)$start < 0 || (float)$start > 1000000) {
+							throw new InvalidEditRequestException('"series.index.start" must be a number >= 0.');
+						}
+						if (!is_numeric($step) || (float)$step <= 0 || (float)$step > 1000000) {
+							throw new InvalidEditRequestException('"series.index.step" must be a number > 0.');
+						}
+						$index['start'] = (float)$start;
+						$index['step'] = (float)$step;
+					}
+				}
+				$out['series'] = ['mode' => 'set', 'name' => $seriesName, 'index' => $index];
+			} else {
+				throw new InvalidEditRequestException('"series.mode" must be set or clear.');
+			}
+		}
+
+		foreach (['publisher' => 255, 'language' => 32] as $key => $max) {
+			$sec = $section($key);
+			if ($sec === null) {
+				continue;
+			}
+			$mode = $sec['mode'] ?? null;
+			if ($mode === 'clear') {
+				$out[$key] = ['mode' => 'clear'];
+			} elseif ($mode === 'set') {
+				$value = $name($sec['value'] ?? '', $key . '.value', $max);
+				if ($value === '') {
+					throw new InvalidEditRequestException('"' . $key . '.value" must not be empty.');
+				}
+				$out[$key] = ['mode' => 'set', 'value' => $value];
+			} else {
+				throw new InvalidEditRequestException('"' . $key . '.mode" must be set or clear.');
+			}
+		}
+
+		foreach (['genres', 'tags'] as $key) {
+			$sec = $section($key);
+			if ($sec === null) {
+				continue;
+			}
+			$add = $names($sec['add'] ?? [], $key . '.add', 200);
+			$remove = $names($sec['remove'] ?? [], $key . '.remove', 200);
+			if ($add !== [] || $remove !== []) {
+				$out[$key] = ['add' => $add, 'remove' => $remove];
+			}
+		}
+
+		if (count($out) === 1) {
+			throw new InvalidEditRequestException('Nothing to change.');
+		}
+		return $out;
+	}
+
+	/** Whether metadata edits of this user reach the book files (target "file" or "both"). */
+	public function metadataTargetWritesFiles(string $userId): bool {
+		return in_array($this->targetOf($this->settings->get($userId)), ['file', 'both'], true);
+	}
+
+	/**
+	 * Applies the same metadata change to several books. Only the provided fields change; every book keeps the rest.
+	 * Each book goes through saveMetadataOnly(), so the metadata target, overrides and the sidecar behave as in single edits.
+	 *
+	 * @param array<string, mixed> $body see normalizeBulkMetadata()
+	 * @param ?callable(float, string): void $progress
+	 * @return array{updated: int, unchanged: int, failed: list<array{fileId: int, error: string}>, writeQueued: bool}
+	 * @throws InvalidEditRequestException
+	 */
+	public function bulkMetadata(string $userId, array $body, ?callable $progress = null): array {
+		$plan = $this->normalizeBulkMetadata($body);
+		/** @var list<int> $ids */
+		$ids = $plan['fileIds'];
+
+		$authors = is_array($plan['authors'] ?? null) ? $plan['authors'] : null;
+		$series = is_array($plan['series'] ?? null) ? $plan['series'] : null;
+		$publisher = is_array($plan['publisher'] ?? null) ? $plan['publisher'] : null;
+		$language = is_array($plan['language'] ?? null) ? $plan['language'] : null;
+		$genres = is_array($plan['genres'] ?? null) ? $plan['genres'] : null;
+		$tags = is_array($plan['tags'] ?? null) ? $plan['tags'] : null;
+		$lower = static fn (array $a): array => array_map('mb_strtolower', $a);
+
+		/** @var array<int, int> $position fileId => position used for numbering */
+		$position = array_flip($ids);
+		$index = is_array($series['index'] ?? null) ? $series['index'] : [];
+		$indexMode = (string)($index['mode'] ?? 'keep');
+		$start = (float)($index['start'] ?? 1);
+		$step = (float)($index['step'] ?? 1);
+		if (($series['mode'] ?? null) === 'set' && $indexMode === 'sortTitle') {
+			$position = $this->titleOrder($userId, $ids);
+		}
+
+		return $this->runBulk($userId, $ids, function (array $cur, int $fileId) use ($authors, $series, $publisher, $language, $genres, $tags, $lower, $position, $indexMode, $start, $step): array {
+			$patch = [];
+			if ($authors !== null) {
+				$values = $authors['values'];
+				$current = is_array($cur['authors']) ? $cur['authors'] : [];
+				if ($authors['mode'] === 'replace') {
+					$patch['authors'] = $values;
+				} elseif ($authors['mode'] === 'add') {
+					$known = array_map('mb_strtolower', $current);
+					$patch['authors'] = $current;
+					foreach ($values as $v) {
+						if (!in_array(mb_strtolower($v), $known, true)) {
+							$patch['authors'][] = $v;
+							$known[] = mb_strtolower($v);
+						}
+					}
+				} else {
+					$patch['authors'] = $this->mergeSet($current, [], $lower($values));
+				}
+			}
+			if ($series !== null) {
+				if ($series['mode'] === 'clear') {
+					$patch['series'] = null;
+					$patch['seriesIndex'] = null;
+				} else {
+					$patch['series'] = $series['name'];
+					if ($indexMode !== 'keep' && isset($position[$fileId])) {
+						$patch['seriesIndex'] = round($start + (float)$position[$fileId] * $step, 4);
+					}
+				}
+			}
+			if ($publisher !== null) {
+				$patch['publisher'] = $publisher['mode'] === 'set' ? $publisher['value'] : null;
+			}
+			if ($language !== null) {
+				$patch['language'] = $language['mode'] === 'set' ? $language['value'] : null;
+			}
+			if ($genres !== null) {
+				$patch['genres'] = $this->mergeSet($cur['genres'], $genres['add'], $lower($genres['remove']));
+			}
+			if ($tags !== null) {
+				$patch['tags'] = $this->mergeSet($cur['tags'], $tags['add'], $lower($tags['remove']));
+			}
+			return $patch;
+		}, $progress);
+	}
+
+	/**
+	 * Position (0-based) of each file when sorted naturally by title (file name without extension if there is none).
+	 * Books that can not be read go last in their original order.
+	 *
+	 * @param list<int> $ids
+	 * @return array<int, int> fileId => position
+	 */
+	private function titleOrder(string $userId, array $ids): array {
+		$keys = [];
+		foreach ($ids as $fileId) {
+			$key = null;
+			try {
+				$title = trim((string)$this->library->getBook($userId, $fileId)->getTitle());
+				if ($title !== '') {
+					$key = $title;
+				} else {
+					$name = $this->library->getFileForUser($userId, $fileId)->getName();
+					$key = pathinfo($name, PATHINFO_FILENAME);
+				}
+			} catch (\Throwable) {
+				// reported as failed by the main loop
+			}
+			$keys[$fileId] = $key;
+		}
+		$order = $ids;
+		usort($order, static function (int $a, int $b) use ($keys): int {
+			if ($keys[$a] === null || $keys[$b] === null) {
+				return ($keys[$a] === null ? 1 : 0) <=> ($keys[$b] === null ? 1 : 0);
+			}
+			return strnatcasecmp($keys[$a], $keys[$b]);
+		});
+		return array_flip($order);
+	}
+
+	/**
+	 * @return list<int> unique file ids in the given order
+	 * @throws InvalidEditRequestException
+	 */
+	private function bulkFileIds(mixed $raw): array {
 		$ids = [];
-		foreach (is_array($body['fileIds'] ?? null) ? $body['fileIds'] : [] as $id) {
+		foreach (is_array($raw) ? $raw : [] as $id) {
 			if (is_int($id) || (is_string($id) && ctype_digit($id))) {
 				$ids[(int)$id] = true;
 			}
@@ -490,34 +763,50 @@ class EditorService {
 		if ($ids === []) {
 			throw new InvalidEditRequestException('fileIds must not be empty.');
 		}
-		if (count($ids) > 500) {
+		if (count($ids) > self::BULK_MAX_FILES) {
 			throw new InvalidEditRequestException('Too many files.');
 		}
-		[$addG, $remG, $addT, $remT] = [$list('addGenres'), $list('removeGenres'), $list('addTags'), $list('removeTags')];
-		$lower = static fn (array $a): array => array_map('mb_strtolower', $a);
+		return array_keys($ids);
+	}
 
+	/**
+	 * The loop shared by bulkTags() and bulkMetadata(): one saveMetadataOnly() per book, failures are collected.
+	 *
+	 * @param list<int> $ids
+	 * @param callable(array<string, mixed>, int, int): array<string, mixed> $patchFor current metadata, file id, position => patch
+	 * @param ?callable(float, string): void $progress
+	 * @return array{updated: int, unchanged: int, failed: list<array{fileId: int, error: string}>, writeQueued: bool}
+	 */
+	private function runBulk(string $userId, array $ids, callable $patchFor, ?callable $progress): array {
 		$updated = 0;
+		$unchanged = 0;
 		$queued = false;
 		$failed = [];
-		foreach (array_keys($ids) as $fileId) {
+		$total = count($ids);
+		foreach ($ids as $i => $fileId) {
+			if ($progress !== null) {
+				$progress($i / $total, 'Book ' . ($i + 1) . ' of ' . $total);
+			}
 			try {
 				$book = $this->library->getBook($userId, $fileId);
 				$cur = $this->metadataOf($book);
-				$genres = $this->mergeSet($cur['genres'], $addG, $lower($remG));
-				$tags = $this->mergeSet($cur['tags'], $addT, $lower($remT));
-				if ($genres === $cur['genres'] && $tags === $cur['tags']) {
-					$updated++;
+				$patch = $this->normalizePatch($patchFor($cur, $fileId, $i));
+				if ($patch === [] || $this->sameMetadata($cur, array_merge($cur, $patch), false)) {
+					$unchanged++;
 					continue;
 				}
-				$res = $this->saveMetadataOnly($userId, $fileId, ['genres' => $genres, 'tags' => $tags]);
+				$res = $this->saveMetadataOnly($userId, $fileId, $patch);
 				$queued = $queued || $res['writeQueued'];
 				$updated++;
 			} catch (\Throwable $e) {
-				$this->logger->info('Bulk tagging failed for file ' . $fileId . ': ' . $e->getMessage(), ['app' => Application::APP_ID]);
+				$this->logger->info('Bulk metadata edit failed for file ' . $fileId . ': ' . $e->getMessage(), ['app' => Application::APP_ID]);
 				$failed[] = ['fileId' => $fileId, 'error' => $e instanceof EditorException || $e instanceof DoesNotExistException || $e instanceof NotFoundException ? $e->getMessage() : 'Fehler beim Speichern.'];
 			}
 		}
-		return ['updated' => $updated, 'failed' => $failed, 'writeQueued' => $queued];
+		if ($progress !== null) {
+			$progress(1.0, 'Done');
+		}
+		return ['updated' => $updated, 'unchanged' => $unchanged, 'failed' => $failed, 'writeQueued' => $queued];
 	}
 
 	/**

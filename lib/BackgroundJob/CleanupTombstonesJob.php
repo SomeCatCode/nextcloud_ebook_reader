@@ -10,6 +10,8 @@ declare(strict_types=1);
 namespace OCA\EbookReader\BackgroundJob;
 
 use OCA\EbookReader\Db\BookMapper;
+use OCA\EbookReader\Db\ShelfBookMapper;
+use OCA\EbookReader\Db\ShelfMapper;
 use OCA\EbookReader\Service\ArchiveCache;
 use OCA\EbookReader\Service\TaskService;
 use OCP\AppFramework\Utility\ITimeFactory;
@@ -34,6 +36,8 @@ class CleanupTombstonesJob extends TimedJob {
 		private LoggerInterface $logger,
 		private TaskService $tasks,
 		private ArchiveCache $archiveCache,
+		private ShelfMapper $shelfMapper,
+		private ShelfBookMapper $shelfBookMapper,
 	) {
 		parent::__construct($timeFactory);
 		$this->setInterval(24 * 60 * 60);
@@ -43,6 +47,11 @@ class CleanupTombstonesJob extends TimedJob {
 	#[\Override]
 	protected function run($argument): void {
 		$cutoff = $this->timeFactory->getTime() - self::RETENTION_DAYS * 86400;
+		try {
+			$this->cleanupShelfAssignments($cutoff * 1000);
+		} catch (\Throwable $e) {
+			$this->logger->warning('Shelf cleanup failed: ' . $e->getMessage(), ['app' => 'ebookreader']);
+		}
 		$this->bookMapper->deleteTombstonesOlderThan($cutoff * 1000);
 		$this->cleanupComicPages($cutoff);
 		try {
@@ -55,6 +64,26 @@ class CleanupTombstonesJob extends TimedJob {
 		} catch (\Throwable $e) {
 			$this->logger->warning('Archive cache cleanup failed: ' . $e->getMessage(), ['app' => 'ebookreader']);
 		}
+	}
+
+	/**
+	 * Drops the shelf assignments of the tombstones that are about to be purged (tombstones can come back until then,
+	 * so the assignments are kept as long as the row exists).
+	 */
+	private function cleanupShelfAssignments(int $cutoffMs): void {
+		$afterId = 0;
+		do {
+			$batch = $this->bookMapper->findTombstonesOlderThan($cutoffMs, $afterId, 1000);
+			$byUser = [];
+			foreach ($batch as $row) {
+				$byUser[$row['user_id']][] = $row['file_id'];
+				$afterId = max($afterId, $row['id']);
+			}
+			foreach ($byUser as $userId => $fileIds) {
+				$shelfIds = $this->shelfMapper->findIdsByUser((string)$userId);
+				$this->shelfBookMapper->deleteFilesFromShelves($shelfIds, $fileIds);
+			}
+		} while (count($batch) >= 1000);
 	}
 
 	private function cleanupComicPages(int $cutoff): void {

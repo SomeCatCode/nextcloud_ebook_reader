@@ -37,6 +37,12 @@
 						</template>
 						{{ t('ebookreader', 'Show in Files') }}
 					</NcButton>
+					<NcButton @click="showShelf = true">
+						<template #icon>
+							<NcIconSvgWrapper :path="mdiBookshelf" />
+						</template>
+						{{ t('ebookreader', 'Add to shelf…') }}
+					</NcButton>
 					<NcButton @click="$emit('organize', book.fileId)">
 						<template #icon>
 							<NcIconSvgWrapper :path="mdiFolderMoveOutline" />
@@ -155,6 +161,11 @@
 		</NcAppSidebarTab>
 	</NcAppSidebar>
 
+	<AddToShelfDialog
+		v-if="showShelf"
+		:fileIds="[book.fileId]"
+		@close="showShelf = false" />
+
 	<ConvertDialog
 		v-if="showConvert"
 		:book="book"
@@ -165,7 +176,7 @@
 <script setup lang="ts">
 import type { Book, FilterTerm, MetadataOverrideField, ReadStatus } from '../../types.ts'
 
-import { mdiBookOpenPageVariant, mdiBookOpenVariant, mdiDeleteOutline, mdiFileReplaceOutline, mdiFolderMoveOutline, mdiFolderOutline, mdiPencil, mdiSwapHorizontal } from '@mdi/js'
+import { mdiBookOpenPageVariant, mdiBookOpenVariant, mdiBookshelf, mdiDeleteOutline, mdiFileReplaceOutline, mdiFolderMoveOutline, mdiFolderOutline, mdiPencil, mdiSwapHorizontal } from '@mdi/js'
 import { showError, showSuccess } from '@nextcloud/dialogs'
 import { t } from '@nextcloud/l10n'
 import { generateUrl } from '@nextcloud/router'
@@ -179,6 +190,7 @@ import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcProgressBar from '@nextcloud/vue/components/NcProgressBar'
 import NcSelect from '@nextcloud/vue/components/NcSelect'
 import ConvertDialog from '../convert/ConvertDialog.vue'
+import AddToShelfDialog from './AddToShelfDialog.vue'
 import BookCover from './BookCover.vue'
 import StarRating from './StarRating.vue'
 import TagEditor from './TagEditor.vue'
@@ -203,6 +215,7 @@ const store = useLibraryStore()
 const settings = useSettingsStore()
 
 const showConvert = ref(false)
+const showShelf = ref(false)
 const warnings = ref<string[]>([])
 const writeQueued = ref(false)
 const embedding = ref(false)
@@ -253,6 +266,7 @@ const resettingOverride = ref(false)
 // the sidebar stays mounted when another book is selected: drop per-book local state
 watch(() => props.book.fileId, () => {
 	showConvert.value = false
+	showShelf.value = false
 	writeQueued.value = false
 	warnings.value = []
 	resettingOverride.value = false

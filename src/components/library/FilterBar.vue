@@ -49,20 +49,90 @@
 		<NcButton size="small" variant="tertiary" @click="store.resetFilters()">
 			{{ t('ebookreader', 'Clear filters') }}
 		</NcButton>
+
+		<NcButton
+			v-if="store.smartShelfDirty"
+			size="small"
+			variant="secondary"
+			:disabled="updating"
+			@click="updateShelf">
+			<template #icon>
+				<NcIconSvgWrapper :path="mdiContentSaveOutline" :size="16" />
+			</template>
+			{{ t('ebookreader', 'Update shelf') }}
+		</NcButton>
+		<NcButton
+			v-if="canSaveShelf"
+			size="small"
+			variant="tertiary"
+			@click="showSave = true">
+			<template #icon>
+				<NcIconSvgWrapper :path="mdiFilterPlusOutline" :size="16" />
+			</template>
+			{{ t('ebookreader', 'Save as smart shelf…') }}
+		</NcButton>
 	</div>
+
+	<ShelfNameDialog
+		v-if="showSave"
+		:title="t('ebookreader', 'Save as smart shelf')"
+		:confirmLabel="t('ebookreader', 'Save')"
+		:onSubmit="saveShelf"
+		@close="showSave = false" />
 </template>
 
 <script setup lang="ts">
 import type { FilterTerm } from '../../types.ts'
 
-import { mdiClose, mdiMinusCircleOutline, mdiPlusCircleOutline } from '@mdi/js'
+import { mdiClose, mdiContentSaveOutline, mdiFilterPlusOutline, mdiMinusCircleOutline, mdiPlusCircleOutline } from '@mdi/js'
+import { showError, showSuccess } from '@nextcloud/dialogs'
 import { t } from '@nextcloud/l10n'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
+import ShelfNameDialog from './ShelfNameDialog.vue'
+import { displayTermName } from '../../services/hierarchy.ts'
 import { termToString, useLibraryStore } from '../../stores/library.ts'
+import { useShelvesStore } from '../../stores/shelves.ts'
 
 const store = useLibraryStore()
+const shelves = useShelvesStore()
+const showSave = ref(false)
+const updating = ref(false)
+
+/** a smart shelf needs real filters, a manual shelf view is no filter to save */
+const canSaveShelf = computed(() => store.filters.include.some((x) => x.type !== 'shelf')
+	|| store.filters.exclude.length > 0
+	|| store.filters.status !== null
+	|| store.filters.search.trim() !== '')
+
+/**
+ * @param name
+ */
+async function saveShelf(name: string): Promise<void> {
+	const shelf = await shelves.create(name, 'smart', store.currentSmartQuery())
+	store.adoptSmartShelf(shelf.id)
+	showSuccess(t('ebookreader', 'Smart shelf “{name}” saved', { name }))
+}
+
+/**
+ *
+ */
+async function updateShelf(): Promise<void> {
+	const id = store.smartShelfId
+	if (id === null) {
+		return
+	}
+	updating.value = true
+	try {
+		await shelves.updateQuery(id, store.currentSmartQuery())
+		showSuccess(t('ebookreader', 'Shelf updated'))
+	} catch {
+		showError(t('ebookreader', 'Could not update the shelf'))
+	} finally {
+		updating.value = false
+	}
+}
 
 const statusLabels = computed<Record<string, string>>(() => ({
 	unread: t('ebookreader', 'Unread'),
@@ -76,14 +146,29 @@ const typeLabels = computed<Record<string, string>>(() => ({
 	author: t('ebookreader', 'Author'),
 	series: t('ebookreader', 'Series'),
 	format: t('ebookreader', 'Format'),
+	shelf: t('ebookreader', 'Shelf'),
 }))
+
+/**
+ * @param term
+ */
+function termLabel(term: FilterTerm): string {
+	if (term.type === 'format') {
+		return term.name.toUpperCase()
+	}
+	if (term.type === 'shelf') {
+		return shelves.byId(Number.parseInt(term.name, 10))?.name ?? term.name
+	}
+	// "Fantasy/*" is shown as "Fantasy (+ sub)"
+	return displayTermName(term.name, t('ebookreader', '+ sub'))
+}
 
 const termChips = computed(() => {
 	const make = (term: FilterTerm, state: 'include' | 'exclude') => ({
 		key: state + ':' + termToString(term),
 		term,
 		state,
-		label: `${typeLabels.value[term.type]}: ${term.type === 'format' ? term.name.toUpperCase() : term.name}`,
+		label: `${typeLabels.value[term.type]}: ${termLabel(term)}`,
 	})
 	return [
 		...store.filters.include.map((x) => make(x, 'include')),

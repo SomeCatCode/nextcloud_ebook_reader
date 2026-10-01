@@ -13,11 +13,11 @@ namespace OCA\EbookReader\Service;
  * Filter/sort/paging parameters of a library query.
  */
 final class BookQuery {
-	public const SORTS = ['title', 'author', 'series', 'rating', 'added', 'read'];
+	public const SORTS = ['title', 'author', 'series', 'rating', 'added', 'read', 'shelf'];
 	public const STATUSES = ['unread', 'reading', 'finished'];
 	public const DEFAULT_LIMIT = 50;
 	public const MAX_LIMIT = 200;
-	public const FILTER_TYPES = ['genre', 'tag', 'author', 'series', 'format'];
+	public const FILTER_TYPES = ['genre', 'tag', 'author', 'series', 'format', 'shelf'];
 	public const MATCH_ALL = 'all';
 	public const MATCH_ANY = 'any';
 	public const MAX_FILTER_ENTRIES = 50;
@@ -39,6 +39,8 @@ final class BookQuery {
 		/** @var list<array{type: string, name: string}> */
 		public readonly array $exclude = [],
 		public readonly string $match = self::MATCH_ALL,
+		/** true: only books with a series, false: only books without one, null: no restriction */
+		public readonly ?bool $inSeries = null,
 	) {
 	}
 
@@ -96,6 +98,17 @@ final class BookQuery {
 		return $out;
 	}
 
+	/** "1"/true => true, "0"/false => false, anything else => null */
+	public static function parseInSeries(mixed $raw): ?bool {
+		if ($raw === true || $raw === 1 || $raw === '1' || $raw === 'true') {
+			return true;
+		}
+		if ($raw === false || $raw === 0 || $raw === '0' || $raw === 'false') {
+			return false;
+		}
+		return null;
+	}
+
 	/**
 	 * Builds a sanitised query from (untrusted) request parameters.
 	 * @param array<string, mixed> $params
@@ -144,6 +157,7 @@ final class BookQuery {
 			include: self::parseFilterEntries($params['include'] ?? null),
 			exclude: self::parseFilterEntries($params['exclude'] ?? null),
 			match: $match,
+			inSeries: self::parseInSeries($params['inSeries'] ?? null),
 		);
 	}
 }

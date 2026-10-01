@@ -34,6 +34,14 @@ Bibliothek, Reader und Editor für E-Books und Comics direkt in deiner Nextcloud
 - Genres und Tags für mehrere Bücher gleichzeitig setzen
 - Metadaten und Cover werden automatisch aus den Dateien gelesen, neue Bücher erkennt die App von selbst
 
+### Regale
+- **Manuelle Regale**: Bücher per Hand in benannte Regale legen und dort beliebig sortieren. Ein Buch kann in mehreren Regalen stehen; das Entfernen aus einem Regal löscht das Buch nicht.
+- **Intelligente Regale**: speichern einen Filter (Genres, Tags, Autoren, Serien, Formate, Suche, Lesestatus) und zeigen immer die aktuellen Treffer.
+- Bis zu 200 Regale pro Benutzer, Namen sind pro Benutzer eindeutig (ohne Beachtung der Groß-/Kleinschreibung).
+- Filter `shelf:<id>` in der Bibliothek (API: `include=shelf:<id>`, bei manuellen Regalen mit `sort=shelf` in Regalreihenfolge). Regale sind privat und werden beim Löschen des Benutzers entfernt.
+- **Serien**: `GET /series` liefert die Serien der gefilterten Bücher, `inSeries=0|1` trennt Bücher mit und ohne Serie.
+- **Hierarchische Genres und Tags**: Namen wie `Fantasy/High Fantasy` bilden einen Baum (bis zu 5 Ebenen). Der Filter `tag:Fantasy/*` (bzw. `genre:Fantasy/*`) trifft `Fantasy` und alles darunter, auch als Ausschluss.
+
 ### Bearbeiten
 - **Metadaten:** Titel, Autoren, Serie und Band, Beschreibung, Genres, Tags, Sprache, Verlag, Datum, ISBN
 - **Cover** tauschen (Upload oder eine Seite als Cover wählen)

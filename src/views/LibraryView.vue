@@ -17,6 +17,8 @@
 				</template>
 			</NcAppNavigationItem>
 
+			<ShelvesNav />
+
 			<NcAppNavigationCaption :name="t('ebookreader', 'Filter')" />
 			<NcAppNavigationItem
 				v-for="group in facetGroups"
@@ -29,8 +31,12 @@
 				<template #icon>
 					<NcIconSvgWrapper :path="group.icon" />
 				</template>
+				<TagTreeNav
+					v-if="group.tree"
+					:type="group.filter"
+					:nodes="group.nodes" />
 				<NcAppNavigationItem
-					v-for="entry in group.entries"
+					v-for="entry in (group.tree ? [] : group.entries)"
 					:key="entry.name"
 					:name="entry.name"
 					:active="store.termState({ type: group.filter, name: entry.name }) === 'include'"
@@ -72,6 +78,12 @@
 
 		<template #footer>
 			<div class="library-nav__footer">
+				<NcButton wide variant="primary" @click="pickFiles">
+					<template #icon>
+						<NcIconSvgWrapper :path="mdiUpload" />
+					</template>
+					{{ t('ebookreader', 'Upload') }}
+				</NcButton>
 				<NcButton wide :disabled="scanning" @click="onScan">
 					<template #icon>
 						<NcLoadingIcon v-if="scanning" :size="20" />
@@ -90,7 +102,26 @@
 	</NcAppNavigation>
 
 	<NcAppContent :pageHeading="t('ebookreader', 'E-book library')">
-		<div class="library">
+		<div
+			class="library"
+			@dragenter="onDragEnter"
+			@dragover="onDragOver"
+			@dragleave="onDragLeave"
+			@drop="onDrop">
+			<div v-if="dragging" class="library__drop" aria-hidden="true">
+				<NcIconSvgWrapper :path="mdiUpload" :size="48" />
+				<span>{{ t('ebookreader', 'Drop to add to your library') }}</span>
+			</div>
+			<input
+				ref="fileInput"
+				class="library__file-input"
+				type="file"
+				multiple
+				:accept="acceptExtensions"
+				tabindex="-1"
+				aria-hidden="true"
+				@change="onFilesPicked">
+
 			<div class="library__toolbar">
 				<NcTextField
 					class="library__search"
@@ -143,6 +174,17 @@
 				</NcButton>
 
 				<NcButton
+					:pressed="store.groupSeries"
+					:aria-label="t('ebookreader', 'Group series')"
+					:title="t('ebookreader', 'Group series')"
+					variant="tertiary"
+					@update:pressed="(v: boolean) => store.setGroupSeries(v)">
+					<template #icon>
+						<NcIconSvgWrapper :path="mdiBookMultipleOutline" />
+					</template>
+				</NcButton>
+
+				<NcButton
 					:pressed="store.selectMode"
 					:aria-label="t('ebookreader', 'Select multiple books')"
 					:title="t('ebookreader', 'Select multiple books')"
@@ -162,6 +204,21 @@
 				<NcButton variant="tertiary" :disabled="store.selectedIds.length === 0" @click="store.clearSelection()">
 					{{ t('ebookreader', 'Clear selection') }}
 				</NcButton>
+				<NcButton :disabled="store.selectedIds.length === 0" @click="shelfIds = store.selectedIds">
+					<template #icon>
+						<NcIconSvgWrapper :path="mdiBookPlusOutline" />
+					</template>
+					{{ t('ebookreader', 'Add to shelf…') }}
+				</NcButton>
+				<NcButton
+					v-if="store.activeManualShelfId !== null"
+					:disabled="store.selectedIds.length === 0"
+					@click="removeFromShelf">
+					<template #icon>
+						<NcIconSvgWrapper :path="mdiBookMinusOutline" />
+					</template>
+					{{ t('ebookreader', 'Remove from shelf') }}
+				</NcButton>
 				<NcButton :disabled="store.selectedIds.length === 0" @click="organizeIds = store.selectedIds">
 					<template #icon>
 						<NcIconSvgWrapper :path="mdiFolderMoveOutline" />
@@ -172,7 +229,7 @@
 					<template #icon>
 						<NcIconSvgWrapper :path="mdiTagMultipleOutline" />
 					</template>
-					{{ t('ebookreader', 'Edit genres and tags') }}
+					{{ t('ebookreader', 'Edit selected…') }}
 				</NcButton>
 				<NcButton variant="tertiary" :disabled="store.selectedIds.length === 0" @click="askDelete(store.selectedIds)">
 					<template #icon>
@@ -182,7 +239,23 @@
 				</NcButton>
 			</div>
 
+			<div v-if="store.drillSeries !== null" class="library__heading">
+				<NcButton variant="tertiary" @click="store.closeSeries()">
+					<template #icon>
+						<NcIconSvgWrapper :path="mdiArrowLeft" />
+					</template>
+					{{ t('ebookreader', 'Back to series') }}
+				</NcButton>
+				<h2>{{ store.drillSeries }}</h2>
+			</div>
+			<div v-else-if="shelfHeading" class="library__heading">
+				<NcIconSvgWrapper :path="store.smartShelfId !== null ? mdiFilterVariant : mdiBookshelf" />
+				<h2>{{ shelfHeading }}</h2>
+			</div>
+
 			<FilterBar />
+
+			<UploadPanel />
 
 			<ActiveTasksBanner @finished="onTasksFinished" />
 
@@ -195,21 +268,27 @@
 			</div>
 
 			<NcEmptyContent
-				v-else-if="store.loaded && store.books.length === 0 && !store.loading && !store.hasFilters"
+				v-else-if="store.loaded && store.isEmpty && !store.loading && !store.hasFilters && store.drillSeries === null"
 				:name="t('ebookreader', 'Your library is empty')"
 				:description="emptyDescription">
 				<template #icon>
 					<NcIconSvgWrapper :path="mdiBookshelf" :size="64" />
 				</template>
 				<template #action>
-					<NcButton variant="primary" @click="showSettings = true">
+					<NcButton variant="primary" @click="pickFiles">
+						<template #icon>
+							<NcIconSvgWrapper :path="mdiUpload" />
+						</template>
+						{{ t('ebookreader', 'Upload') }}
+					</NcButton>
+					<NcButton @click="showSettings = true">
 						{{ t('ebookreader', 'Open settings') }}
 					</NcButton>
 				</template>
 			</NcEmptyContent>
 
 			<NcEmptyContent
-				v-else-if="store.loaded && store.books.length === 0 && !store.loading"
+				v-else-if="store.loaded && store.isEmpty && !store.loading"
 				:name="t('ebookreader', 'No matching books')"
 				:description="t('ebookreader', 'Try a different search or remove some filters.')">
 				<template #icon>
@@ -222,12 +301,20 @@
 				</template>
 			</NcEmptyContent>
 
-			<template v-else-if="store.books.length">
+			<template v-else-if="!store.isEmpty">
 				<ContinueReading
 					v-if="showContinue"
 					:books="store.recent"
 					:activeFileId="store.activeFileId"
 					@click="onBookClick" />
+
+				<SeriesGrid
+					v-if="store.seriesMode && store.seriesList.length"
+					:series="store.seriesList"
+					@click="(s: SeriesEntry) => store.openSeries(s.name)" />
+				<h3 v-if="store.seriesMode && store.seriesList.length && store.books.length" class="library__subheading">
+					{{ t('ebookreader', 'Books without a series') }}
+				</h3>
 
 				<BookGrid
 					v-if="viewMode === 'grid'"
@@ -261,7 +348,12 @@
 		@delete="(id: number) => askDelete([id])"
 		@converted="onConverted" />
 
-	<BulkTagDialog v-if="showBulk" @close="showBulk = false" />
+	<BulkEditDialog v-if="showBulk" @close="showBulk = false" />
+	<AddToShelfDialog
+		v-if="shelfIds.length"
+		:fileIds="shelfIds"
+		@close="shelfIds = []"
+		@done="store.setSelectMode(false)" />
 	<DeleteBooksDialog
 		v-if="deleteList.length"
 		:books="deleteList"
@@ -276,14 +368,18 @@
 </template>
 
 <script setup lang="ts">
-import type { Book, FilterTerm, SortKey } from '../types.ts'
+import type { Book, FacetEntry, FilterTerm, SeriesEntry, SortKey } from '../types.ts'
 
 import {
 	mdiAccountOutline,
+	mdiArrowLeft,
 	mdiBookCheckOutline,
 	mdiBookClockOutline,
+	mdiBookMinusOutline,
+	mdiBookMultipleOutline,
 	mdiBookOpenPageVariant,
 	mdiBookOutline,
+	mdiBookPlusOutline,
 	mdiBookSearchOutline,
 	mdiBookshelf,
 	mdiCheckboxMultipleMarkedOutline,
@@ -291,6 +387,7 @@ import {
 	mdiDeleteOutline,
 	mdiDramaMasks,
 	mdiFileOutline,
+	mdiFilterVariant,
 	mdiFolderMoveOutline,
 	mdiLibraryShelves,
 	mdiMinusCircleOutline,
@@ -302,10 +399,11 @@ import {
 	mdiTagMultipleOutline,
 	mdiTagOutline,
 	mdiTarget,
+	mdiUpload,
 	mdiViewGrid,
 	mdiViewList,
 } from '@mdi/js'
-import { showError, showSuccess, showWarning } from '@nextcloud/dialogs'
+import { showError, showInfo, showSuccess, showWarning } from '@nextcloud/dialogs'
 import { n, t } from '@nextcloud/l10n'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -323,26 +421,39 @@ import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 import ActiveTasksBanner from '../components/common/ActiveTasksBanner.vue'
+import AddToShelfDialog from '../components/library/AddToShelfDialog.vue'
 import BookDetails from '../components/library/BookDetails.vue'
 import BookGrid from '../components/library/BookGrid.vue'
 import BookList from '../components/library/BookList.vue'
-import BulkTagDialog from '../components/library/BulkTagDialog.vue'
+import BulkEditDialog from '../components/library/BulkEditDialog.vue'
 import ContinueReading from '../components/library/ContinueReading.vue'
 import DeleteBooksDialog from '../components/library/DeleteBooksDialog.vue'
 import FilterBar from '../components/library/FilterBar.vue'
+import SeriesGrid from '../components/library/SeriesGrid.vue'
 import SettingsDialog from '../components/library/SettingsDialog.vue'
+import ShelvesNav from '../components/library/ShelvesNav.vue'
+import TagTreeNav from '../components/library/TagTreeNav.vue'
+import UploadPanel from '../components/library/UploadPanel.vue'
 import OrganizeDialog from '../components/organize/OrganizeDialog.vue'
 import { scan } from '../services/api.ts'
+import { buildTree } from '../services/hierarchy.ts'
+import { ALLOWED_EXTENSIONS } from '../services/upload.ts'
 import { queryToState, useLibraryStore } from '../stores/library.ts'
+import { useShelvesStore } from '../stores/shelves.ts'
+import { useUploadStore } from '../stores/upload.ts'
 
 const VIEW_KEY = 'ebookreader.libraryView'
 
 const store = useLibraryStore()
+const shelves = useShelvesStore()
+const uploadStore = useUploadStore()
 
 const route = useRoute()
 const router = useRouter()
 
 const showBulk = ref(false)
+/** Books in the "add to shelf" dialog; empty = closed */
+const shelfIds = ref<number[]>([])
 const organizeIds = ref<number[]>([])
 /** Books in the delete confirmation dialog; empty = closed */
 const deleteList = ref<Book[]>([])
@@ -398,6 +509,7 @@ function setViewMode(mode: 'grid' | 'list'): void {
 // ---- sort -------------------------------------------------------------
 
 const sortOptions = computed<{ id: SortKey, label: string }[]>(() => [
+	...(store.activeManualShelfId !== null ? [{ id: 'shelf' as SortKey, label: t('ebookreader', 'Shelf order') }] : []),
 	{ id: 'title', label: t('ebookreader', 'Title') },
 	{ id: 'author', label: t('ebookreader', 'Author') },
 	{ id: 'series', label: t('ebookreader', 'Series') },
@@ -414,7 +526,7 @@ const mainItems = computed(() => {
 	const onlyStatus = (st: string | null) => f.status === st
 		&& f.include.length === 0 && f.exclude.length === 0 && !f.search
 	return [
-		{ key: 'all', name: t('ebookreader', 'All books'), icon: mdiLibraryShelves, active: !store.hasFilters, action: () => store.resetFilters() },
+		{ key: 'all', name: t('ebookreader', 'All books'), icon: mdiLibraryShelves, active: !store.hasFilters && store.drillSeries === null, action: () => store.resetFilters() },
 		{ key: 'reading', name: t('ebookreader', 'Continue reading'), icon: mdiBookClockOutline, active: onlyStatus('reading'), action: () => store.setStatus(f.status === 'reading' ? null : 'reading') },
 		{ key: 'unread', name: t('ebookreader', 'Unread'), icon: mdiBookOutline, active: onlyStatus('unread'), action: () => store.setStatus(f.status === 'unread' ? null : 'unread') },
 		{ key: 'finished', name: t('ebookreader', 'Finished'), icon: mdiBookCheckOutline, active: onlyStatus('finished'), action: () => store.setStatus(f.status === 'finished' ? null : 'finished') },
@@ -429,13 +541,34 @@ const openGroups = reactive<Record<string, boolean>>({
 	formats: false,
 })
 
-const facetGroups = computed(() => [
-	{ key: 'genres', filter: 'genre' as const, name: t('ebookreader', 'Genres'), icon: mdiDramaMasks, entries: store.facets.genres },
-	{ key: 'tags', filter: 'tag' as const, name: t('ebookreader', 'Tags'), icon: mdiTagOutline, entries: store.facets.tags },
-	{ key: 'authors', filter: 'author' as const, name: t('ebookreader', 'Authors'), icon: mdiAccountOutline, entries: store.facets.authors },
-	{ key: 'series', filter: 'series' as const, name: t('ebookreader', 'Series'), icon: mdiBookOpenPageVariant, entries: store.facets.series },
-	{ key: 'formats', filter: 'format' as const, name: t('ebookreader', 'Formats'), icon: mdiFileOutline, entries: store.facets.formats },
-])
+const facetGroups = computed(() => {
+	const group = (key: string, filter: 'genre' | 'tag' | 'author' | 'series' | 'format', name: string, icon: string, entries: FacetEntry[], tree = false) => ({
+		key,
+		filter,
+		name,
+		icon,
+		entries,
+		tree,
+		nodes: tree ? buildTree(entries) : [],
+	})
+	return [
+		group('genres', 'genre', t('ebookreader', 'Genres'), mdiDramaMasks, store.facets.genres, true),
+		group('tags', 'tag', t('ebookreader', 'Tags'), mdiTagOutline, store.facets.tags, true),
+		group('authors', 'author', t('ebookreader', 'Authors'), mdiAccountOutline, store.facets.authors),
+		group('series', 'series', t('ebookreader', 'Series'), mdiBookOpenPageVariant, store.facets.series),
+		group('formats', 'format', t('ebookreader', 'Formats'), mdiFileOutline, store.facets.formats),
+	]
+})
+
+/** Heading of a shown shelf (manual or smart) */
+const shelfHeading = computed(() => {
+	if (store.smartShelfId !== null) {
+		return store.smartShelf?.name ?? null
+	}
+	return store.activeManualShelfId !== null ? shelves.byId(store.activeManualShelfId)?.name ?? null : null
+})
+
+const acceptExtensions = ALLOWED_EXTENSIONS.map((e) => '.' + e).join(',')
 
 const showContinue = computed(() => !store.hasFilters && store.recent.length > 0)
 
@@ -466,6 +599,120 @@ function onDetailsFilter(term: FilterTerm): void {
 	}
 	if (window.innerWidth < 1024) {
 		store.setActive(null)
+	}
+}
+
+/**
+ * "Remove from shelf" in the selection toolbar of a manual shelf.
+ */
+async function removeFromShelf(): Promise<void> {
+	const id = store.activeManualShelfId
+	if (id === null) {
+		return
+	}
+	try {
+		const removed = await shelves.removeBooks(id, store.selectedIds)
+		showSuccess(n('ebookreader', '%n book removed from the shelf', '%n books removed from the shelf', removed))
+		store.setSelectMode(false)
+		await store.reload()
+	} catch {
+		showError(t('ebookreader', 'Could not remove the books from the shelf'))
+	}
+}
+
+// ---- upload -------------------------------------------------------------
+
+const fileInput = ref<HTMLInputElement | null>(null)
+const dragging = ref(false)
+let dragDepth = 0
+
+/**
+ * @param e
+ */
+function hasFiles(e: DragEvent): boolean {
+	return Array.from(e.dataTransfer?.types ?? []).includes('Files')
+}
+
+/**
+ * @param e
+ */
+function onDragEnter(e: DragEvent): void {
+	if (hasFiles(e)) {
+		e.preventDefault()
+		dragDepth++
+		dragging.value = true
+	}
+}
+
+/**
+ * @param e
+ */
+function onDragOver(e: DragEvent): void {
+	if (hasFiles(e)) {
+		e.preventDefault()
+	}
+}
+
+/**
+ * @param e
+ */
+function onDragLeave(e: DragEvent): void {
+	if (hasFiles(e)) {
+		dragDepth = Math.max(0, dragDepth - 1)
+		dragging.value = dragDepth > 0
+	}
+}
+
+/**
+ * @param e
+ */
+function onDrop(e: DragEvent): void {
+	if (!hasFiles(e)) {
+		return
+	}
+	e.preventDefault()
+	dragDepth = 0
+	dragging.value = false
+	void startUpload(Array.from(e.dataTransfer?.files ?? []))
+}
+
+/**
+ *
+ */
+function pickFiles(): void {
+	fileInput.value?.click()
+}
+
+/**
+ * @param e
+ */
+function onFilesPicked(e: Event): void {
+	const input = e.target as HTMLInputElement
+	const files = Array.from(input.files ?? [])
+	input.value = ''
+	void startUpload(files)
+}
+
+/**
+ * @param files
+ */
+async function startUpload(files: File[]): Promise<void> {
+	if (files.length === 0) {
+		return
+	}
+	const res = await uploadStore.start(files)
+	if (res.rejected.length > 0) {
+		showWarning(n('ebookreader', '%n file skipped: only e-book formats ({formats}) can be uploaded', '%n files skipped: only e-book formats ({formats}) can be uploaded', res.rejected.length, { formats: ALLOWED_EXTENSIONS.join(', ') }))
+	}
+	if (res.uploaded > 0) {
+		showSuccess(n('ebookreader', '%n book uploaded', '%n books uploaded', res.uploaded))
+		void shelves.load()
+	}
+	if (res.large) {
+		showInfo(t('ebookreader', 'Large files are being indexed in the background'))
+	}
+	if (res.failed > 0) {
+		showError(n('ebookreader', '%n upload failed', '%n uploads failed', res.failed))
 	}
 }
 
@@ -558,6 +805,7 @@ onMounted(() => {
 		void router.replace({ query: store.urlQuery })
 	}
 	void store.init()
+	void shelves.load()
 	if (typeof IntersectionObserver !== 'undefined') {
 		observer = new IntersectionObserver((entries) => {
 			if (entries.some((e) => e.isIntersecting)) {
@@ -628,6 +876,44 @@ onBeforeUnmount(() => {
 		display: flex;
 		justify-content: center;
 		padding: 48px 0;
+	}
+
+	&__drop {
+		position: fixed;
+		inset: 0;
+		z-index: 2000;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 12px;
+		margin: 12px;
+		border: 3px dashed var(--color-primary-element);
+		border-radius: var(--border-radius-large);
+		background: color-mix(in srgb, var(--color-main-background) 85%, transparent);
+		font-size: 1.3em;
+		pointer-events: none;
+	}
+
+	&__file-input {
+		display: none;
+	}
+
+	&__heading {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+
+		h2 {
+			margin: 0;
+			font-size: 1.4em;
+		}
+	}
+
+	&__subheading {
+		margin: 8px 0 0;
+		color: var(--color-text-maxcontrast);
+		font-size: 1em;
 	}
 
 	&__sentinel {

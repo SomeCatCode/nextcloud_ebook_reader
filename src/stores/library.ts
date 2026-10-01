@@ -5,6 +5,8 @@
 import type {
 	Book,
 	BookQuery,
+	BulkMetadataRequest,
+	BulkMetadataResult,
 	BulkTagResult,
 	Facets,
 	FilterTerm,
@@ -12,14 +14,20 @@ import type {
 	MatchMode,
 	MetadataOverrideField,
 	ReadStatus,
+	SeriesEntry,
+	SeriesQuery,
+	SmartQuery,
 	SortKey,
+	Task,
 } from '../types.ts'
 
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
+import { orderSelection } from '../components/library/bulkEdit.ts'
 import { EMBED_SYNC_MAX_BYTES } from '../components/library/metadataStorage.ts'
 import * as api from '../services/api.ts'
 import { pollTask } from '../services/tasks.ts'
+import { useShelvesStore } from './shelves.ts'
 
 export const PAGE_SIZE = 50
 export const SEARCH_DEBOUNCE_MS = 300
@@ -34,8 +42,9 @@ export interface Filters {
 	status: ReadStatus | null
 }
 
-const FILTER_TYPES: FilterType[] = ['genre', 'tag', 'author', 'series', 'format']
-const SORT_KEYS: SortKey[] = ['title', 'author', 'series', 'rating', 'added', 'read']
+const FILTER_TYPES: FilterType[] = ['genre', 'tag', 'author', 'series', 'format', 'shelf']
+const SORT_KEYS: SortKey[] = ['title', 'author', 'series', 'rating', 'added', 'read', 'shelf']
+const GROUP_SERIES_KEY = 'ebookreader.groupSeries'
 const STATUSES: ReadStatus[] = ['unread', 'reading', 'finished']
 
 /**
@@ -89,9 +98,18 @@ export function parseTerm(raw: string): FilterTerm | null {
  * @param f
  * @param sort
  * @param order
+ * @param extra
+ * @param extra.smartShelf
+ * @param extra.drillSeries
  */
-export function stateToQuery(f: Filters, sort: SortKey, order: 'asc' | 'desc'): Record<string, string | string[]> {
+export function stateToQuery(f: Filters, sort: SortKey, order: 'asc' | 'desc', extra: { smartShelf?: number | null, drillSeries?: string | null } = {}): Record<string, string | string[]> {
 	const q: Record<string, string | string[]> = {}
+	if (extra.smartShelf) {
+		q.smart = String(extra.smartShelf)
+	}
+	if (extra.drillSeries) {
+		q.volumes = extra.drillSeries
+	}
 	if (f.include.length) {
 		q.include = f.include.map(termToString)
 	}
@@ -121,7 +139,7 @@ export function stateToQuery(f: Filters, sort: SortKey, order: 'asc' | 'desc'): 
  *
  * @param query
  */
-export function queryToState(query: Record<string, unknown>): { filters: Filters, sort: SortKey, order: 'asc' | 'desc' } {
+export function queryToState(query: Record<string, unknown>): LibraryState {
 	const list = (v: unknown): string[] => {
 		const arr = Array.isArray(v) ? v : (v === undefined || v === null ? [] : [v])
 		return arr.filter((x): x is string => typeof x === 'string')
@@ -139,7 +157,91 @@ export function queryToState(query: Record<string, unknown>): { filters: Filters
 	const sort = SORT_KEYS.includes(sortRaw) ? sortRaw : 'title'
 	const orderRaw = first(query.order)
 	const order = orderRaw === 'asc' || orderRaw === 'desc' ? orderRaw : defaultOrder(sort)
+	const smart = Number.parseInt(first(query.smart), 10)
+	return {
+		filters,
+		sort,
+		order,
+		smartShelf: Number.isInteger(smart) && smart > 0 ? smart : null,
+		drillSeries: first(query.volumes) || null,
+	}
+}
+
+/**
+ * Filter state as the saved query of a smart shelf.
+ *
+ * @param f
+ * @param sort
+ * @param order
+ */
+export function stateToSmartQuery(f: Filters, sort: SortKey, order: 'asc' | 'desc'): SmartQuery {
+	return {
+		include: f.include.map(termToString),
+		exclude: f.exclude.map(termToString),
+		match: f.match,
+		search: f.search.trim(),
+		status: f.status,
+		sort,
+		order,
+	}
+}
+
+/**
+ * Filter state from the saved query of a smart shelf (unknown parts are dropped).
+ *
+ * @param q
+ */
+export function smartQueryToState(q: SmartQuery): { filters: Filters, sort: SortKey, order: 'asc' | 'desc' } {
+	const filters = emptyFilters()
+	filters.include = (q.include ?? []).map(parseTerm).filter((x): x is FilterTerm => x !== null)
+	filters.exclude = (q.exclude ?? []).map(parseTerm).filter((x): x is FilterTerm => x !== null)
+	filters.match = q.match === 'any' ? 'any' : 'all'
+	filters.search = q.search ?? ''
+	filters.status = q.status && STATUSES.includes(q.status) ? q.status : null
+	const sort = SORT_KEYS.includes(q.sort as SortKey) ? q.sort as SortKey : 'title'
+	const order = q.order === 'asc' || q.order === 'desc' ? q.order : defaultOrder(sort)
 	return { filters, sort, order }
+}
+
+/**
+ * The filter term of a (manual) shelf.
+ *
+ * @param id
+ */
+export function shelfTerm(id: number): FilterTerm {
+	return { type: 'shelf', name: String(id) }
+}
+
+export interface LibraryState {
+	filters: Filters
+	sort: SortKey
+	order: 'asc' | 'desc'
+	/** smart shelf whose query is shown */
+	smartShelf: number | null
+	/** series whose volumes are shown instead of the series cards */
+	drillSeries: string | null
+}
+
+/**
+ * @param on
+ */
+function storeGroupSeries(on: boolean): void {
+	try {
+		localStorage.setItem(GROUP_SERIES_KEY, on ? '1' : '0')
+	} catch {
+		// ignore
+	}
+}
+
+/**
+ *
+ */
+function readGroupSeries(): boolean {
+	try {
+		return localStorage.getItem(GROUP_SERIES_KEY) === '1'
+	} catch {
+		return false
+	}
 }
 
 const emptyFacets = (): Facets => ({ genres: [], tags: [], authors: [], series: [], formats: [] })
@@ -157,6 +259,13 @@ export const useLibraryStore = defineStore('library', () => {
 	const order = ref<'asc' | 'desc'>('asc')
 
 	const facets = ref<Facets>(emptyFacets())
+
+	const groupSeries = ref(readGroupSeries())
+	/** series whose volumes are shown (back button returns to the cards) */
+	const drillSeries = ref<string | null>(null)
+	const seriesList = ref<SeriesEntry[]>([])
+	/** smart shelf whose saved query is the base of the current filters */
+	const smartShelfId = ref<number | null>(null)
 	const recent = ref<Book[]>([])
 
 	const selectMode = ref(false)
@@ -171,8 +280,27 @@ export const useLibraryStore = defineStore('library', () => {
 		|| filters.value.exclude.length > 0
 		|| filters.value.status !== null
 		|| filters.value.search !== '')
-	const urlQuery = computed(() => stateToQuery(filters.value, sort.value, order.value))
+	/** series cards on top, then the books without a series */
+	const seriesMode = computed(() => groupSeries.value && drillSeries.value === null)
+	const urlQuery = computed(() => stateToQuery(filters.value, sort.value, order.value, { smartShelf: smartShelfId.value, drillSeries: drillSeries.value }))
+	const smartShelf = computed(() => (smartShelfId.value === null
+		? null
+		: useShelvesStore().shelves.find((s) => s.id === smartShelfId.value && s.type === 'smart') ?? null))
+	/** the filters differ from the saved query of the shown smart shelf */
+	const smartShelfDirty = computed(() => {
+		const shelf = smartShelf.value
+		if (!shelf?.query) {
+			return false
+		}
+		const saved = smartQueryToState(shelf.query)
+		return JSON.stringify(stateToSmartQuery(saved.filters, saved.sort, saved.order))
+			!== JSON.stringify(stateToSmartQuery(filters.value, sort.value, order.value))
+	})
+	/** nothing to show (no series cards and no books) */
+	const isEmpty = computed(() => books.value.length === 0 && (!seriesMode.value || seriesList.value.length === 0))
 	const selectedIds = computed(() => [...selection.value])
+	/** selected ids in the order of the loaded list (selected books that are not loaded go last) */
+	const orderedSelectedIds = computed(() => orderSelection(books.value.map((b) => b.fileId), selectedIds.value))
 	const activeBook = computed(() => books.value.find((b) => b.fileId === activeFileId.value)
 		?? recent.value.find((b) => b.fileId === activeFileId.value)
 		?? null)
@@ -184,16 +312,37 @@ export const useLibraryStore = defineStore('library', () => {
 	 */
 	function buildQuery(offset: number): BookQuery {
 		const f = filters.value
+		const drill = drillSeries.value
+		// the series term is ANDed with the filters, so "match any" is ignored while showing volumes
+		const include = drill === null ? f.include : [...f.include, { type: 'series' as const, name: drill }]
+		return {
+			search: f.search.trim() || undefined,
+			include: include.length ? include : undefined,
+			exclude: f.exclude.length ? f.exclude : undefined,
+			match: include.length > 1 && drill === null ? f.match : undefined,
+			status: f.status ?? undefined,
+			sort: drill === null ? sort.value : 'series',
+			order: drill === null ? order.value : 'asc',
+			inSeries: seriesMode.value ? 0 : undefined,
+			limit: PAGE_SIZE,
+			offset,
+		}
+	}
+
+	/**
+	 * Series cards use the current filters; they are sorted by name or by the date added.
+	 */
+	function buildSeriesQuery(): SeriesQuery {
+		const f = filters.value
+		const bySort = sort.value === 'added' || sort.value === 'title'
 		return {
 			search: f.search.trim() || undefined,
 			include: f.include.length ? f.include : undefined,
 			exclude: f.exclude.length ? f.exclude : undefined,
 			match: f.include.length > 1 ? f.match : undefined,
 			status: f.status ?? undefined,
-			sort: sort.value,
-			order: order.value,
-			limit: PAGE_SIZE,
-			offset,
+			sort: sort.value === 'added' ? 'added' : 'name',
+			order: bySort ? order.value : 'asc',
 		}
 	}
 
@@ -206,12 +355,16 @@ export const useLibraryStore = defineStore('library', () => {
 		loadingMore.value = false
 		error.value = null
 		try {
-			const res = await api.listBooks(buildQuery(0))
+			const [res, series] = await Promise.all([
+				api.listBooks(buildQuery(0)),
+				seriesMode.value ? api.listSeries(buildSeriesQuery()) : Promise.resolve<SeriesEntry[]>([]),
+			])
 			if (id !== requestId) {
 				return
 			}
 			books.value = res.books
 			total.value = res.total
+			seriesList.value = series
 			loaded.value = true
 		} catch (e) {
 			if (id === requestId) {
@@ -327,8 +480,19 @@ export const useLibraryStore = defineStore('library', () => {
 		} else if (state === 'exclude') {
 			f.exclude = [...f.exclude, term]
 		}
+		fixShelfSort()
 		clearSelection()
 		void reload()
+	}
+
+	/**
+	 * "Shelf order" only makes sense while a shelf is included.
+	 */
+	function fixShelfSort(): void {
+		if (sort.value === 'shelf' && !filters.value.include.some((x) => x.type === 'shelf')) {
+			sort.value = 'title'
+			order.value = 'asc'
+		}
 	}
 
 	/**
@@ -349,6 +513,7 @@ export const useLibraryStore = defineStore('library', () => {
 	function onlyTerm(term: FilterTerm): void {
 		filters.value.include = [term]
 		filters.value.exclude = []
+		fixShelfSort()
 		clearSelection()
 		void reload()
 	}
@@ -378,11 +543,114 @@ export const useLibraryStore = defineStore('library', () => {
 	 * @param state.filters
 	 * @param state.sort
 	 * @param state.order
+	 * @param state.smartShelf
+	 * @param state.drillSeries
 	 */
-	function applyState(state: { filters: Filters, sort: SortKey, order: 'asc' | 'desc' }): void {
+	function applyState(state: { filters: Filters, sort: SortKey, order: 'asc' | 'desc', smartShelf?: number | null, drillSeries?: string | null }): void {
 		filters.value = state.filters
 		sort.value = state.sort
 		order.value = state.order
+		smartShelfId.value = state.smartShelf ?? null
+		drillSeries.value = state.drillSeries ?? null
+	}
+
+	// ---- series view --------------------------------------------------
+
+	/**
+	 * Turns the series grouping of the grid on or off (remembered in localStorage).
+	 *
+	 * @param on
+	 */
+	function setGroupSeries(on: boolean): void {
+		groupSeries.value = on
+		drillSeries.value = null
+		storeGroupSeries(on)
+		clearSelection()
+		void reload()
+	}
+
+	/**
+	 * Series card clicked: shows the volumes of that series.
+	 *
+	 * @param name
+	 */
+	function openSeries(name: string): void {
+		drillSeries.value = name
+		clearSelection()
+		void reload()
+	}
+
+	/**
+	 * Back button of the volumes view.
+	 */
+	function closeSeries(): void {
+		drillSeries.value = null
+		clearSelection()
+		void reload()
+	}
+
+	// ---- shelves ------------------------------------------------------
+
+	/**
+	 * Shows a shelf: a manual one as include filter in shelf order, a smart one by applying its saved query.
+	 *
+	 * @param shelf
+	 * @param shelf.id
+	 * @param shelf.type
+	 * @param shelf.query
+	 */
+	function viewShelf(shelf: { id: number, type: 'manual' | 'smart', query: SmartQuery | null }): void {
+		clearSearchTimer()
+		drillSeries.value = null
+		if (shelf.type === 'smart' && shelf.query) {
+			const state = smartQueryToState(shelf.query)
+			filters.value = state.filters
+			sort.value = state.sort
+			order.value = state.order
+			smartShelfId.value = shelf.id
+		} else {
+			filters.value = { ...emptyFilters(), include: [shelfTerm(shelf.id)] }
+			sort.value = 'shelf'
+			order.value = 'asc'
+			smartShelfId.value = null
+		}
+		clearSelection()
+		void reload()
+	}
+
+	/**
+	 * Id of the manual shelf that is shown (a shelf include term), if any.
+	 */
+	const activeManualShelfId = computed<number | null>(() => {
+		const term = filters.value.include.find((x) => x.type === 'shelf' && x.name !== String(smartShelfId.value))
+		const id = term ? Number.parseInt(term.name, 10) : Number.NaN
+		return Number.isInteger(id) ? id : null
+	})
+
+	/**
+	 * Current filters as the query of a smart shelf.
+	 */
+	function currentSmartQuery(): SmartQuery {
+		return stateToSmartQuery(filters.value, sort.value, order.value)
+	}
+
+	/**
+	 * Makes a freshly created smart shelf the base of the current filters (so that "Update shelf" works).
+	 *
+	 * @param id
+	 */
+	function adoptSmartShelf(id: number): void {
+		smartShelfId.value = id
+	}
+
+	/**
+	 *
+	 */
+	function clearSearchTimer(): void {
+		if (searchTimer !== null) {
+			clearTimeout(searchTimer)
+			searchTimer = null
+		}
 	}
 
 	/**
@@ -394,6 +662,9 @@ export const useLibraryStore = defineStore('library', () => {
 			searchTimer = null
 		}
 		filters.value = emptyFilters()
+		smartShelfId.value = null
+		drillSeries.value = null
+		fixShelfSort()
 		clearSelection()
 		void reload()
 	}
@@ -593,6 +864,31 @@ export const useLibraryStore = defineStore('library', () => {
 	}
 
 	/**
+	 * Edits metadata of several books (see BulkMetadataRequest), then refreshes list and facets. The selection stays.
+	 * Large requests run as a server task; `onProgress` receives its progress (0..1) and step text.
+	 *
+	 * @param req
+	 * @param onProgress
+	 */
+	async function bulkMetadata(req: BulkMetadataRequest, onProgress?: (task: Task) => void): Promise<BulkMetadataResult> {
+		const started = await api.bulkMetadata(req, false)
+		let result: BulkMetadataResult
+		if ('taskId' in started) {
+			const task = await pollTask(started.taskId, { onUpdate: onProgress })
+			result = {
+				updated: task.result?.updated ?? 0,
+				unchanged: task.result?.unchanged ?? 0,
+				failed: task.result?.failed ?? [],
+				writeQueued: task.result?.writeQueued === true,
+			}
+		} else {
+			result = started.sync
+		}
+		await Promise.all([reload(), loadFacets()])
+		return result
+	}
+
+	/**
 	 * Opens the details sidebar for a book (null closes it).
 	 *
 	 * @param fileId
@@ -624,6 +920,21 @@ export const useLibraryStore = defineStore('library', () => {
 
 	return {
 		removeBooks,
+		groupSeries,
+		drillSeries,
+		seriesList,
+		seriesMode,
+		isEmpty,
+		smartShelfId,
+		smartShelf,
+		smartShelfDirty,
+		activeManualShelfId,
+		setGroupSeries,
+		openSeries,
+		closeSeries,
+		viewShelf,
+		currentSmartQuery,
+		adoptSmartShelf,
 		books,
 		total,
 		loading,
@@ -670,6 +981,8 @@ export const useLibraryStore = defineStore('library', () => {
 		embedMetadata,
 		resetOverrides,
 		bulkTags,
+		bulkMetadata,
+		orderedSelectedIds,
 		setActive,
 	}
 })

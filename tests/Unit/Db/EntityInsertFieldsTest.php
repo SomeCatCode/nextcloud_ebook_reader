@@ -11,6 +11,8 @@ namespace OCA\EbookReader\Tests\Unit\Db;
 
 use OCA\EbookReader\Db\Book;
 use OCA\EbookReader\Db\Progress;
+use OCA\EbookReader\Db\Shelf;
+use OCA\EbookReader\Db\ShelfBook;
 use OCA\EbookReader\Db\Tag;
 use OCA\EbookReader\Db\Task;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -42,9 +44,15 @@ class EntityInsertFieldsTest extends TestCase {
 		}
 	}
 
+	public function testNewShelfInsertsDefaultType(): void {
+		$shelf = new Shelf();
+		$shelf->setType(Shelf::TYPE_MANUAL);
+		$this->assertContains('type', array_keys($shelf->getUpdatedFields()));
+	}
+
 	/** @return list<array{class-string}> */
 	public static function entities(): array {
-		return [[Book::class], [Progress::class], [Tag::class], [Task::class]];
+		return [[Book::class], [Progress::class], [Tag::class], [Task::class], [Shelf::class], [ShelfBook::class]];
 	}
 
 	/** @param class-string $class */

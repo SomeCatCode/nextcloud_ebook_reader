@@ -49,6 +49,23 @@ class BookQueryTest extends TestCase {
 		], $q->include);
 	}
 
+	public function testShelfTermAndSort(): void {
+		$q = BookQuery::fromRequestParams(['include' => ['shelf:12', 'tag:Fantasy/*'], 'exclude' => ['shelf:3'], 'sort' => 'shelf']);
+		$this->assertSame([['type' => 'shelf', 'name' => '12'], ['type' => 'tag', 'name' => 'Fantasy/*']], $q->include);
+		$this->assertSame([['type' => 'shelf', 'name' => '3']], $q->exclude);
+		$this->assertSame('shelf', $q->sort);
+	}
+
+	public function testInSeriesParam(): void {
+		$this->assertNull(BookQuery::fromRequestParams([])->inSeries);
+		$this->assertTrue(BookQuery::fromRequestParams(['inSeries' => '1'])->inSeries);
+		$this->assertTrue(BookQuery::fromRequestParams(['inSeries' => 1])->inSeries);
+		$this->assertFalse(BookQuery::fromRequestParams(['inSeries' => '0'])->inSeries);
+		$this->assertFalse(BookQuery::fromRequestParams(['inSeries' => 0])->inSeries);
+		$this->assertNull(BookQuery::fromRequestParams(['inSeries' => 'x'])->inSeries);
+		$this->assertNull(BookQuery::fromRequestParams(['inSeries' => null])->inSeries);
+	}
+
 	public function testNonArrayNonStringIsIgnored(): void {
 		$q = BookQuery::fromRequestParams(['include' => 5, 'exclude' => null]);
 		$this->assertSame([], $q->include);

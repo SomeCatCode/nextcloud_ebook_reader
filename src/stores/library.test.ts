@@ -8,7 +8,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as api from '../services/api.ts'
 import { pollTask } from '../services/tasks.ts'
-import { PAGE_SIZE, queryToState, SEARCH_DEBOUNCE_MS, stateToQuery, useLibraryStore } from './library.ts'
+import { PAGE_SIZE, queryToState, SEARCH_DEBOUNCE_MS, shelfTerm, smartQueryToState, stateToQuery, stateToSmartQuery, useLibraryStore } from './library.ts'
 
 vi.mock('../services/api.ts', () => ({
 	listBooks: vi.fn(),
@@ -16,9 +16,12 @@ vi.mock('../services/api.ts', () => ({
 	recentBooks: vi.fn(),
 	patchAppData: vi.fn(),
 	bulkTags: vi.fn(),
+	bulkMetadata: vi.fn(),
 	patchMetadata: vi.fn(),
 	resetOverrides: vi.fn(),
 	embedMetadata: vi.fn(),
+	listSeries: vi.fn(),
+	listShelves: vi.fn(),
 }))
 vi.mock('../services/tasks.ts', () => ({ pollTask: vi.fn() }))
 
@@ -231,6 +234,43 @@ describe('library store', () => {
 		expect(store.selectedIds).toEqual([])
 	})
 
+	it('orders the selection like the list and keeps it after a bulk metadata edit', async () => {
+		const store = useLibraryStore()
+		mocked.getFacets.mockResolvedValue({ genres: [], tags: [], authors: [], series: [], formats: [] })
+		await store.reload()
+		const listOrder = store.books.map((b) => b.fileId)
+		store.toggleSelected(listOrder[1])
+		store.toggleSelected(999)
+		store.toggleSelected(listOrder[0])
+		expect(store.orderedSelectedIds).toEqual([listOrder[0], listOrder[1], 999])
+		mocked.bulkMetadata.mockResolvedValueOnce({ sync: { updated: 3, unchanged: 0, failed: [], writeQueued: false } })
+		const res = await store.bulkMetadata({ fileIds: store.orderedSelectedIds, publisher: { mode: 'clear' } })
+		expect(res.updated).toBe(3)
+		expect(mocked.bulkMetadata).toHaveBeenCalledWith(expect.objectContaining({ fileIds: [listOrder[0], listOrder[1], 999] }), false)
+		expect(store.selectedIds).toHaveLength(3)
+	})
+
+	it('polls a bulk metadata task and reports its result', async () => {
+		const store = useLibraryStore()
+		mocked.getFacets.mockResolvedValue({ genres: [], tags: [], authors: [], series: [], formats: [] })
+		await store.reload()
+		mocked.bulkMetadata.mockResolvedValueOnce({ taskId: 7 })
+		vi.mocked(pollTask).mockResolvedValueOnce({
+			id: 7,
+			fileId: 1,
+			type: 'bulk',
+			status: 'done',
+			progress: 1,
+			step: 'Done',
+			result: { updated: 80, unchanged: 1, failed: [{ fileId: 4, error: 'x' }], writeQueued: true },
+			error: null,
+			createdAt: 0,
+			updatedAt: 0,
+		})
+		const res = await store.bulkMetadata({ fileIds: [1], publisher: { mode: 'clear' } })
+		expect(res).toEqual({ updated: 80, unchanged: 1, failed: [{ fileId: 4, error: 'x' }], writeQueued: true })
+	})
+
 	it('resets an override and applies the book re-read from the file', async () => {
 		const store = useLibraryStore()
 		mocked.getFacets.mockResolvedValue({ genres: [], tags: [], authors: [], series: [], formats: [] })
@@ -270,5 +310,110 @@ describe('library store', () => {
 		await store.reload()
 		mocked.patchMetadata.mockResolvedValueOnce({ book: book(1, { tags: ['a'] }), warnings: [], writeQueued: true })
 		expect(await store.saveBookTags(1, { genres: [], tags: ['a'] })).toEqual({ warnings: [], writeQueued: true })
+	})
+})
+
+describe('library store: shelves, series and hierarchy', () => {
+	const series = (name: string, count = 3) => ({ name, count, readCount: 1, coverFileIds: [1], firstFileId: 1, lastAddedAt: 0 })
+
+	beforeEach(() => {
+		setActivePinia(createPinia())
+		vi.useFakeTimers()
+		vi.resetAllMocks()
+		mocked.listBooks.mockResolvedValue({ books: [book(1)], total: 1 })
+		mocked.listSeries.mockResolvedValue([series('Dune')])
+	})
+	afterEach(() => {
+		vi.useRealTimers()
+		localStorage.clear()
+	})
+
+	it('moves through grid, volumes and back', async () => {
+		const store = useLibraryStore()
+		store.setGroupSeries(true)
+		await vi.waitFor(() => expect(store.seriesList).toHaveLength(1))
+		expect(store.seriesMode).toBe(true)
+		expect(mocked.listBooks).toHaveBeenLastCalledWith(expect.objectContaining({ inSeries: 0, sort: 'title' }))
+		expect(localStorage.getItem('ebookreader.groupSeries')).toBe('1')
+
+		mocked.listSeries.mockClear()
+		store.openSeries('Dune')
+		await vi.waitFor(() => expect(mocked.listBooks).toHaveBeenCalledTimes(2))
+		expect(store.seriesMode).toBe(false)
+		expect(store.urlQuery).toEqual({ volumes: 'Dune' })
+		expect(mocked.listSeries).not.toHaveBeenCalled()
+		expect(mocked.listBooks).toHaveBeenLastCalledWith(expect.objectContaining({
+			include: [{ type: 'series', name: 'Dune' }],
+			sort: 'series',
+			order: 'asc',
+			inSeries: undefined,
+		}))
+
+		store.closeSeries()
+		await vi.waitFor(() => expect(mocked.listSeries).toHaveBeenCalled())
+		expect(store.seriesMode).toBe(true)
+		expect(store.urlQuery).toEqual({})
+	})
+
+	it('keeps the filters when grouping series and ignores match=any for volumes', async () => {
+		const store = useLibraryStore()
+		store.setGroupSeries(true)
+		store.setTermState({ type: 'genre', name: 'A' }, 'include')
+		store.setTermState({ type: 'genre', name: 'B' }, 'include')
+		store.setMatch('any')
+		await vi.waitFor(() => expect(mocked.listSeries).toHaveBeenLastCalledWith(expect.objectContaining({ match: 'any', sort: 'name' })))
+		store.openSeries('Dune')
+		await vi.waitFor(() => expect(mocked.listBooks).toHaveBeenLastCalledWith(expect.objectContaining({ sort: 'series' })))
+		const last = mocked.listBooks.mock.lastCall?.[0]
+		expect(last?.match).toBeUndefined()
+		expect(last?.include).toHaveLength(3)
+	})
+
+	it('shows a manual shelf as include term in shelf order', () => {
+		const store = useLibraryStore()
+		store.viewShelf({ id: 5, type: 'manual', query: null })
+		expect(store.filters.include).toEqual([shelfTerm(5)])
+		expect(mocked.listBooks).toHaveBeenLastCalledWith(expect.objectContaining({ include: [{ type: 'shelf', name: '5' }], sort: 'shelf' }))
+		expect(store.activeManualShelfId).toBe(5)
+		expect(store.urlQuery).toEqual({ include: ['shelf:5'], sort: 'shelf' })
+		// leaving the shelf drops the shelf order
+		store.setTermState(shelfTerm(5), null)
+		expect(store.sort).toBe('title')
+		expect(store.activeManualShelfId).toBeNull()
+	})
+
+	it('applies the saved query of a smart shelf', () => {
+		const store = useLibraryStore()
+		const query = { include: ['tag:Fantasy/*'], exclude: ['author:X'], match: 'any' as const, search: 'dragon', status: 'unread' as const, sort: 'added', order: 'desc' as const }
+		store.viewShelf({ id: 7, type: 'smart', query })
+		expect(store.filters.include).toEqual([{ type: 'tag', name: 'Fantasy/*' }])
+		expect(store.filters.exclude).toEqual([{ type: 'author', name: 'X' }])
+		expect(store.sort).toBe('added')
+		expect(store.smartShelfId).toBe(7)
+		expect(store.urlQuery.smart).toBe('7')
+		expect(stateToSmartQuery(store.filters, store.sort, store.order)).toEqual(query)
+		store.resetFilters()
+		expect(store.smartShelfId).toBeNull()
+	})
+
+	it('round-trips shelf, smart shelf, volumes and hierarchy terms through the URL', () => {
+		const q = stateToQuery(
+			{ include: [{ type: 'tag', name: 'A/*' }, shelfTerm(3)], exclude: [{ type: 'genre', name: 'B/C' }], match: 'all', search: '', status: null },
+			'shelf',
+			'asc',
+			{ smartShelf: 4, drillSeries: 'Dune' },
+		)
+		expect(q).toEqual({ smart: '4', volumes: 'Dune', include: ['tag:A/*', 'shelf:3'], exclude: ['genre:B/C'], sort: 'shelf' })
+		const state = queryToState(q)
+		expect(state.smartShelf).toBe(4)
+		expect(state.drillSeries).toBe('Dune')
+		expect(state.filters.include).toEqual([{ type: 'tag', name: 'A/*' }, { type: 'shelf', name: '3' }])
+		expect(state.sort).toBe('shelf')
+	})
+
+	it('drops unknown parts of a smart query', () => {
+		const state = smartQueryToState({ include: ['bogus:x', 'tag:ok'], exclude: [], match: 'all', search: '', status: null, sort: 'nope', order: 'asc' })
+		expect(state.filters.include).toEqual([{ type: 'tag', name: 'ok' }])
+		expect(state.sort).toBe('title')
 	})
 })

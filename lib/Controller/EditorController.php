@@ -34,6 +34,8 @@ use Psr\Log\LoggerInterface;
  */
 class EditorController extends AbstractOCSController {
 	private const MAX_BULK_FILES = 100;
+	/** more books than this are processed as a task when they are written into the files */
+	private const BULK_ASYNC_THRESHOLD = 50;
 
 	public function __construct(
 		IRequest $request,
@@ -226,6 +228,45 @@ class EditorController extends AbstractOCSController {
 		}
 		$body = compact('fileIds', 'addGenres', 'removeGenres', 'addTags', 'removeTags');
 		return $this->guard(fn (): DataResponse => new DataResponse($this->editor->bulkTags($userId, $body)));
+	}
+
+	/**
+	 * Changes the metadata of several books at once. Only the provided sections change, everything else stays per book.
+	 * Each book goes through the regular metadata save (metadata target, overrides, sidecar). Runs as a task (202) when
+	 * async is set or when more than 50 books are written into their files.
+	 *
+	 * @param list<int> $fileIds File ids in the order used for volume numbering (1..500)
+	 * @param array{mode?: string, values?: list<string>}|null $authors mode replace|add|remove with values
+	 * @param array{mode?: string, name?: string, index?: array{mode?: string, start?: float, step?: float}}|null $series mode set|clear; with set the name and index numbering keep|sequence|sortTitle (start, step)
+	 * @param array{mode?: string, value?: string}|null $publisher mode set|clear with value
+	 * @param array{mode?: string, value?: string}|null $language mode set|clear with value
+	 * @param array{add?: list<string>, remove?: list<string>}|null $genres Genres to add and remove
+	 * @param array{add?: list<string>, remove?: list<string>}|null $tags Tags to add and remove
+	 * @param bool $async Run as a task and return a task id (poll GET /api/v1/tasks/{taskId})
+	 * @return DataResponse<Http::STATUS_OK|Http::STATUS_ACCEPTED|Http::STATUS_BAD_REQUEST|Http::STATUS_INTERNAL_SERVER_ERROR, array<string, mixed>, array{}>
+	 *
+	 * 200: Processed {updated, unchanged, failed, writeQueued}
+	 * 202: Accepted, the change runs as a task
+	 * 400: Invalid request
+	 * 500: Internal error
+	 */
+	#[NoAdminRequired]
+	#[UserRateLimit(limit: 5, period: 60)]
+	#[ApiRoute(verb: 'POST', url: '/api/v1/books/bulk-metadata')]
+	public function bulkMetadata(array $fileIds = [], ?array $authors = null, ?array $series = null, ?array $publisher = null, ?array $language = null, ?array $genres = null, ?array $tags = null, bool $async = false): DataResponse {
+		$userId = $this->uid();
+		$body = compact('fileIds', 'authors', 'series', 'publisher', 'language', 'genres', 'tags');
+		return $this->guard(function () use ($userId, $body, $async): DataResponse {
+			$plan = $this->editor->normalizeBulkMetadata($body);
+			/** @var list<int> $ids */
+			$ids = $plan['fileIds'];
+			if ($async || (count($ids) > self::BULK_ASYNC_THRESHOLD && $this->editor->metadataTargetWritesFiles($userId))) {
+				$task = $this->tasks->create($userId, $ids[0], Task::TYPE_BULK, $plan);
+				$this->tasks->scheduleInline($task);
+				return new DataResponse(['taskId' => $task->getId()], Http::STATUS_ACCEPTED);
+			}
+			return new DataResponse($this->editor->bulkMetadata($userId, $plan));
+		});
 	}
 
 	/**

@@ -57,13 +57,14 @@ class BooksController extends AbstractOCSController {
 	 * @param string|null $author Filter by author
 	 * @param string|null $series Filter by series
 	 * @param string|null $status Filter by read status (unread|reading|finished)
-	 * @param string $sort Sort field (title|author|series|rating|added|read)
+	 * @param string $sort Sort field (title|author|series|rating|added|read|shelf); shelf sorts by position inside a manual shelf (include shelf:<id>), series by series index
 	 * @param string $order Sort order (asc|desc)
 	 * @param int<1, 200> $limit Page size
 	 * @param int $offset Offset
-	 * @param list<string>|string|null $include Entries "genre:<name>", "tag:<name>", "author:<name>", "series:<name>" or "format:<fmt>" the book must match (see match)
+	 * @param list<string>|string|null $include Entries "genre:<name>", "tag:<name>", "author:<name>", "series:<name>", "format:<fmt>" or "shelf:<id>" the book must match (see match); "genre:X/*" and "tag:X/*" also match everything below X/
 	 * @param list<string>|string|null $exclude Entries in the same form; books having any of them are excluded
 	 * @param string $match "all" (every include must match) or "any" (at least one)
+	 * @param int<0, 1>|null $inSeries 0 = only books without a series, 1 = only books in a series
 	 * @return DataResponse<Http::STATUS_OK, EbookReaderBookList, array{}>
 	 * @throws OCSForbiddenException Not logged in
 	 *
@@ -86,6 +87,7 @@ class BooksController extends AbstractOCSController {
 		array|string|null $include = null,
 		array|string|null $exclude = null,
 		string $match = 'all',
+		?int $inSeries = null,
 	): DataResponse {
 		$userId = $this->uid();
 		$query = BookQuery::fromRequestParams([
@@ -93,6 +95,7 @@ class BooksController extends AbstractOCSController {
 			'author' => $author, 'series' => $series, 'status' => $status,
 			'sort' => $sort, 'order' => $order, 'limit' => $limit, 'offset' => $offset,
 			'include' => $include, 'exclude' => $exclude, 'match' => $match,
+			'inSeries' => $inSeries,
 		]);
 		$result = $this->library->findBooks($userId, $query);
 		return new DataResponse([

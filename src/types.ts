@@ -66,9 +66,9 @@ export interface Book {
 
 export type MetadataOverrideField = 'title' | 'authors' | 'series' | 'seriesIndex' | 'description' | 'language' | 'publisher' | 'isbn' | 'publishedAt'
 
-export type SortKey = 'title' | 'author' | 'series' | 'rating' | 'added' | 'read'
+export type SortKey = 'title' | 'author' | 'series' | 'rating' | 'added' | 'read' | 'shelf'
 
-export type FilterType = 'genre' | 'tag' | 'author' | 'series' | 'format'
+export type FilterType = 'genre' | 'tag' | 'author' | 'series' | 'format' | 'shelf'
 
 export interface FilterTerm {
 	type: FilterType
@@ -85,6 +85,8 @@ export interface BookQuery {
 	status?: ReadStatus
 	sort?: SortKey
 	order?: 'asc' | 'desc'
+	/** 0: only books without a series, 1: only books with one */
+	inSeries?: 0 | 1
 	limit?: number
 	offset?: number
 }
@@ -149,6 +151,29 @@ export interface BulkTagResult {
 	failed: { fileId: number, error: string }[]
 	/** True if at least one file will be updated by a background job */
 	writeQueued?: boolean
+}
+
+export type BulkAuthorsMode = 'replace' | 'add' | 'remove'
+export type BulkIndexMode = 'keep' | 'sequence' | 'sortTitle'
+
+/** POST /books/bulk-metadata: only the provided sections change. */
+export interface BulkMetadataRequest {
+	/** in the order used for volume numbering */
+	fileIds: number[]
+	authors?: { mode: BulkAuthorsMode, values: string[] }
+	series?: { mode: 'clear' } | { mode: 'set', name: string, index?: { mode: BulkIndexMode, start?: number, step?: number } }
+	publisher?: { mode: 'clear' } | { mode: 'set', value: string }
+	language?: { mode: 'clear' } | { mode: 'set', value: string }
+	genres?: { add: string[], remove: string[] }
+	tags?: { add: string[], remove: string[] }
+}
+
+export interface BulkMetadataResult {
+	updated: number
+	unchanged: number
+	failed: { fileId: number, error: string }[]
+	/** True if at least one file will be updated by a background job */
+	writeQueued: boolean
 }
 
 /** Result of "Write metadata into the book file" */
@@ -309,7 +334,7 @@ export interface OrganizeResult {
 
 // ---- Async tasks (CONTRACTS-v3 section 1) -------------------------------
 
-export type TaskType = 'edit' | 'convert' | 'embed'
+export type TaskType = 'edit' | 'convert' | 'embed' | 'bulk'
 export type TaskStatus = 'queued' | 'running' | 'done' | 'failed'
 
 /** Result of a finished task. `edit`: book + warnings, `convert`: book + fileId + path. On `failed`: `code` = 403/409/413/422. */
@@ -321,6 +346,11 @@ export interface TaskResult {
 	fileId?: number
 	path?: string
 	code?: number
+	/** bulk: counters of the bulk metadata edit */
+	updated?: number
+	unchanged?: number
+	failed?: { fileId: number, error: string }[]
+	writeQueued?: boolean
 }
 
 export interface Task {
@@ -346,3 +376,48 @@ export interface ArchiveEntries {
 	etag: string
 	entries: { name: string, size: number }[]
 }
+
+// ---- Shelves, series (CONTRACTS-v4 sections 1 and 2) -----------------------
+
+export type ShelfType = 'manual' | 'smart'
+
+/** Saved library filter state of a smart shelf; terms are "type:name" strings. */
+export interface SmartQuery {
+	include: string[]
+	exclude: string[]
+	match: MatchMode
+	search: string
+	status: ReadStatus | null
+	sort: string
+	order: 'asc' | 'desc'
+}
+
+export interface Shelf {
+	id: number
+	name: string
+	type: ShelfType
+	query: SmartQuery | null
+	count: number
+	/** max 4 */
+	coverFileIds: number[]
+	sortOrder: number
+	createdAt: number
+	updatedAt: number
+}
+
+export interface ShelfBooksResult {
+	added: number
+	skipped: number
+}
+
+export interface SeriesEntry {
+	name: string
+	count: number
+	readCount: number
+	/** max 3, lowest series index first */
+	coverFileIds: number[]
+	firstFileId: number
+	lastAddedAt: number
+}
+
+export type SeriesQuery = Omit<BookQuery, 'inSeries' | 'limit' | 'offset' | 'sort'> & { sort?: 'name' | 'added' }

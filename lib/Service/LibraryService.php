@@ -13,6 +13,8 @@ use OCA\EbookReader\BackgroundJob\ScanFileJob;
 use OCA\EbookReader\BackgroundJob\WriteMetadataJob;
 use OCA\EbookReader\Db\Book;
 use OCA\EbookReader\Db\BookMapper;
+use OCA\EbookReader\Db\Shelf;
+use OCA\EbookReader\Db\ShelfMapper;
 use OCA\EbookReader\Db\Tag;
 use OCA\EbookReader\Db\TagMapper;
 use OCA\EbookReader\Metadata\BookMetadata;
@@ -38,6 +40,7 @@ class LibraryService {
 	private const BOOKS = 'ebookreader_books';
 	private const TAGS = 'ebookreader_tags';
 	private const PROGRESS = 'ebookreader_progress';
+	private const SHELF_BOOKS = 'ebookreader_shelf_books';
 	/** Interactive scans index inline only files up to this size; larger ones are queued as jobs */
 	public const INTERACTIVE_MAX_BYTES = 50 * 1024 * 1024;
 
@@ -53,6 +56,7 @@ class LibraryService {
 		private IDBConnection $db,
 		private LoggerInterface $logger,
 		private SidecarService $sidecar,
+		private ?ShelfMapper $shelves = null,
 	) {
 	}
 
@@ -550,7 +554,7 @@ class LibraryService {
 		$qb = $this->db->getQueryBuilder();
 		$qb->select('b.*')->from(self::BOOKS, 'b');
 		$this->applyFilters($qb, $userId, $q);
-		$this->applySort($qb, $q);
+		$this->applySort($qb, $userId, $q);
 		$qb->setFirstResult(max(0, $q->offset))->setMaxResults(max(1, min(BookQuery::MAX_LIMIT, $q->limit)));
 		$res = $qb->executeQuery();
 		$books = [];
@@ -562,22 +566,77 @@ class LibraryService {
 		return ['books' => $books, 'total' => $total];
 	}
 
+	/** Number of books matching the filters of the query (sort/paging ignored). */
+	public function countBooks(string $userId, BookQuery $q): int {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select($qb->func()->count('*', 'cnt'))->from(self::BOOKS, 'b');
+		$this->applyFilters($qb, $userId, $q);
+		$res = $qb->executeQuery();
+		$total = (int)$res->fetchOne();
+		$res->closeCursor();
+		return $total;
+	}
+
+	/**
+	 * Series of the books matching the filters (same filters as findBooks), see SeriesAggregator.
+	 * @return list<array{name: string, count: int, readCount: int, coverFileIds: list<int>, firstFileId: int, lastAddedAt: int}>
+	 */
+	public function listSeries(string $userId, BookQuery $q): array {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('b.file_id', 'b.series', 'b.series_index', 'b.added_at', 'b.read_status', 'b.title', 'b.path')->from(self::BOOKS, 'b');
+		$this->applyFilters($qb, $userId, $q);
+		$qb->andWhere($qb->expr()->isNotNull('b.series'))
+			->andWhere($qb->expr()->neq('b.series', $qb->createNamedParameter('')));
+		$res = $qb->executeQuery();
+		$rows = [];
+		while ($row = $res->fetch()) {
+			/** @var array<string, mixed> $row */
+			$rows[] = $row;
+		}
+		$res->closeCursor();
+		return SeriesAggregator::aggregate($rows, $q->sort === 'added' ? 'added' : 'name', $q->order, SeriesAggregator::MAX_SERIES);
+	}
+
 	private function applyFilters(IQueryBuilder $qb, string $userId, BookQuery $q): void {
 		$e = $qb->expr();
 		$qb->where($e->eq('b.user_id', $qb->createNamedParameter($userId)))
 			->andWhere($e->isNull('b.deleted_at'));
+		foreach ($this->filterConditions($qb, $userId, $q, true) as $condition) {
+			$qb->andWhere($condition);
+		}
+	}
+
+	/**
+	 * All filter conditions of a query (ANDed by the caller). $allowShelf is false inside the resolved query of a smart shelf:
+	 * `shelf:` terms are ignored there, so smart shelves can never reference each other (no loops).
+	 * @return list<string>
+	 */
+	private function filterConditions(IQueryBuilder $qb, string $userId, BookQuery $q, bool $allowShelf): array {
+		$e = $qb->expr();
+		$out = [];
 		if ($q->status !== null) {
-			$qb->andWhere($e->eq('b.read_status', $qb->createNamedParameter($q->status)));
+			$out[] = $e->eq('b.read_status', $qb->createNamedParameter($q->status));
+		}
+		if ($q->inSeries !== null) {
+			$out[] = self::sql($q->inSeries
+				? $e->andX($e->isNotNull('b.series'), $e->neq('b.series', $qb->createNamedParameter('')))
+				: $e->orX($e->isNull('b.series'), $e->eq('b.series', $qb->createNamedParameter(''))));
 		}
 		$includes = [];
 		foreach ($q->effectiveIncludes() as $entry) {
-			$includes[] = $this->entryCondition($qb, $entry['type'], $entry['name'], false);
+			$cond = $this->entryCondition($qb, $entry['type'], $entry['name'], false, $userId, $allowShelf);
+			if ($cond !== null) {
+				$includes[] = $cond;
+			}
 		}
 		if ($includes !== []) {
-			$qb->andWhere($q->match === BookQuery::MATCH_ANY ? $e->orX(...$includes) : $e->andX(...$includes));
+			$out[] = self::sql($q->match === BookQuery::MATCH_ANY ? $e->orX(...$includes) : $e->andX(...$includes));
 		}
 		foreach ($q->exclude as $entry) {
-			$qb->andWhere($this->entryCondition($qb, $entry['type'], $entry['name'], true));
+			$cond = $this->entryCondition($qb, $entry['type'], $entry['name'], true, $userId, $allowShelf);
+			if ($cond !== null) {
+				$out[] = $cond;
+			}
 		}
 		if ($q->search !== null) {
 			$terms = array_slice(preg_split('/\s+/u', trim($q->search)) ?: [], 0, 8);
@@ -587,7 +646,7 @@ class LibraryService {
 				}
 				$like = '%' . $this->db->escapeLikeParameter($term) . '%';
 				$p = $qb->createNamedParameter($like);
-				$qb->andWhere($e->orX(
+				$out[] = self::sql($e->orX(
 					$e->iLike('b.title', $p),
 					$e->iLike('b.authors', $p),
 					$e->iLike('b.series', $p),
@@ -596,18 +655,28 @@ class LibraryService {
 				));
 			}
 		}
+		return $out;
 	}
 
 	/**
-	 * SQL condition for one filter entry (type genre|tag|author|series|format), case-insensitive.
+	 * SQL condition for one filter entry (type genre|tag|author|series|format|shelf), case-insensitive.
 	 * $negate builds the opposite (books without it, NULL columns count as "without").
+	 * genre/tag terms of the form "Name/*" match Name and everything below "Name/".
+	 * Returns null if the term has no effect (shelf term where shelves are not allowed, unknown shelf when excluding).
 	 */
-	private function entryCondition(IQueryBuilder $qb, string $type, string $name, bool $negate): string {
+	private function entryCondition(IQueryBuilder $qb, string $type, string $name, bool $negate, string $userId = '', bool $allowShelf = false): ?string {
 		$e = $qb->expr();
 		switch ($type) {
 			case 'genre':
 			case 'tag':
-				$sub = $this->tagSubquery($qb, $type === 'genre' ? Tag::TYPE_GENRE : Tag::TYPE_TAG, $this->db->escapeLikeParameter($name));
+				$tagType = $type === 'genre' ? Tag::TYPE_GENRE : Tag::TYPE_TAG;
+				$base = FilterTerms::hierarchyBase($name);
+				if ($base !== null) {
+					$escaped = $this->db->escapeLikeParameter($base);
+					$sub = $this->tagSubquery($qb, $tagType, $escaped, $escaped . FilterTerms::SEPARATOR . '%');
+				} else {
+					$sub = $this->tagSubquery($qb, $tagType, $this->db->escapeLikeParameter($name));
+				}
 				return $negate ? $e->notIn('b.id', $sub) : $e->in('b.id', $sub);
 			case 'author':
 				$cond = $e->iLike('b.authors', $qb->createNamedParameter('%' . $this->db->escapeLikeParameter($name) . '%'));
@@ -615,24 +684,74 @@ class LibraryService {
 			case 'series':
 				$cond = $e->iLike('b.series', $qb->createNamedParameter($this->db->escapeLikeParameter($name)));
 				return $negate ? '(' . $e->isNull('b.series') . ' OR NOT (' . $cond . '))' : $cond;
+			case 'shelf':
+				return $allowShelf ? $this->shelfCondition($qb, $userId, $name, $negate) : null;
 			default:
 				$p = $qb->createNamedParameter(strtolower($name));
 				return $negate ? $e->neq($qb->createFunction('LOWER(b.format)'), $p) : $e->eq($qb->createFunction('LOWER(b.format)'), $p);
 		}
 	}
 
-	/** Sub-select of book ids having a tag matching the (already escaped) LIKE pattern, case-insensitively. */
-	private function tagSubquery(IQueryBuilder $qb, ?string $type, string $pattern): \OCP\DB\QueryBuilder\IQueryFunction {
+	/**
+	 * `shelf:<id>`: manual shelf = assignment, smart shelf = its saved query (shelf terms inside it are ignored).
+	 * A shelf of another user or an unknown id matches nothing (include) or has no effect (exclude).
+	 */
+	private function shelfCondition(IQueryBuilder $qb, string $userId, string $name, bool $negate): ?string {
+		$shelf = $this->findShelf($userId, FilterTerms::shelfId($name));
+		if ($shelf === null) {
+			return $negate ? null : '1 = 0';
+		}
+		$e = $qb->expr();
+		if ($shelf->isSmart()) {
+			$conditions = $this->filterConditions($qb, $userId, ShelfService::toBookQuery($shelf->getQueryArray() ?? []), false);
+			if ($conditions === []) {
+				return $negate ? '1 = 0' : '1 = 1';
+			}
+			$all = self::sql($e->andX(...$conditions));
+			return $negate ? 'NOT (' . $all . ')' : $all;
+		}
 		$sub = $this->db->getQueryBuilder();
-		$sub->select('t.book_id')->from(self::TAGS, 't')
-			->where($sub->expr()->iLike('t.name', $qb->createNamedParameter($pattern)));
+		$sub->select('sbm.file_id')->from(self::SHELF_BOOKS, 'sbm')
+			->where($sub->expr()->eq('sbm.shelf_id', $qb->createNamedParameter($shelf->getId(), IQueryBuilder::PARAM_INT)));
+		$fn = $qb->createFunction('(' . $sub->getSQL() . ')');
+		return $negate ? $e->notIn('b.file_id', $fn) : $e->in('b.file_id', $fn);
+	}
+
+	/** SQL text of a condition (the composite expressions of the query builder render themselves as SQL). */
+	private static function sql(string|\OCP\DB\QueryBuilder\ICompositeExpression $condition): string {
+		/** @psalm-suppress InvalidCast */
+		return (string)$condition;
+	}
+
+	private function findShelf(string $userId, ?int $id): ?Shelf {
+		if ($id === null || $this->shelves === null || $userId === '') {
+			return null;
+		}
+		try {
+			return $this->shelves->findByUserAndId($userId, $id);
+		} catch (DoesNotExistException) {
+			return null;
+		}
+	}
+
+	/**
+	 * Sub-select of book ids having a tag matching the (already escaped) LIKE pattern or, if given, the child pattern,
+	 * case-insensitively.
+	 */
+	private function tagSubquery(IQueryBuilder $qb, ?string $type, string $pattern, ?string $childPattern = null): \OCP\DB\QueryBuilder\IQueryFunction {
+		$sub = $this->db->getQueryBuilder();
+		$nameCond = $sub->expr()->iLike('t.name', $qb->createNamedParameter($pattern));
+		if ($childPattern !== null) {
+			$nameCond = $sub->expr()->orX($nameCond, $sub->expr()->iLike('t.name', $qb->createNamedParameter($childPattern)));
+		}
+		$sub->select('t.book_id')->from(self::TAGS, 't')->where($nameCond);
 		if ($type !== null) {
 			$sub->andWhere($sub->expr()->eq('t.type', $qb->createNamedParameter($type)));
 		}
 		return $qb->createFunction('(' . $sub->getSQL() . ')');
 	}
 
-	private function applySort(IQueryBuilder $qb, BookQuery $q): void {
+	private function applySort(IQueryBuilder $qb, string $userId, BookQuery $q): void {
 		$dir = strtolower($q->order) === 'desc' ? 'DESC' : 'ASC';
 		$title = 'LOWER(COALESCE(b.title, b.path))';
 		switch ($q->sort) {
@@ -644,6 +763,20 @@ class LibraryService {
 				$qb->orderBy($qb->createFunction('CASE WHEN b.series IS NULL THEN 1 ELSE 0 END'), 'ASC');
 				$qb->addOrderBy($qb->createFunction("LOWER(COALESCE(b.series, ''))"), $dir);
 				$qb->addOrderBy('b.series_index', $dir);
+				$qb->addOrderBy($qb->createFunction($title), 'ASC');
+				break;
+			case 'shelf':
+				// shelf order only makes sense inside one manual shelf (an include of shelf:<id>), otherwise sort by title
+				$shelfId = $this->manualShelfInclude($userId, $q);
+				if ($shelfId === null) {
+					$qb->orderBy($qb->createFunction($title), $dir);
+					break;
+				}
+				$qb->leftJoin('b', self::SHELF_BOOKS, 'sbo', $qb->expr()->andX(
+					$qb->expr()->eq('sbo.file_id', 'b.file_id'),
+					$qb->expr()->eq('sbo.shelf_id', $qb->createNamedParameter($shelfId, IQueryBuilder::PARAM_INT)),
+				));
+				$qb->orderBy($qb->createFunction('COALESCE(sbo.position, 0)'), $dir);
 				$qb->addOrderBy($qb->createFunction($title), 'ASC');
 				break;
 			case 'rating':
@@ -666,6 +799,20 @@ class LibraryService {
 				$qb->orderBy($qb->createFunction($title), $dir);
 		}
 		$qb->addOrderBy('b.id', 'ASC');
+	}
+
+	/** Id of the first manual shelf among the include terms of the query. */
+	private function manualShelfInclude(string $userId, BookQuery $q): ?int {
+		foreach ($q->effectiveIncludes() as $entry) {
+			if ($entry['type'] !== 'shelf') {
+				continue;
+			}
+			$shelf = $this->findShelf($userId, FilterTerms::shelfId($entry['name']));
+			if ($shelf !== null && !$shelf->isSmart()) {
+				return $shelf->getId();
+			}
+		}
+		return null;
 	}
 
 	/**

@@ -5,6 +5,8 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+## 0.5.0 – 2026-10-01
+
 ### Hinzugefügt
 - **Begleitdateien** (wie `.nfo` bei Kodi): Metadaten-Änderungen landen standardmäßig in einer kleinen versteckten Datei `.<Buchdatei>.opf` neben dem Buch (Calibre-kompatibles OPF 2.0 mit Titel, Autoren, Beschreibung, Sprache, Verlag, Datum, ISBN, Genres, Tags, Serie und Band). Das geht schnell, funktioniert für alle Formate inklusive MOBI, AZW3, CBR, CB7 und CBT und lässt die Buchdatei unangetastet.
 - Neue Einstellung „Wo Metadaten-Änderungen gespeichert werden“ (Begleitdatei, in der Datei, beides, nur Bibliothek). „Im Hintergrund/sofort“ gilt nur noch für das Schreiben in die Buchdatei. Die frühere Einstellung „nie“ wird zu „Nur Bibliothek“.
@@ -12,14 +14,22 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 - Umbenennen, Verschieben, Sortieren nach Muster, Konvertieren (Kopie, beim Löschen des Originals auch Löschen) und Löschen eines Buchs nehmen die Begleitdatei mit. Begleitdateien werden nie als Bücher indexiert.
 - Aktion „Metadaten in die Buchdatei schreiben“ (Buchdetails, EPUB/CBZ/FB2/FBZ) und Endpunkt `POST /api/v1/books/{fileId}/metadata/embed`, bei großen Dateien als Hintergrundaufgabe. Damit sehen auch Reader wie Kobo oder KOReader die Metadaten, die nur eingebettete Werte lesen.
 - Die Buchdetails zeigen „Metadaten in Begleitdatei gespeichert“, das Buch-JSON enthält `hasSidecar`.
+- **Regale** (Backend): manuelle Regale und intelligente Regale (gespeicherter Filter) mit den Endpunkten `GET/POST /shelves`, `PATCH/DELETE /shelves/{id}`, `POST/DELETE /shelves/{id}/books` und `PUT /shelves/{id}/books/order`. Neuer Filterbegriff `shelf:<id>` und Sortierung `sort=shelf`. Zuordnungen verschwinden beim endgültigen Entfernen eines Buchs (Aufräumjob) und beim Löschen des Benutzers.
+- **Serien** (Backend): Endpunkt `GET /series` (Name, Anzahl, gelesen, Cover, erstes Buch) und der Parameter `inSeries=0|1` für `GET /books`. `sort=series` sortiert innerhalb einer Serie nach Band.
+- **Hierarchische Genres und Tags** (Backend): `tag:Fantasy/*` und `genre:Fantasy/*` treffen den Eintrag selbst und alles darunter (Groß-/Kleinschreibung egal, auch als Ausschluss). Leerzeichen um `/` werden beim Speichern entfernt, maximal 5 Ebenen.
+- Neue Datenbanktabellen `ebookreader_shelves` und `ebookreader_shelf_books` (Migration `Version1004Date20261002090000`), Version 0.5.0.
+- **Regale** (Oberfläche): Navigationsbereich „Regale“ mit manuellen und intelligenten Regalen (Anzahl, Filter-Symbol), Anlegen, Umbenennen, Löschen mit Bestätigung und Umsortieren per Auf/Ab. „Als intelligentes Regal speichern…“ in der Filterleiste, „Regal aktualisieren“, wenn der Filter eines intelligenten Regals geändert wurde. „Zu Regal hinzufügen…“ in den Buchdetails (Mehrfachauswahl, „Neues Regal“) und in der Auswahlleiste, dort auch „Aus Regal entfernen“. Ein manuelles Regal wird in Regalreihenfolge angezeigt.
+- **Serien gruppieren**: Schalter in der Werkzeugleiste (wird im Browser gemerkt). Serienkarten mit gestapelten Covern, Bandanzahl und Lesefortschritt, darunter die Bücher ohne Serie. Ein Klick zeigt die Bände der Serie mit „Zurück zu den Serien“. Serienansicht, Regal und Filter stehen in der URL.
+- **Hierarchie bei Genres und Tags**: Einträge mit `/` (z. B. `Fantasy/High Fantasy`) erscheinen als aufklappbarer Baum, auch wenn der Oberbegriff selbst nicht vergeben ist. Ein Oberbegriff filtert mit `tag:Fantasy/*` den ganzen Zweig und zeigt in der Filterleiste „Fantasy (+ sub)“. Zahlen an Oberbegriffen sind Summen und mit „≈“ markiert.
+- **Hochladen**: Schaltfläche „Hochladen“ in der Navigation und im leeren Zustand sowie Drag & Drop auf die Bibliothek („Zum Hinzufügen in die Bibliothek ablegen“). Der Upload läuft über `@nextcloud/upload` mit Chunking (auch 300 bis 400 MB), nur Bucherweiterungen (epub, mobi, azw3, fb2, fbz, cbz, cbr, cb7, cbt), in den ersten Bibliotheksordner. Vorhandene Dateien werden nie überschrieben („Name (2).epub“). Fortschritt pro Datei und gesamt, Abbrechen möglich; danach werden Bibliothek und Filter neu geladen. Bei Dateien über 20 MB erscheint der Hinweis „Large files are being indexed in the background“.
+- **Mehrfachauswahl bearbeiten**: „Edit selected…“ (früher „Genres und Tags bearbeiten“) öffnet den Dialog „Edit selected books“ mit den Abschnitten Autoren (ersetzen, hinzufügen, entfernen), Serie (setzen oder entfernen, Bandnummern behalten, in Listenreihenfolge oder nach Titel nummerieren mit Start und Schrittweite, Vorschau der ersten 10 Bücher), Verlag, Sprache sowie Genres und Tags. Nur abgehakte Abschnitte werden gesendet, alles andere bleibt pro Buch erhalten. Die Auswahl bleibt nach dem Speichern erhalten, Bibliothek und Filter werden neu geladen.
+- Neuer Endpunkt `POST /api/v1/books/bulk-metadata` (bis zu 500 Bücher, 5 Aufrufe pro Minute). Jedes Buch läuft über den normalen Metadaten-Speicherweg (Speicherziel, Begleitdatei, Overrides, keine Änderung bei gleichem Wert); die Antwort enthält `updated`, `unchanged`, `failed` je Datei und `writeQueued`. Bei `async=1` oder bei mehr als 50 Büchern mit dem Speicherziel „In der Datei“ oder „Beides“ läuft die Änderung als Hintergrundaufgabe (Typ `bulk`, Fortschritt „Book 12 of 80“, Antwort 202 mit `taskId`).
 
 ### Geändert
 - Standard für Metadaten-Änderungen ist jetzt die Begleitdatei statt der Buchdatei. Wer die Metadaten weiterhin in die Datei schreiben möchte, wählt „In der Datei“ in den Einstellungen.
 - Ein vollständiges Speichern im Editor aktualisiert bei den Zielen „Begleitdatei“ und „Beides“ auch die Begleitdatei, damit sie die neuen Werte nicht überschreibt.
 - Ist der Ordner oder die Freigabe schreibgeschützt, werden Änderungen nur in der Bibliothek gespeichert und mit einem Hinweis gemeldet.
 - Neue Datenbankspalte `sidecar_etag` (Migration `Version1003Date20261001180000`).
-
-## 0.3.1 – 2026-10-01
 
 ### Behoben
 - Tags ließen sich nicht speichern (MariaDB/MySQL: „Field 'type' doesn't have a default value“). Neue Datensätze schreiben jetzt immer alle Felder. Das betraf auch Hintergrundaufgaben beim Bearbeiten von Seiten.
