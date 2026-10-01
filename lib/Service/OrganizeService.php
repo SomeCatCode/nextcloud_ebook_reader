@@ -13,6 +13,7 @@ use OCA\EbookReader\Db\Book;
 use OCA\EbookReader\Db\BookMapper;
 use OCA\EbookReader\Db\Tag;
 use OCA\EbookReader\Db\TagMapper;
+use OCA\EbookReader\Metadata\SidecarService;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\Files\Folder;
 use OCP\Files\IFilenameValidator;
@@ -41,6 +42,7 @@ class OrganizeService {
 		private IRootFolder $rootFolder,
 		private IFilenameValidator $filenameValidator,
 		private LoggerInterface $logger,
+		private SidecarService $sidecar,
 	) {
 	}
 
@@ -267,7 +269,10 @@ class OrganizeService {
 				}
 				$this->ensureFolders($userFolder, dirname($to));
 				$parent = $node->getParent();
+				$oldName = $node->getName();
 				$node->move($userFolder->getPath() . $to);
+				// the rename event moves the sidecar as well; this is a no-op then
+				$this->sidecar->moveAlong($parent, $oldName, $node->getParent(), basename($to));
 				$book->setPath($to);
 				$book->setUpdatedAt((int)(microtime(true) * 1000.0));
 				$this->bookMapper->update($book);

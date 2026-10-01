@@ -42,6 +42,8 @@ class Task extends Entity {
 
 	public const TYPE_EDIT = 'edit';
 	public const TYPE_CONVERT = 'convert';
+	/** writes the library metadata into the book file */
+	public const TYPE_EMBED = 'embed';
 	public const STATUS_QUEUED = 'queued';
 	public const STATUS_RUNNING = 'running';
 	public const STATUS_DONE = 'done';

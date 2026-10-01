@@ -50,7 +50,24 @@ Bibliothek, Reader und Editor für E-Books und Comics direkt in deiner Nextcloud
 | Inhaltsverzeichnis bearbeiten | ✅ | ✅ | ✅ | ✅¹ | – |
 
 ¹ nach Umwandlung in CBZ, die der Editor per Klick anbietet
-² nur in der App-Datenbank, die Datei selbst bleibt unverändert
+² in der Begleitdatei bzw. der App-Datenbank, die Datei selbst bleibt unverändert
+
+### Metadaten-Speicherung / Begleitdateien
+
+Geänderte Metadaten (Titel, Serie, Genres, Tags ...) speichert die App je nach Einstellung „Wo Metadaten-Änderungen gespeichert werden“:
+
+| Ziel | Wirkung |
+|---|---|
+| **Begleitdatei** (Standard) | Eine kleine versteckte Datei `.<Buchdatei>.opf` neben dem Buch, z. B. `.Golden Boy 01.cbz.opf`. Schnell, funktioniert für alle Formate (auch MOBI, AZW3, CBR, CB7, CBT), die Buchdatei bleibt unangetastet und die Metadaten wandern mit den Dateien (Kopie, Sync, Backup). |
+| In der Datei | Die Metadaten werden ins Buch geschrieben (EPUB, CBZ, FB2, FBZ). Andere Reader sehen sie, aber die Datei wird neu geschrieben. „Im Hintergrund“ oder „sofort“ steuert nur, wann das passiert. |
+| Beides | Begleitdatei sofort, Datei nach der Einstellung für das Schreiben. |
+| Nur Bibliothek | Nur in der Datenbank der App. Ist Ordner oder Freigabe schreibgeschützt, fällt die App ebenfalls darauf zurück und zeigt einen Hinweis. |
+
+- Die Begleitdatei ist Calibre-kompatibles OPF 2.0 (Titel, Autoren, Beschreibung, Sprache, Verlag, Datum, ISBN, Schlagwörter, Serie und Band). Genres und Tags unterscheidet die App über zusätzliche `ebookreader:`-Einträge, ohne diese gelten alle Schlagwörter als Genre-Kandidaten bzw. Tags.
+- Rangfolge beim Einlesen: in der App geänderte Felder (Datenbank) vor Begleitdatei vor eingebetteten Metadaten vor Dateiname. Ändert jemand die Begleitdatei von außen (Calibre, Texteditor, Sync), liest die App das Buch neu ein.
+- Umbenennen, Verschieben, Sortieren, Konvertieren und Löschen eines Buchs nehmen die Begleitdatei mit (beim Löschen landet sie im Papierkorb).
+- Andere Reader (Kobo, KOReader ...) lesen nur eingebettete Metadaten. Mit **„Metadaten in die Buchdatei schreiben“** in den Buchdetails (EPUB, CBZ, FB2, FBZ) schreibst du die aktuellen Werte nachträglich ins Buch.
+- Eine frühere Einstellung „nie“ gilt jetzt als „Nur Bibliothek“.
 
 ### Sicherheit und Datenschutz
 - Skripte in E-Books werden **nicht** ausgeführt, externe Inhalte wie Tracking-Pixel oder Web-Fonts werden **nicht** nachgeladen. Details: [docs/SECURITY-READER.md](docs/SECURITY-READER.md)
@@ -328,7 +345,7 @@ Für CB7 und zum serverseitigen Lesen von CBR/CB7 braucht der Server `7z` (oder 
 ## Bekannte Einschränkungen
 
 - **DRM-geschützte Bücher** (Kindle, Adobe) lassen sich nicht öffnen. Die App zeigt einen entsprechenden Hinweis.
-- **MOBI/AZW3-Dateien** werden nicht verändert. Metadaten-Änderungen landen nur in der App.
+- **MOBI/AZW3-Dateien** werden nicht verändert. Metadaten-Änderungen landen in der Begleitdatei (Standard) bzw. nur in der App.
 - **Öffentliche Freigabe-Links** öffnen Bücher nicht im Reader, dort gibt es den normalen Download.
 - **Safari:** Die Tipp- und Wischnavigation im Reader kann eingeschränkt sein, siehe [docs/SECURITY-READER.md](docs/SECURITY-READER.md).
 - **PDF** wird bewusst nicht unterstützt, dafür hat Nextcloud einen eigenen Viewer.

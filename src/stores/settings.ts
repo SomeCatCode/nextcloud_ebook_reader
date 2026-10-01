@@ -28,6 +28,7 @@ function fallback(): Settings {
 		filenamePattern: '{author} - {title}',
 		genreList: null,
 		metadataWriteMode: 'background',
+		metadataTarget: 'sidecar',
 	}
 }
 

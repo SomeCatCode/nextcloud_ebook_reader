@@ -62,6 +62,8 @@ use OCP\AppFramework\Db\Entity;
  * @method void setDeletedAt(?int $deletedAt)
  * @method string|null getOverrides()
  * @method void setOverrides(?string $overrides)
+ * @method string|null getSidecarEtag()
+ * @method void setSidecarEtag(?string $sidecarEtag)
  */
 class Book extends Entity {
 	use MarksFieldsOnCreate;
@@ -100,6 +102,8 @@ class Book extends Entity {
 	protected ?int $deletedAt = null;
 	/** JSON list of field names edited in the app only (see OVERRIDABLE_FIELDS) */
 	protected ?string $overrides = null;
+	/** change marker of the sidecar file (".<book>.opf") at the last indexing; null = no sidecar */
+	protected ?string $sidecarEtag = null;
 
 	public function __construct() {
 		$this->markAllFieldsUpdated();

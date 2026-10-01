@@ -54,6 +54,7 @@ class ViewOnlyShareTest extends TestCase {
 			$this->createMock(IJobList::class),
 			$this->createMock(IDBConnection::class),
 			$this->createMock(LoggerInterface::class),
+			$this->createMock(\OCA\EbookReader\Metadata\SidecarService::class),
 		);
 	}
 

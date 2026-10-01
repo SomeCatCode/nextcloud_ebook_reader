@@ -5,6 +5,20 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+### Hinzugefügt
+- **Begleitdateien** (wie `.nfo` bei Kodi): Metadaten-Änderungen landen standardmäßig in einer kleinen versteckten Datei `.<Buchdatei>.opf` neben dem Buch (Calibre-kompatibles OPF 2.0 mit Titel, Autoren, Beschreibung, Sprache, Verlag, Datum, ISBN, Genres, Tags, Serie und Band). Das geht schnell, funktioniert für alle Formate inklusive MOBI, AZW3, CBR, CB7 und CBT und lässt die Buchdatei unangetastet.
+- Neue Einstellung „Wo Metadaten-Änderungen gespeichert werden“ (Begleitdatei, in der Datei, beides, nur Bibliothek). „Im Hintergrund/sofort“ gilt nur noch für das Schreiben in die Buchdatei. Die frühere Einstellung „nie“ wird zu „Nur Bibliothek“.
+- Rangfolge beim Einlesen: in der App geänderte Felder, dann Begleitdatei, dann eingebettete Metadaten, dann Dateiname. Eine von außen geänderte, neu angelegte oder gelöschte Begleitdatei löst das erneute Einlesen des Buchs aus.
+- Umbenennen, Verschieben, Sortieren nach Muster, Konvertieren (Kopie, beim Löschen des Originals auch Löschen) und Löschen eines Buchs nehmen die Begleitdatei mit. Begleitdateien werden nie als Bücher indexiert.
+- Aktion „Metadaten in die Buchdatei schreiben“ (Buchdetails, EPUB/CBZ/FB2/FBZ) und Endpunkt `POST /api/v1/books/{fileId}/metadata/embed`, bei großen Dateien als Hintergrundaufgabe. Damit sehen auch Reader wie Kobo oder KOReader die Metadaten, die nur eingebettete Werte lesen.
+- Die Buchdetails zeigen „Metadaten in Begleitdatei gespeichert“, das Buch-JSON enthält `hasSidecar`.
+
+### Geändert
+- Standard für Metadaten-Änderungen ist jetzt die Begleitdatei statt der Buchdatei. Wer die Metadaten weiterhin in die Datei schreiben möchte, wählt „In der Datei“ in den Einstellungen.
+- Ein vollständiges Speichern im Editor aktualisiert bei den Zielen „Begleitdatei“ und „Beides“ auch die Begleitdatei, damit sie die neuen Werte nicht überschreibt.
+- Ist der Ordner oder die Freigabe schreibgeschützt, werden Änderungen nur in der Bibliothek gespeichert und mit einem Hinweis gemeldet.
+- Neue Datenbankspalte `sidecar_etag` (Migration `Version1003Date20261001180000`).
+
 ## 0.3.1 – 2026-10-01
 
 ### Behoben

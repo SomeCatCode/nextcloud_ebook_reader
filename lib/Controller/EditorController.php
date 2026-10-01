@@ -158,6 +158,44 @@ class EditorController extends AbstractOCSController {
 	}
 
 	/**
+	 * Writes the metadata stored in the library into the book file (EPUB, CBZ, FB2, FBZ). Useful when the metadata lives in the sidecar
+	 * file and other readers (Kobo, KOReader ...) should see it, because they only read embedded metadata.
+	 *
+	 * @param int $fileId File id
+	 * @param bool $async Validate synchronously, then write in the background and return a task id (poll GET /api/v1/tasks/{taskId})
+	 * @return DataResponse<Http::STATUS_OK|Http::STATUS_ACCEPTED|Http::STATUS_BAD_REQUEST|Http::STATUS_FORBIDDEN|Http::STATUS_NOT_FOUND|Http::STATUS_CONFLICT|Http::STATUS_REQUEST_ENTITY_TOO_LARGE|Http::STATUS_UNSUPPORTED_MEDIA_TYPE|Http::STATUS_UNPROCESSABLE_ENTITY|Http::STATUS_LOCKED|Http::STATUS_INTERNAL_SERVER_ERROR, array<string, mixed>, array{}>
+	 *
+	 * 200: Written (written = false if the file already held the metadata)
+	 * 202: Accepted, the write runs as a task (async = true)
+	 * 400: Invalid request
+	 * 403: No write permission or download of the file is disabled
+	 * 404: File not found
+	 * 409: File was modified in the meantime
+	 * 413: File too large to edit
+	 * 415: Format can not be written
+	 * 422: Result failed validation, original left unchanged
+	 * 423: File is locked
+	 * 500: Internal error
+	 */
+	#[NoAdminRequired]
+	#[UserRateLimit(limit: 20, period: 60)]
+	#[ApiRoute(verb: 'POST', url: '/api/v1/books/{fileId}/metadata/embed', requirements: ['fileId' => '\d+'])]
+	public function embedMetadata(int $fileId, bool $async = false): DataResponse {
+		$userId = $this->uid();
+		return $this->guard(function () use ($userId, $fileId, $async): DataResponse {
+			$this->requireContentAccess($userId, $fileId);
+			$this->editor->checkEmbed($userId, $fileId);
+			if ($async) {
+				$task = $this->tasks->create($userId, $fileId, Task::TYPE_EMBED, []);
+				$this->tasks->scheduleInline($task);
+				return new DataResponse(['taskId' => $task->getId()], Http::STATUS_ACCEPTED);
+			}
+			$res = $this->editor->embedMetadata($userId, $fileId);
+			return new DataResponse(['book' => $this->serializer->serializeWithProgress($userId, $res['book']), 'warnings' => $res['warnings'], 'written' => $res['written']]);
+		});
+	}
+
+	/**
 	 * Adds/removes genres and tags of several books
 	 *
 	 * @param list<int> $fileIds File ids

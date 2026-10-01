@@ -26,6 +26,7 @@ use OCA\EbookReader\Editor\Fb2Editor;
 use OCA\EbookReader\Editor\InvalidEditRequestException;
 use OCA\EbookReader\Metadata\HtmlSanitizer;
 use OCA\EbookReader\Metadata\MetadataService;
+use OCA\EbookReader\Metadata\SidecarService;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\BackgroundJob\IJobList;
 use OCP\Files\File;
@@ -71,6 +72,7 @@ class EditorService {
 		private LoggerInterface $logger,
 		private IJobList $jobList,
 		private ArchiveCache $archiveCache,
+		private SidecarService $sidecar,
 	) {
 		$this->editors = [new EpubEditor(), new CbzEditor(), new Fb2Editor()];
 	}
@@ -223,8 +225,9 @@ class EditorService {
 	}
 
 	/**
-	 * Saves a metadata patch. Depending on the user's "metadataWriteMode" the file is written right away, later in one
-	 * background job, or never; the database is always up to date when this returns.
+	 * Saves a metadata patch. The user's "metadataTarget" decides where it goes: the sidecar file (default, written right
+	 * away, no access to the book file), the book file (right away or later in one background job, see "metadataWriteMode"),
+	 * both, or only the library. The database is always up to date when this returns.
 	 *
 	 * @param array<string, mixed> $metadataPatch
 	 * @return array{book: Book, warnings: list<string>, writeQueued: bool}
@@ -241,9 +244,23 @@ class EditorService {
 			return ['book' => $book, 'warnings' => [], 'writeQueued' => false];
 		}
 
-		$mode = (string)($this->settings->get($userId)['metadataWriteMode'] ?? SettingsService::DEFAULT_METADATA_WRITE_MODE);
+		$config = $this->settings->get($userId);
+		$target = $this->targetOf($config);
+		$mode = (string)($config['metadataWriteMode'] ?? SettingsService::DEFAULT_METADATA_WRITE_MODE);
 		$warnings = [];
-		if (in_array($format, self::WRITABLE, true) && $mode !== 'never') {
+
+		$sidecarOk = false;
+		if ($target === 'sidecar' || $target === 'both') {
+			$sidecarOk = $this->sidecar->write($file, $merged);
+			if (!$sidecarOk) {
+				$warnings[] = 'Die Begleitdatei konnte nicht geschrieben werden (Ordner schreibgeschützt); die Änderungen wurden nur in der Bibliothek gespeichert.';
+			}
+		} elseif ($target === 'file') {
+			// an existing sidecar must not keep the old values alive
+			$this->sidecar->write($file, $merged, false);
+		}
+
+		if (($target === 'file' || $target === 'both') && in_array($format, self::WRITABLE, true)) {
 			if ($file->isUpdateable() && $this->sizeOk($file)) {
 				if ($mode === 'immediate') {
 					$req = new EditRequest(etag: (string)$file->getEtag(), saveAsCopy: false, metadata: $merged);
@@ -252,18 +269,108 @@ class EditorService {
 						// the file holds plain text; keep the sanitized HTML in the database
 						$this->applyDescription($result['book'], $patch['description']);
 					}
-					return ['book' => $result['book'], 'warnings' => $result['warnings'], 'writeQueued' => false];
+					return ['book' => $result['book'], 'warnings' => array_merge($warnings, $result['warnings']), 'writeQueued' => false];
 				}
 				// background: the library is updated now, the file follows in one job (identical jobs are merged)
+				$book->setSidecarEtag($this->sidecar->etagOf($file));
 				$book = $this->updateDatabase($book, $merged, Tag::SOURCE_FILE);
 				$this->jobList->add(WriteMetadataJob::class, WriteMetadataJob::argument($userId, $fileId));
-				return ['book' => $book, 'warnings' => [], 'writeQueued' => true];
+				return ['book' => $book, 'warnings' => $warnings, 'writeQueued' => true];
 			}
-			$warnings[] = 'Die Datei ist schreibgeschützt oder zu groß; die Änderungen wurden nur in der Bibliothek gespeichert.';
+			if (!$sidecarOk) {
+				$warnings[] = 'Die Datei ist schreibgeschützt oder zu groß; die Änderungen wurden nur in der Bibliothek gespeichert.';
+			}
 		}
-		// the file stays as it is: remember the edited fields so a re-index of the file does not overwrite them
+
+		if ($sidecarOk) {
+			// the sidecar holds the values now: overrides are not needed, except for fields it can not express (empty values)
+			$changed = $this->changedFields($current, $merged, false);
+			$clear = [];
+			$add = [];
+			$comparable = $this->comparable($merged, false);
+			foreach ($changed as $field) {
+				if ($comparable[$field] === null || $comparable[$field] === []) {
+					$add[] = $field;
+				} else {
+					$clear[] = $field;
+				}
+			}
+			$book->setOverridesArray(array_values(array_diff($book->getOverridesArray(), $clear)));
+			$book->setSidecarEtag($this->sidecar->etagOf($file));
+			return ['book' => $this->updateDatabase($book, $merged, Tag::SOURCE_FILE, $add), 'warnings' => $warnings, 'writeQueued' => false];
+		}
+		// nothing was written anywhere: remember the edited fields so a re-index does not overwrite them
 		$changed = $this->changedFields($current, $merged, false);
 		return ['book' => $this->updateDatabase($book, $merged, Tag::SOURCE_APP, $changed), 'warnings' => $warnings, 'writeQueued' => false];
+	}
+
+	/**
+	 * Writes the metadata of the library into the book file ("Write metadata into the book file").
+	 *
+	 * @param ?callable(float, string): void $progress
+	 * @return array{book: Book, warnings: list<string>, written: bool}
+	 * @throws EditorException unsupported format (415), read-only (403), too large (413)
+	 * @throws NotFoundException
+	 * @throws DoesNotExistException
+	 */
+	public function embedMetadata(string $userId, int $fileId, ?callable $progress = null): array {
+		$file = $this->checkEmbed($userId, $fileId);
+		$format = $this->formatOf($file);
+		$this->flushPendingWrite($userId, $fileId);
+		$book = $this->library->getBook($userId, $fileId);
+		$db = $this->metadataOf($book);
+
+		$path = $this->archiveCache->localPath($file);
+		try {
+			$fileMeta = $this->metadata->extractLocal($path, $format, $file->getName());
+		} finally {
+			$this->archiveCache->release($path);
+		}
+		$fromFile = [
+			'title' => $fileMeta->title,
+			'authors' => $fileMeta->authors,
+			'series' => $fileMeta->series,
+			'seriesIndex' => $fileMeta->seriesIndex,
+			'description' => $fileMeta->description,
+			'language' => $fileMeta->language,
+			'publisher' => $fileMeta->publisher,
+			'isbn' => $fileMeta->isbn,
+			'publishedAt' => $fileMeta->publishedAt,
+			'genres' => array_merge($fileMeta->genres, $fileMeta->subjects),
+			'tags' => $fileMeta->tags,
+		];
+		if ($this->sameMetadata($db, $fromFile, true)) {
+			return ['book' => $book, 'warnings' => [], 'written' => false];
+		}
+		$req = new EditRequest(etag: (string)$file->getEtag(), saveAsCopy: false, metadata: $db);
+		$result = $this->write($userId, $file, $format, $req, $progress);
+		$this->applyDescription($result['book'], $db['description']);
+		return ['book' => $result['book'], 'warnings' => $result['warnings'], 'written' => true];
+	}
+
+	/**
+	 * Synchronous checks of embedMetadata (also used before the task is queued).
+	 *
+	 * @throws EditorException
+	 * @throws NotFoundException
+	 */
+	public function checkEmbed(string $userId, int $fileId): File {
+		$file = $this->library->getFileForUser($userId, $fileId);
+		$format = $this->formatOf($file);
+		if (!in_array($format, self::WRITABLE, true)) {
+			throw new EditorException('Dieses Format kann nicht in der Datei bearbeitet werden.', 415);
+		}
+		if (!$file->isUpdateable()) {
+			throw new EditForbiddenException('Die Datei ist schreibgeschützt.');
+		}
+		$this->assertSize($file);
+		return $file;
+	}
+
+	/** @param array<string, mixed> $config user settings */
+	private function targetOf(array $config): string {
+		$target = $config['metadataTarget'] ?? SettingsService::DEFAULT_METADATA_TARGET;
+		return is_string($target) && in_array($target, SettingsService::METADATA_TARGETS, true) ? $target : SettingsService::DEFAULT_METADATA_TARGET;
 	}
 
 	/**
@@ -462,6 +569,8 @@ class EditorService {
 			try {
 				$this->filenameValidator->validateFilename($candidate);
 				$file->move($parent->getPath() . '/' . $candidate);
+				// the rename event moves it as well; this is a no-op then
+				$this->sidecar->moveAlong($parent, $current, $parent, $candidate);
 			} catch (NotPermittedException $e) {
 				throw new EditForbiddenException('Die Datei darf nicht umbenannt werden.', $e);
 			} catch (\OCP\Files\InvalidPathException $e) {
@@ -559,6 +668,8 @@ class EditorService {
 					fclose($stream);
 				}
 			}
+			// the sidecar (precedence over the embedded values) must say the same before the file is indexed again
+			$this->syncSidecarAfterWrite($userId, $file, $req);
 			$this->library->reindexFileForAllUsers($fileId);
 			$this->progress->remapAfterEdit($fileId, $result['itemMap']);
 			// the file now holds these fields: they are no longer "edited in the app only"
@@ -581,6 +692,24 @@ class EditorService {
 			if (is_string($dst) && $dst !== '') {
 				@unlink($dst);
 			}
+		}
+	}
+
+	/**
+	 * After a structure save: refreshes the sidecar with the saved metadata (target sidecar/both: create it; target
+	 * file/library: only an existing one, so stale values do not win over the new file content).
+	 */
+	private function syncSidecarAfterWrite(string $userId, File $file, EditRequest $req): void {
+		if ($req->metadata === null) {
+			return;
+		}
+		try {
+			$target = $this->targetOf($this->settings->get($userId));
+			$book = $this->findBook($userId, $file->getId());
+			$base = $book !== null ? $this->metadataOf($book) : $this->emptyMetadata();
+			$this->sidecar->write($file, array_merge($base, $req->metadata), $target === 'sidecar' || $target === 'both');
+		} catch (\Throwable $e) {
+			$this->logger->info('Sidecar not refreshed for file ' . $file->getId() . ': ' . $e->getMessage(), ['app' => Application::APP_ID]);
 		}
 	}
 

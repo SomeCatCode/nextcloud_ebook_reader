@@ -9,7 +9,7 @@
 	<name>E-Book Reader</name>
 	<summary>Read, organise and edit e-books (EPUB, MOBI, AZW3, FB2, CBZ, CBR) in Nextcloud</summary>
 	<description><![CDATA[A library, reader and metadata/content editor for e-books and comics with reading progress sync.]]></description>
-	<version>0.3.1</version>
+	<version>0.4.0</version>
 	<licence>AGPL-3.0-or-later</licence>
 	<author mail="f.kurth@lan1.de">Felix Kurth</author>
 	<namespace>EbookReader</namespace>

@@ -17,7 +17,9 @@ import type {
 
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
+import { EMBED_SYNC_MAX_BYTES } from '../components/library/metadataStorage.ts'
 import * as api from '../services/api.ts'
+import { pollTask } from '../services/tasks.ts'
 
 export const PAGE_SIZE = 50
 export const SEARCH_DEBOUNCE_MS = 300
@@ -542,6 +544,28 @@ export const useLibraryStore = defineStore('library', () => {
 	}
 
 	/**
+	 * Writes the library metadata of a book into the book file (the sidecar target keeps it out of the file otherwise).
+	 * Large files run as a server task. Returns whether the file had to be changed.
+	 *
+	 * @param fileId
+	 */
+	async function embedMetadata(fileId: number): Promise<{ written: boolean, warnings: string[] }> {
+		const current = [...books.value, ...recent.value].find((b) => b.fileId === fileId)
+		const started = await api.embedMetadata(fileId, (current?.size ?? 0) > EMBED_SYNC_MAX_BYTES)
+		let result: { book?: Book, written?: boolean, warnings?: string[] }
+		if ('taskId' in started) {
+			const task = await pollTask(started.taskId)
+			result = task.result ?? {}
+		} else {
+			result = started.sync
+		}
+		if (result.book) {
+			applyBook(result.book)
+		}
+		return { written: result.written === true, warnings: result.warnings ?? [] }
+	}
+
+	/**
 	 * Resets "edited in app" overrides of a book (one field or all): the values are read from the file again.
 	 *
 	 * @param fileId
@@ -643,6 +667,7 @@ export const useLibraryStore = defineStore('library', () => {
 		setRating,
 		setReadStatus,
 		saveBookTags,
+		embedMetadata,
 		resetOverrides,
 		bulkTags,
 		setActive,

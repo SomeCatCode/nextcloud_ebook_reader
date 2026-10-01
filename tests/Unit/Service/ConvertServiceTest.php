@@ -39,6 +39,7 @@ class ConvertServiceTest extends TestCase {
 	private BookMapper&MockObject $books;
 	private Folder&MockObject $folder;
 	private ConvertService $service;
+	private \OCA\EbookReader\Metadata\SidecarService&MockObject $sidecar;
 	/** @var array<string, string> target file name => captured local path */
 	private array $written = [];
 	/** @var array<string, bool> names that already exist in the folder */
@@ -52,7 +53,7 @@ class ConvertServiceTest extends TestCase {
 	private ITempManager&MockObject $temp;
 
 	private function serviceWith(ArchiveTools $tools): ConvertService {
-		return new ConvertService($this->library, $tools, $this->progress, $this->books, $this->temp, $this->createMock(LoggerInterface::class), new ArchiveCache($this->temp, $this->createMock(IAppConfig::class), $this->createMock(LoggerInterface::class)));
+		return new ConvertService($this->library, $tools, $this->progress, $this->books, $this->temp, $this->createMock(LoggerInterface::class), new ArchiveCache($this->temp, $this->createMock(IAppConfig::class), $this->createMock(LoggerInterface::class)), $this->sidecar);
 	}
 	private string $tmpRoot;
 
@@ -63,6 +64,7 @@ class ConvertServiceTest extends TestCase {
 		$this->progress = $this->createMock(ProgressService::class);
 		$this->books = $this->createMock(BookMapper::class);
 		$this->folder = $this->createMock(Folder::class);
+		$this->sidecar = $this->createMock(\OCA\EbookReader\Metadata\SidecarService::class);
 		$this->folder->method('isCreatable')->willReturn(true);
 		$this->folder->method('nodeExists')->willReturnCallback(fn (string $n): bool => isset($this->existing[$n]) || isset($this->written[$n]));
 		$this->folder->method('newFile')->willReturnCallback(function (string $name, $content): File {
@@ -457,5 +459,32 @@ class ConvertServiceTest extends TestCase {
 		$t->setName($name);
 		$t->setSource($source);
 		return $t;
+	}
+
+	public function testSidecarIsCopiedToTheNewBookAndDeletedWithTheOriginal(): void {
+		$this->wireLibrary();
+		$cbz = Fixtures::path('plain.cbz');
+		$name = 'Comic Title.cbz';
+		$file = $this->createMock(File::class);
+		$file->method('getName')->willReturn($name);
+		$file->method('getSize')->willReturn((int)filesize($cbz));
+		$storage = $this->createMock(IStorage::class);
+		$storage->method('isLocal')->willReturn(true);
+		$storage->method('getLocalFile')->willReturn($cbz);
+		$file->method('getStorage')->willReturn($storage);
+		$file->method('getInternalPath')->willReturn('files/' . $name);
+		$file->method('getParent')->willReturn($this->folder);
+		$file->method('isDeletable')->willReturn(true);
+		$this->libraryLookups[1] = [$this->book(1, 'cbz', $name), $file];
+		$this->sidecar->expects($this->once())->method('copyAlong')->with($this->folder, $name, $this->folder, 'Comic Title.cbt');
+		$this->sidecar->expects($this->once())->method('deleteFor')->with($this->folder, $name);
+		$this->service->convert('u', 1, 'cbt', true);
+	}
+
+	public function testSidecarOfTheOriginalStaysWhenItIsKept(): void {
+		$this->wireLibrary();
+		$this->sidecar->expects($this->once())->method('copyAlong');
+		$this->sidecar->expects($this->never())->method('deleteFor');
+		$this->convert(Fixtures::path('plain.cbz'), 'cbz', 'cbt');
 	}
 }
