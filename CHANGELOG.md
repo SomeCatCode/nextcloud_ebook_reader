@@ -29,6 +29,17 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 - Ist der Ordner oder die Freigabe schreibgeschützt, werden Änderungen nur in der Bibliothek gespeichert und mit einem Hinweis gemeldet.
 - Neue Datenbankspalte `sidecar_etag` (Migration `Version1003Date20261001180000`).
 
+## 0.3.1 – 2026-10-01
+
+### Behoben
+- Tags ließen sich nicht speichern (MariaDB/MySQL: „Field 'type' doesn't have a default value“). Neue Datensätze schreiben jetzt immer alle Felder. Das betraf auch Hintergrundaufgaben beim Bearbeiten von Seiten.
+- Der Hintergrundjob zum Schreiben von Metadaten brach mit „fclose(): Argument #1 must be an open stream resource“ ab. Auch das Speichern im Editor, „Als Kopie speichern“ und Konvertierungen waren betroffen.
+- Meldungen („Änderungen gespeichert“ usw.) erschienen ohne Styling als Text oben links: Das Stylesheet von `@nextcloud/dialogs` wurde nicht geladen.
+- Nach dem Speichern im Editor geht es zurück zur vorherigen Liste, mit Filtern, Regal und Position. Bei Warnungen erst, nachdem der Dialog geschlossen wurde. „Zurück“ verhält sich genauso.
+- Genres, Tags, Autoren, Serien und Formate in der Navigation klappen auch beim Klick auf den Namen auf, nicht nur beim Klick auf den Pfeil.
+- Werkzeugleiste der Bibliothek: Der Navigations-Button verdeckt das Suchfeld nicht mehr, Suche und Sortierung sind gleich hoch. Die Sortierung ist jetzt ein kompaktes Menü.
+- Filter-Chips sind kompakt (einheitliche Höhe, Icons mittig), „Alle/Mindestens einer“ und „Filter zurücksetzen“ sind kleine Buttons.
+
 ## 0.3.0 – 2026-10-01
 
 ### Hinzugefügt

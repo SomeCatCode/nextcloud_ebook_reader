@@ -951,7 +951,11 @@ class EditorService {
 			try {
 				$file->putContent($stream);
 			} finally {
-				fclose($stream);
+				// putContent() closes the stream itself (View::file_put_contents)
+				/** @psalm-suppress RedundantCondition psalm does not know the stream was closed by Nextcloud */
+				if (is_resource($stream)) {
+					fclose($stream);
+				}
 			}
 			// the sidecar (precedence over the embedded values) must say the same before the file is indexed again
 			$this->syncSidecarAfterWrite($userId, $file, $req);
@@ -1014,7 +1018,11 @@ class EditorService {
 		try {
 			$new = $folder->newFile($name, $stream);
 		} finally {
-			fclose($stream);
+			// newFile() closes the stream itself
+			/** @psalm-suppress RedundantCondition psalm does not know the stream was closed by Nextcloud */
+			if (is_resource($stream)) {
+				fclose($stream);
+			}
 		}
 		return $new;
 	}
