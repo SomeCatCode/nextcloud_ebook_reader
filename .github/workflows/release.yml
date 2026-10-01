@@ -75,11 +75,28 @@ jobs:
           rm -f "$RUNNER_TEMP/app.key"
           echo "signed=true" >> "$GITHUB_OUTPUT"
 
+      # Release notes = the matching section of CHANGELOG.md (fallback: a pointer to the changelog);
+      # GitHub's generated commit list is appended below it.
+      - name: Release notes from CHANGELOG.md
+        run: |
+          awk -v v="${{ steps.version.outputs.version }}" '
+            index($0, "## [" v "]") == 1 { found=1; next }
+            found && /^## \[/ { exit }
+            found && /^\[[^]]+\]: / { exit }
+            found { print }
+          ' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          if [ ! -s "$RUNNER_TEMP/notes.md" ] || ! grep -q '[^[:space:]]' "$RUNNER_TEMP/notes.md"; then
+            echo "::warning::No section for ${{ steps.version.outputs.version }} in CHANGELOG.md"
+            echo "Siehe [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/CHANGELOG.md)." > "$RUNNER_TEMP/notes.md"
+          fi
+          cat "$RUNNER_TEMP/notes.md"
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
           name: E-Book Reader ${{ steps.version.outputs.version }}
           prerelease: ${{ steps.version.outputs.prerelease }}
+          body_path: ${{ runner.temp }}/notes.md
           generate_release_notes: true
           fail_on_unmatched_files: false
           files: |
