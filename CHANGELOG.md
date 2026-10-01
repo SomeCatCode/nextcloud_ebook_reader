@@ -5,6 +5,12 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+## 0.5.1 – 2026-10-01
+
+### Behoben
+- Nach einer Konvertierung im Browser (z. B. CBR ohne `7z` auf dem Server) blieb das Original liegen, und das neue Buch erschien erst Minuten später. Grund: Große Dateien werden im Hintergrund indexiert, der Dialog wartete aber nur wenige Sekunden. Jetzt übernimmt der Server den Abschluss sofort, unabhängig von der Dateigröße: Er indexiert das neue Buch, kopiert die Begleitdatei, übernimmt Bewertung, Lesestatus, App-Tags und Leseposition und löscht danach das Original, wenn gewünscht.
+- Der Konvertieren-Dialog merkt sich, ob das Original gelöscht werden soll.
+
 ## 0.5.0 – 2026-10-01
 
 ### Hinzugefügt

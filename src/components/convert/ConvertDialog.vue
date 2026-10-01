@@ -148,7 +148,7 @@ import type { Book, Task } from '../../types.ts'
 import { mdiCheckCircle, mdiCircleOutline } from '@mdi/js'
 import { showError, showSuccess, showWarning } from '@nextcloud/dialogs'
 import { t } from '@nextcloud/l10n'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
@@ -177,7 +177,27 @@ const phase = ref<'loading' | 'choose' | 'running' | 'error'>('loading')
 const source = ref<string>(props.book.format)
 const targets = ref<ConvertTarget[]>([])
 const selected = ref<ConvertFormat | null>(null)
-const deleteOriginal = ref(false)
+const DELETE_ORIGINAL_KEY = 'ebookreader.convert.deleteOriginal'
+/** Remembered per browser: whether the original should go to the trash after converting */
+const deleteOriginal = ref(readDeleteOriginal())
+watch(deleteOriginal, (v) => {
+	try {
+		localStorage.setItem(DELETE_ORIGINAL_KEY, v ? '1' : '0')
+	} catch {
+		// storage unavailable (private mode): the choice is just not remembered
+	}
+})
+
+/**
+ *
+ */
+function readDeleteOriginal(): boolean {
+	try {
+		return localStorage.getItem(DELETE_ORIGINAL_KEY) === '1'
+	} catch {
+		return false
+	}
+}
 const showCompare = ref(false)
 const error = ref('')
 const mode = ref<ConvertMode>('server')
