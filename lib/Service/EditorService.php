@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace OCA\EbookReader\Service;
 
 use OCA\EbookReader\AppInfo\Application;
+use OCA\EbookReader\BackgroundJob\WriteMetadataJob;
 use OCA\EbookReader\Db\Book;
 use OCA\EbookReader\Db\BookMapper;
 use OCA\EbookReader\Db\Tag;
@@ -18,6 +19,7 @@ use OCA\EbookReader\Editor\CbzEditor;
 use OCA\EbookReader\Editor\EditConflictException;
 use OCA\EbookReader\Editor\EditForbiddenException;
 use OCA\EbookReader\Editor\EditorException;
+use OCA\EbookReader\Editor\EditorUtil;
 use OCA\EbookReader\Editor\EditRequest;
 use OCA\EbookReader\Editor\EpubEditor;
 use OCA\EbookReader\Editor\Fb2Editor;
@@ -25,6 +27,7 @@ use OCA\EbookReader\Editor\InvalidEditRequestException;
 use OCA\EbookReader\Metadata\HtmlSanitizer;
 use OCA\EbookReader\Metadata\MetadataService;
 use OCP\AppFramework\Db\DoesNotExistException;
+use OCP\BackgroundJob\IJobList;
 use OCP\Files\File;
 use OCP\Files\IFilenameValidator;
 use OCP\Files\IRootFolder;
@@ -45,6 +48,12 @@ class EditorService {
 	private const WRITABLE = ['epub', 'cbz', 'fb2', 'fbz'];
 	/** Formats that only support metadata edits in the database. */
 	private const DB_ONLY = ['mobi', 'azw3', 'cbr', 'cb7', 'cbt'];
+	/** Capabilities of the formats this app can write (static, so the metadata part needs no file access). */
+	private const WRITABLE_CAPABILITIES = ['metadata' => true, 'cover' => true, 'content' => true, 'toc' => true, 'writesFile' => true];
+	private const DB_ONLY_CAPABILITIES = ['metadata' => true, 'cover' => false, 'content' => false, 'toc' => false, 'writesFile' => false];
+	/** Encrypted storage must always be read through the file API (the local file holds ciphertext). */
+	private const ENCRYPTION_WRAPPER = '\\OC\\Files\\Storage\\Wrapper\\' . 'Encryption';
+	public const PARTS = ['all', 'metadata'];
 	private const METADATA_KEYS = ['title', 'authors', 'series', 'seriesIndex', 'description', 'language', 'publisher', 'isbn', 'publishedAt', 'genres', 'tags'];
 
 	/** @var list<BookEditorInterface> */
@@ -62,33 +71,60 @@ class EditorService {
 		private IAppConfig $appConfig,
 		private IFilenameValidator $filenameValidator,
 		private LoggerInterface $logger,
+		private IJobList $jobList,
 	) {
 		$this->editors = [new EpubEditor(), new CbzEditor(), new Fb2Editor()];
 	}
 
 	/**
+	 * @param string $parts "all" reads the file (items, toc); "metadata" is answered from the database and does not touch the file
 	 * @return array<string, mixed> Structure
 	 * @throws NotFoundException
 	 * @throws EditorException
 	 */
-	public function getStructure(string $userId, int $fileId): array {
+	public function getStructure(string $userId, int $fileId, string $parts = 'all'): array {
+		if (!in_array($parts, self::PARTS, true)) {
+			throw new InvalidEditRequestException('"parts" must be "all" or "metadata".');
+		}
+		if ($parts === 'all') {
+			// the editor works on the file: make sure pending metadata edits are in it, so that the etag is current
+			$this->flushPendingWrite($userId, $fileId);
+		}
 		$file = $this->library->getFileForUser($userId, $fileId);
 		$format = $this->formatOf($file);
 		$book = $this->findBook($userId, $fileId);
+		$writable = in_array($format, self::WRITABLE, true);
 
-		if (in_array($format, self::WRITABLE, true)) {
+		if ($parts === 'metadata') {
+			return [
+				'fileId' => $fileId,
+				'format' => $format,
+				'etag' => (string)$file->getEtag(),
+				'editable' => $writable ? $file->isUpdateable() : true,
+				'capabilities' => $writable ? self::WRITABLE_CAPABILITIES : self::DB_ONLY_CAPABILITIES,
+				'metadata' => $book !== null ? $this->metadataOf($book) : $this->emptyMetadata(),
+				'items' => [],
+				'toc' => [],
+				'warnings' => [],
+				'partial' => true,
+			];
+		}
+
+		if ($writable) {
 			$this->assertSize($file);
 			$editor = $this->editorFor($format);
-			$tmp = $this->download($file);
+			[$path, $isTemp] = $this->localSource($file);
 			try {
-				$structure = $editor->readStructure($tmp, $format);
+				$structure = $editor->readStructure($path, $format);
 			} finally {
-				@unlink($tmp);
+				if ($isTemp) {
+					@unlink($path);
+				}
 			}
 			$editable = $file->isUpdateable();
 		} else {
 			$structure = [
-				'capabilities' => ['metadata' => true, 'cover' => false, 'content' => false, 'toc' => false, 'writesFile' => false],
+				'capabilities' => self::DB_ONLY_CAPABILITIES,
 				'metadata' => $this->emptyMetadata(),
 				'items' => [],
 				'toc' => [],
@@ -109,6 +145,7 @@ class EditorService {
 			'items' => $structure['items'],
 			'toc' => $structure['toc'],
 			'warnings' => $structure['warnings'],
+			'partial' => false,
 		];
 	}
 
@@ -130,15 +167,40 @@ class EditorService {
 		if ($req->etag !== (string)$file->getEtag()) {
 			throw new EditConflictException('Die Datei wurde zwischenzeitlich geändert.');
 		}
+		$patch = [];
 		if ($req->metadata !== null) {
 			$req = $this->withNormalizedMetadata($req);
+			$patch = $this->normalizePatch($req->metadata);
 		}
-		return $this->write($userId, $file, $format, $req);
+		$pending = $this->jobList->has(WriteMetadataJob::class, WriteMetadataJob::argument($userId, $fileId));
+		if ($pending) {
+			// edits that are only in the database so far must not get lost: the request patch goes on top of them
+			$book = $this->findBook($userId, $fileId);
+			if ($book !== null) {
+				$req = new EditRequest(
+					etag: $req->etag,
+					saveAsCopy: $req->saveAsCopy,
+					metadata: array_merge($this->metadataOf($book), $patch),
+					cover: $req->cover,
+					order: $req->order,
+					removed: $req->removed,
+					toc: $req->toc,
+				);
+			}
+		}
+		$result = $this->write($userId, $file, $format, $req);
+		if ($pending && !$req->saveAsCopy) {
+			$this->jobList->remove(WriteMetadataJob::class, WriteMetadataJob::argument($userId, $fileId));
+		}
+		return $result;
 	}
 
 	/**
+	 * Saves a metadata patch. Depending on the user's "metadataWriteMode" the file is written right away, later in one
+	 * background job, or never; the database is always up to date when this returns.
+	 *
 	 * @param array<string, mixed> $metadataPatch
-	 * @return array{book: Book, warnings: list<string>}
+	 * @return array{book: Book, warnings: list<string>, writeQueued: bool}
 	 * @throws DoesNotExistException
 	 */
 	public function saveMetadataOnly(string $userId, int $fileId, array $metadataPatch): array {
@@ -146,28 +208,135 @@ class EditorService {
 		$format = $this->formatOf($file);
 		$book = $this->library->getBook($userId, $fileId);
 		$patch = $this->normalizePatch($metadataPatch);
-		$merged = array_merge($this->metadataOf($book), $patch);
+		$current = $this->metadataOf($book);
+		$merged = array_merge($current, $patch);
+		if ($this->sameMetadata($current, $merged, false)) {
+			return ['book' => $book, 'warnings' => [], 'writeQueued' => false];
+		}
 
+		$mode = (string)($this->settings->get($userId)['metadataWriteMode'] ?? SettingsService::DEFAULT_METADATA_WRITE_MODE);
 		$warnings = [];
-		if (in_array($format, self::WRITABLE, true)) {
+		if (in_array($format, self::WRITABLE, true) && $mode !== 'never') {
 			if ($file->isUpdateable() && $this->sizeOk($file)) {
-				$req = new EditRequest(etag: (string)$file->getEtag(), saveAsCopy: false, metadata: $merged);
-				$result = $this->write($userId, $file, $format, $req);
-				if (array_key_exists('description', $patch)) {
-					// the file holds plain text; keep the sanitized HTML in the database
-					$this->applyDescription($result['book'], $patch['description']);
+				if ($mode === 'immediate') {
+					$req = new EditRequest(etag: (string)$file->getEtag(), saveAsCopy: false, metadata: $merged);
+					$result = $this->write($userId, $file, $format, $req);
+					if (array_key_exists('description', $patch)) {
+						// the file holds plain text; keep the sanitized HTML in the database
+						$this->applyDescription($result['book'], $patch['description']);
+					}
+					return ['book' => $result['book'], 'warnings' => $result['warnings'], 'writeQueued' => false];
 				}
-				return $result;
+				// background: the library is updated now, the file follows in one job (identical jobs are merged)
+				$book = $this->updateDatabase($book, $merged, Tag::SOURCE_FILE);
+				$this->jobList->add(WriteMetadataJob::class, WriteMetadataJob::argument($userId, $fileId));
+				return ['book' => $book, 'warnings' => [], 'writeQueued' => true];
 			}
 			$warnings[] = 'Die Datei ist schreibgeschützt oder zu groß; die Änderungen wurden nur in der Bibliothek gespeichert.';
 		}
-		return ['book' => $this->updateDatabaseOnly($book, $merged), 'warnings' => $warnings];
+		// the file stays as it is: remember the edited fields so a re-index of the file does not overwrite them
+		$changed = $this->changedFields($current, $merged, false);
+		return ['book' => $this->updateDatabase($book, $merged, Tag::SOURCE_APP, $changed), 'warnings' => $warnings, 'writeQueued' => false];
+	}
+
+	/**
+	 * Writes the metadata stored in the library into the file if the file differs from it. Used by WriteMetadataJob
+	 * and (synchronously) before the editor reads the file.
+	 *
+	 * @return bool whether the file was written
+	 */
+	public function writePendingMetadata(string $userId, int $fileId): bool {
+		try {
+			$file = $this->library->getFileForUser($userId, $fileId);
+		} catch (\Throwable) {
+			return false; // user or file is gone
+		}
+		$format = $this->formatOf($file);
+		if (!in_array($format, self::WRITABLE, true)) {
+			return false;
+		}
+		$book = $this->findBook($userId, $fileId);
+		if ($book === null) {
+			return false;
+		}
+		$db = $this->metadataOf($book);
+		if (!$file->isUpdateable() || !$this->sizeOk($file)) {
+			// the file can not be written (any more): the edits stay in the library for good
+			$comparable = $this->comparable($db, false);
+			$this->addOverrides($book, array_values(array_filter(
+				Book::OVERRIDABLE_FIELDS,
+				static fn (string $f): bool => $comparable[$f] !== null && $comparable[$f] !== [],
+			)));
+			return false;
+		}
+
+		[$path, $isTemp] = $this->localSource($file);
+		try {
+			$fileMeta = $this->metadata->extractLocal($path, $format, $file->getName());
+		} finally {
+			if ($isTemp) {
+				@unlink($path);
+			}
+		}
+		$fromFile = [
+			'title' => $fileMeta->title,
+			'authors' => $fileMeta->authors,
+			'series' => $fileMeta->series,
+			'seriesIndex' => $fileMeta->seriesIndex,
+			'description' => $fileMeta->description,
+			'language' => $fileMeta->language,
+			'publisher' => $fileMeta->publisher,
+			'isbn' => $fileMeta->isbn,
+			'publishedAt' => $fileMeta->publishedAt,
+			'genres' => array_merge($fileMeta->genres, $fileMeta->subjects),
+			'tags' => $fileMeta->tags,
+		];
+		if ($this->sameMetadata($db, $fromFile, true)) {
+			return false;
+		}
+
+		$req = new EditRequest(etag: (string)$file->getEtag(), saveAsCopy: false, metadata: $db);
+		$result = $this->write($userId, $file, $format, $req);
+		// the file holds plain text; keep the sanitized HTML in the database
+		$this->applyDescription($result['book'], $db['description']);
+		return true;
+	}
+
+	/**
+	 * Drops the "edited in the app" flag of one field (or all) and takes the value from the file again.
+	 *
+	 * @throws InvalidEditRequestException unknown field
+	 * @throws DoesNotExistException
+	 * @throws NotFoundException
+	 */
+	public function resetOverrides(string $userId, int $fileId, ?string $field): Book {
+		if ($field !== null && !in_array($field, Book::OVERRIDABLE_FIELDS, true)) {
+			throw new InvalidEditRequestException('Unknown field: ' . $field);
+		}
+		// pending edits are written first; the re-index would otherwise keep the library values
+		$this->flushPendingWrite($userId, $fileId);
+		return $this->library->resetOverrides($userId, $fileId, $field);
+	}
+
+	/** Runs a pending background write right now (and drops its job), so the editor sees the current file. */
+	private function flushPendingWrite(string $userId, int $fileId): void {
+		$arg = WriteMetadataJob::argument($userId, $fileId);
+		if (!$this->jobList->has(WriteMetadataJob::class, $arg)) {
+			return;
+		}
+		$this->jobList->remove(WriteMetadataJob::class, $arg);
+		try {
+			$this->writePendingMetadata($userId, $fileId);
+		} catch (\Throwable $e) {
+			$this->logger->info('Pending metadata could not be written for file ' . $fileId . ': ' . $e->getMessage(), ['app' => Application::APP_ID]);
+			$this->jobList->add(WriteMetadataJob::class, $arg);
+		}
 	}
 
 	/**
 	 * Adds/removes genres and tags of several books.
 	 * @param array<string, mixed> $body {fileIds[], addGenres[], removeGenres[], addTags[], removeTags[]}
-	 * @return array{updated: int, failed: list<array{fileId: int, error: string}>}
+	 * @return array{updated: int, failed: list<array{fileId: int, error: string}>, writeQueued: bool}
 	 */
 	public function bulkTags(string $userId, array $body): array {
 		$list = static function (string $k) use ($body): array {
@@ -196,6 +365,7 @@ class EditorService {
 		$lower = static fn (array $a): array => array_map('mb_strtolower', $a);
 
 		$updated = 0;
+		$queued = false;
 		$failed = [];
 		foreach (array_keys($ids) as $fileId) {
 			try {
@@ -207,14 +377,15 @@ class EditorService {
 					$updated++;
 					continue;
 				}
-				$this->saveMetadataOnly($userId, $fileId, ['genres' => $genres, 'tags' => $tags]);
+				$res = $this->saveMetadataOnly($userId, $fileId, ['genres' => $genres, 'tags' => $tags]);
+				$queued = $queued || $res['writeQueued'];
 				$updated++;
 			} catch (\Throwable $e) {
 				$this->logger->info('Bulk tagging failed for file ' . $fileId . ': ' . $e->getMessage(), ['app' => Application::APP_ID]);
 				$failed[] = ['fileId' => $fileId, 'error' => $e instanceof EditorException || $e instanceof DoesNotExistException || $e instanceof NotFoundException ? $e->getMessage() : 'Fehler beim Speichern.'];
 			}
 		}
-		return ['updated' => $updated, 'failed' => $failed];
+		return ['updated' => $updated, 'failed' => $failed, 'writeQueued' => $queued];
 	}
 
 	/**
@@ -289,7 +460,7 @@ class EditorService {
 		$editor = $this->editorFor($format);
 		$fileId = $file->getId();
 
-		$src = null;
+		$tmpSrc = null;
 		$dst = null;
 		$lock = new \ArrayObject(['held' => 0]);
 		try {
@@ -301,14 +472,17 @@ class EditorService {
 			}
 			$this->assertEtag($userId, $fileId, $req->etag);
 
-			$src = $this->download($file);
+			[$src, $srcIsTemp] = $this->localSource($file);
+			$tmpSrc = $srcIsTemp ? $src : null;
 			$dst = $this->tempManager->getTemporaryFile('.' . $format);
 			if ($dst === false) {
 				throw new EditorException('Cannot create a temporary file.', 500);
 			}
 			$result = $editor->write($src, $dst, $req);
-			@unlink($src);
-			$src = null;
+			if ($tmpSrc !== null) {
+				@unlink($tmpSrc);
+				$tmpSrc = null;
+			}
 
 			// verify with the regular extractor
 			try {
@@ -344,6 +518,8 @@ class EditorService {
 			}
 			$this->library->reindexFileForAllUsers($fileId);
 			$this->progress->remapAfterEdit($fileId, $result['itemMap']);
+			// the file now holds these fields: they are no longer "edited in the app only"
+			$this->clearOverrides($userId, $fileId, array_keys($req->metadata ?? []));
 			return ['book' => $this->library->getBook($userId, $fileId), 'warnings' => $result['warnings']];
 		} catch (LockedException $e) {
 			throw new EditorException('Die Datei wird gerade verwendet. Bitte später erneut versuchen.', 423, $e);
@@ -356,7 +532,7 @@ class EditorService {
 				} catch (\Throwable) {
 				}
 			}
-			foreach ([$src, $dst] as $t) {
+			foreach ([$tmpSrc, $dst] as $t) {
 				if (is_string($t) && $t !== '') {
 					@unlink($t);
 				}
@@ -390,6 +566,23 @@ class EditorService {
 		if ((string)$fresh->getEtag() !== $etag) {
 			throw new EditConflictException('Die Datei wurde zwischenzeitlich geändert.');
 		}
+	}
+
+	/**
+	 * Local path of the file content for reading. On local storage without an encryption wrapper this is the file
+	 * itself (no copy; must not be deleted), otherwise a temporary copy the caller has to delete.
+	 *
+	 * @return array{0: string, 1: bool} path and whether it is a temporary copy
+	 */
+	private function localSource(File $file): array {
+		$storage = $file->getStorage();
+		if ($storage->isLocal() && !$storage->instanceOfStorage(self::ENCRYPTION_WRAPPER)) {
+			$local = $storage->getLocalFile($file->getInternalPath());
+			if (is_string($local) && $local !== '' && is_file($local)) {
+				return [$local, false];
+			}
+		}
+		return [$this->download($file), true];
 	}
 
 	private function download(File $file): string {
@@ -595,6 +788,118 @@ class EditorService {
 		return $out;
 	}
 
+	/**
+	 * Normalised comparison of two metadata arrays. genres/tags are compared order-insensitively (case-insensitive).
+	 * $fileSide: $b comes from a file extractor; description is compared as plain text and genres+tags as one set,
+	 * because the file does not distinguish them the way the library does.
+	 *
+	 * @param array<string, mixed> $a
+	 * @param array<string, mixed> $b
+	 */
+	private function sameMetadata(array $a, array $b, bool $fileSide): bool {
+		return $this->comparable($a, $fileSide) === $this->comparable($b, $fileSide);
+	}
+
+	/**
+	 * @param array<string, mixed> $m
+	 * @return array<string, mixed>
+	 */
+	private function comparable(array $m, bool $asText): array {
+		$str = static function (mixed $v): ?string {
+			if (!is_scalar($v)) {
+				return null;
+			}
+			$v = trim((string)$v);
+			return $v === '' ? null : $v;
+		};
+		$set = static function (mixed ...$lists): array {
+			$out = [];
+			foreach ($lists as $list) {
+				foreach (is_array($list) ? $list : [] as $x) {
+					if (is_scalar($x) && trim((string)$x) !== '') {
+						$out[mb_strtolower(trim((string)$x))] = true;
+					}
+				}
+			}
+			$keys = array_map('strval', array_keys($out));
+			sort($keys);
+			return $keys;
+		};
+		$authors = [];
+		foreach (is_array($m['authors'] ?? null) ? $m['authors'] : [] as $x) {
+			if (is_scalar($x) && trim((string)$x) !== '') {
+				$authors[] = trim((string)$x);
+			}
+		}
+		$description = $str($m['description'] ?? null);
+		if ($asText) {
+			$description = $str(EditorUtil::htmlToText($description));
+		}
+		$publishedAt = $str($m['publishedAt'] ?? null);
+		$index = $m['seriesIndex'] ?? null;
+		$out = [
+			'title' => $str($m['title'] ?? null),
+			'authors' => $authors,
+			'series' => $str($m['series'] ?? null),
+			'seriesIndex' => is_numeric($index) ? round((float)$index, 4) : null,
+			'description' => $description,
+			'language' => $str($m['language'] ?? null),
+			'publisher' => $str($m['publisher'] ?? null),
+			'isbn' => $str($m['isbn'] ?? null),
+			'publishedAt' => $publishedAt === null ? null : substr($publishedAt, 0, 10),
+		];
+		if ($asText) {
+			$out['labels'] = $set($m['genres'] ?? null, $m['tags'] ?? null);
+		} else {
+			$out['genres'] = $set($m['genres'] ?? null);
+			$out['tags'] = $set($m['tags'] ?? null);
+		}
+		return $out;
+	}
+
+	/**
+	 * Overridable fields whose normalised value differs between two metadata arrays.
+	 *
+	 * @param array<string, mixed> $a
+	 * @param array<string, mixed> $b
+	 * @return list<string>
+	 */
+	private function changedFields(array $a, array $b, bool $asText): array {
+		$ca = $this->comparable($a, $asText);
+		$cb = $this->comparable($b, $asText);
+		return array_values(array_filter(Book::OVERRIDABLE_FIELDS, static fn (string $f): bool => $ca[$f] !== $cb[$f]));
+	}
+
+	/** @param list<string> $fields */
+	private function addOverrides(Book $book, array $fields): void {
+		$merged = array_values(array_unique(array_merge($book->getOverridesArray(), $fields)));
+		if ($merged === $book->getOverridesArray()) {
+			return;
+		}
+		$book->setOverridesArray($merged);
+		$book->setUpdatedAt((int)(microtime(true) * 1000.0));
+		$this->bookMapper->update($book);
+	}
+
+	/** @param list<string> $fields */
+	private function clearOverrides(string $userId, int $fileId, array $fields): void {
+		if ($fields === []) {
+			return;
+		}
+		$book = $this->findBook($userId, $fileId);
+		if ($book === null) {
+			return;
+		}
+		$current = $book->getOverridesArray();
+		$rest = array_values(array_diff($current, $fields));
+		if ($rest === $current) {
+			return;
+		}
+		$book->setOverridesArray($rest);
+		$book->setUpdatedAt((int)(microtime(true) * 1000.0));
+		$this->bookMapper->update($book);
+	}
+
 	private function applyDescription(Book $book, mixed $description): void {
 		$book->setDescription(is_string($description) && $description !== '' ? $description : null);
 		$book->setUpdatedAt((int)(microtime(true) * 1000.0));
@@ -602,10 +907,12 @@ class EditorService {
 	}
 
 	/**
-	 * Stores metadata only in the database (source=app); the file stays untouched.
+	 * Stores metadata in the database. $source is the tag source: "app" when the file stays untouched, "file" when the
+	 * values are (about to be) written into the file.
 	 * @param array<string, mixed> $meta complete metadata
+	 * @param list<string> $addOverrides fields to flag as "edited in the app only" (survive re-indexing)
 	 */
-	private function updateDatabaseOnly(Book $book, array $meta): Book {
+	private function updateDatabase(Book $book, array $meta, string $source, array $addOverrides = []): Book {
 		$authors = is_array($meta['authors'] ?? null) ? array_values(array_map('strval', $meta['authors'])) : [];
 		$book->setTitle(isset($meta['title']) ? (string)$meta['title'] : null);
 		$book->setAuthorsArray($authors);
@@ -616,14 +923,18 @@ class EditorService {
 		$book->setPublisher(isset($meta['publisher']) ? (string)$meta['publisher'] : null);
 		$book->setIsbn(isset($meta['isbn']) ? (string)$meta['isbn'] : null);
 		$book->setPublishedAt(isset($meta['publishedAt']) ? substr((string)$meta['publishedAt'], 0, 10) : null);
+		if ($addOverrides !== []) {
+			$book->setOverridesArray(array_merge($book->getOverridesArray(), $addOverrides));
+		}
 		$book->setUpdatedAt((int)(microtime(true) * 1000.0));
 		$this->bookMapper->update($book);
 
 		foreach ([Tag::TYPE_GENRE => 'genres', Tag::TYPE_TAG => 'tags'] as $type => $key) {
 			$names = is_array($meta[$key] ?? null) ? array_values(array_map('strval', $meta[$key])) : [];
-			// the user's list is authoritative: clear file-sourced entries and store everything as app data
-			$this->library->setTags($book->getId(), $type, [], Tag::SOURCE_FILE);
-			$this->library->setTags($book->getId(), $type, $names, Tag::SOURCE_APP);
+			// the user's list is authoritative: clear entries of the other source and store everything under $source
+			$other = $source === Tag::SOURCE_FILE ? Tag::SOURCE_APP : Tag::SOURCE_FILE;
+			$this->library->setTags($book->getId(), $type, [], $other);
+			$this->library->setTags($book->getId(), $type, $names, $source);
 		}
 		return $book;
 	}

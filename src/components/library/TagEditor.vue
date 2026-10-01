@@ -4,9 +4,9 @@
 -->
 <template>
 	<div ref="root" class="tag-editor">
-		<label class="tag-editor__label">{{ label }}</label>
-		<div class="tag-editor__chips">
-			<span v-for="item in items" :key="item" class="tag-editor__chip">
+		<span class="tag-editor__label">{{ label }}</span>
+		<ul class="tag-editor__chips" :aria-label="label">
+			<li v-for="item in items" :key="item" class="tag-editor__chip">
 				<button
 					type="button"
 					class="tag-editor__name"
@@ -20,18 +20,16 @@
 					:aria-label="t('ebookreader', 'Remove “{name}”', { name: item })"
 					:title="t('ebookreader', 'Remove “{name}”', { name: item })"
 					@click="$emit('remove', item)">
-					<NcIconSvgWrapper :path="mdiClose" :size="14" />
+					<NcIconSvgWrapper :path="mdiClose" :size="14" inline />
 				</button>
-			</span>
-			<button
-				v-if="!adding"
-				type="button"
-				class="tag-editor__add"
-				@click="startAdding">
-				<NcIconSvgWrapper :path="mdiPlus" :size="14" />
-				{{ t('ebookreader', 'Add') }}
-			</button>
-		</div>
+			</li>
+			<li v-if="!adding">
+				<button type="button" class="tag-editor__add" @click="startAdding">
+					<NcIconSvgWrapper :path="mdiPlus" :size="16" inline />
+					<span>{{ t('ebookreader', 'Add') }}</span>
+				</button>
+			</li>
+		</ul>
 		<NcSelect
 			v-if="adding"
 			class="tag-editor__select"
@@ -91,10 +89,12 @@ function onPick(value: string | null): void {
 </script>
 
 <style scoped lang="scss">
+$chip-height: 28px;
+
 .tag-editor {
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
+	gap: 6px;
 
 	&__label {
 		color: var(--color-text-maxcontrast);
@@ -103,54 +103,94 @@ function onPick(value: string | null): void {
 	&__chips {
 		display: flex;
 		flex-wrap: wrap;
+		align-items: center;
 		gap: 6px;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+
+	// Reset Nextcloud's global <button> styles (min-height, margin, bold font, padding, border)
+	&__name,
+	&__remove,
+	&__add {
+		margin: 0;
+		min-height: 0;
+		height: $chip-height;
+		border: none;
+		background: transparent;
+		color: inherit;
+		font: inherit;
+		font-weight: normal;
+		line-height: $chip-height;
+		cursor: pointer;
 	}
 
 	&__chip {
 		display: inline-flex;
 		align-items: center;
+		height: $chip-height;
+		max-width: 100%;
 		border-radius: var(--border-radius-pill);
 		background: var(--color-background-dark);
-		overflow: hidden;
+		transition: background-color var(--animation-quick);
 
-		&:hover {
-			background: var(--color-primary-element-light-hover);
+		&:hover,
+		&:focus-within {
+			background: var(--color-primary-element-light);
+			color: var(--color-primary-element-light-text);
 		}
 	}
 
-	&__name,
-	&__remove,
-	&__add {
-		border: none;
-		background: none;
-		cursor: pointer;
-		min-height: 0;
-		color: inherit;
-	}
-
 	&__name {
-		padding: 2px 4px 2px 12px;
+		padding: 0 4px 0 12px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		border-radius: var(--border-radius-pill) 0 0 var(--border-radius-pill);
 	}
 
 	&__remove {
 		display: inline-flex;
 		align-items: center;
-		padding: 2px 8px 2px 2px;
-		opacity: 0.6;
+		justify-content: center;
+		flex: 0 0 auto;
+		width: 22px;
+		height: 22px;
+		margin-inline-end: 3px;
+		padding: 0;
+		border-radius: 50%;
+		opacity: .55;
 
-		&:hover {
+		&:hover,
+		&:focus-visible {
 			opacity: 1;
+			background: var(--color-background-hover);
 		}
 	}
 
 	&__add {
 		display: inline-flex;
 		align-items: center;
-		gap: 2px;
-		padding: 2px 10px;
+		gap: 4px;
+		padding: 0 12px 0 8px;
+		height: $chip-height;
 		border: 1px dashed var(--color-border-maxcontrast);
 		border-radius: var(--border-radius-pill);
 		color: var(--color-text-maxcontrast);
+
+		&:hover,
+		&:focus-visible {
+			border-style: solid;
+			color: var(--color-main-text);
+			background: var(--color-background-hover);
+		}
+	}
+
+	&__name:focus-visible,
+	&__add:focus-visible {
+		outline: 2px solid var(--color-primary-element);
+		outline-offset: 1px;
 	}
 
 	&__select {

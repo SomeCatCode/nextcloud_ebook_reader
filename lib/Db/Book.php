@@ -60,11 +60,16 @@ use OCP\AppFramework\Db\Entity;
  * @method void setUpdatedAt(int $updatedAt)
  * @method int|null getDeletedAt()
  * @method void setDeletedAt(?int $deletedAt)
+ * @method string|null getOverrides()
+ * @method void setOverrides(?string $overrides)
  */
 class Book extends Entity {
 	public const STATUS_UNREAD = 'unread';
 	public const STATUS_READING = 'reading';
 	public const STATUS_FINISHED = 'finished';
+
+	/** Metadata fields that can be overridden in the app (they then survive re-indexing of the file). */
+	public const OVERRIDABLE_FIELDS = ['title', 'authors', 'series', 'seriesIndex', 'description', 'language', 'publisher', 'isbn', 'publishedAt'];
 
 	protected string $userId = '';
 	protected int $fileId = 0;
@@ -91,6 +96,8 @@ class Book extends Entity {
 	protected int $addedAt = 0;
 	protected int $updatedAt = 0;
 	protected ?int $deletedAt = null;
+	/** JSON list of field names edited in the app only (see OVERRIDABLE_FIELDS) */
+	protected ?string $overrides = null;
 
 	public function __construct() {
 		$this->addType('fileId', 'integer');
@@ -116,6 +123,31 @@ class Book extends Entity {
 			return [];
 		}
 		return array_values(array_map('strval', $decoded));
+	}
+
+	/** @return list<string> */
+	public function getOverridesArray(): array {
+		$raw = $this->getOverrides();
+		if ($raw === null || $raw === '') {
+			return [];
+		}
+		$decoded = json_decode($raw, true);
+		if (!is_array($decoded)) {
+			return [];
+		}
+		$out = [];
+		foreach ($decoded as $f) {
+			if (is_string($f) && in_array($f, self::OVERRIDABLE_FIELDS, true) && !in_array($f, $out, true)) {
+				$out[] = $f;
+			}
+		}
+		return $out;
+	}
+
+	/** @param list<string> $fields */
+	public function setOverridesArray(array $fields): void {
+		$clean = array_values(array_unique(array_filter($fields, static fn (string $f): bool => in_array($f, self::OVERRIDABLE_FIELDS, true))));
+		$this->setOverrides($clean === [] ? null : json_encode($clean, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
 	}
 
 	/** @param list<string> $authors */

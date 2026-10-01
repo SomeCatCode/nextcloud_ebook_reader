@@ -125,7 +125,8 @@ async function apply(): Promise<void> {
 			removeTags: removeTags.value,
 		})
 		if (res.failed.length === 0) {
-			showSuccess(n('ebookreader', '%n book updated', '%n books updated', res.updated))
+			showSuccess(n('ebookreader', '%n book updated', '%n books updated', res.updated)
+				+ (res.writeQueued ? ' – ' + t('ebookreader', 'will be written into the files in the background') : ''))
 			emit('close')
 		} else {
 			failed.value = res.failed

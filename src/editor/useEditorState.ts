@@ -87,6 +87,22 @@ function emptyMetadata(): BookMetadata {
 let idCounter = 0
 
 /**
+ * Whether a save request changes nothing but metadata. Such requests go to PATCH metadata (which honours the
+ * user's write mode and does not touch the file synchronously); everything else is a full structure save (PUT).
+ *
+ * @param req
+ */
+export function isMetadataOnlyRequest(req: EditRequest): boolean {
+	return !req.saveAsCopy
+		&& !!req.metadata
+		&& Object.keys(req.metadata).length > 0
+		&& !req.cover
+		&& !req.order
+		&& (req.removed?.length ?? 0) === 0
+		&& !req.toc
+}
+
+/**
  * Editor working copy: metadata, item order/removals, TOC tree, cover.
  */
 export function useEditorState() {
@@ -134,6 +150,49 @@ export function useEditorState() {
 		removed.value = new Set()
 		toc.value = clone(s.toc)
 		cover.value = null
+		undoStack.value = []
+		baseline = JSON.stringify(currentSnapshot())
+	}
+
+	/**
+	 * Merges the content part (items, toc, etag) of a full structure into the working copy of a metadata-only load,
+	 * keeping metadata edits and a chosen cover. No-op for a partial structure.
+	 *
+	 * @param full
+	 */
+	function loadContent(full: Structure): void {
+		const cur = structure.value
+		if (!cur) {
+			load(full)
+			return
+		}
+		if (full.partial) {
+			return
+		}
+		const ids = full.items.map((i) => i.id)
+		// the metadata the form was loaded with stays the reference for the patch
+		structure.value = { ...full, metadata: cur.metadata }
+		order.value = ids
+		removed.value = new Set()
+		toc.value = clone(full.toc)
+		// earlier snapshots were taken without content: they must not wipe it when undone
+		undoStack.value = undoStack.value.map((s) => ({ ...s, order: [...ids], removed: [], toc: clone(full.toc) }))
+		baseline = JSON.stringify({ metadata: clone(cur.metadata), order: ids, removed: [], toc: clone(full.toc), cover: null })
+	}
+
+	/**
+	 * Takes over fresh metadata/etag after a metadata-only save without touching loaded items or toc.
+	 *
+	 * @param s metadata part (or full structure) as returned by the server
+	 */
+	function reloadMetadata(s: Structure): void {
+		const cur = structure.value
+		if (!cur) {
+			load(s)
+			return
+		}
+		structure.value = { ...cur, etag: s.etag, editable: s.editable, metadata: clone(s.metadata) }
+		metadata.value = clone(s.metadata)
 		undoStack.value = []
 		baseline = JSON.stringify(currentSnapshot())
 	}
@@ -467,6 +526,8 @@ export function useEditorState() {
 		dirty,
 		brokenTocIds,
 		load,
+		loadContent,
+		reloadMetadata,
 		pushUndo,
 		undo,
 		setOrder,

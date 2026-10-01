@@ -6,8 +6,17 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 ## [Unreleased]
 
 ### Hinzugefügt
+- Einstellung „Metadaten in Dateien schreiben“: im Hintergrund (Standard), sofort oder nie. Im Hintergrund werden Änderungen sofort in der Bibliothek gespeichert und kurz danach gesammelt in die Datei geschrieben; mehrere schnelle Änderungen ergeben nur einen Schreibvorgang.
+- In der App geänderte Metadaten (Titel, Autoren, Serie, Beschreibung usw.) bleiben erhalten, wenn die Datei sich ändert oder neu eingelesen wird. Das gilt für MOBI, AZW3, CBR, CB7, CBT und für den Modus „nie“. In der Detailansicht steht „in der App geändert“ mit der Aktion „Wert aus Datei übernehmen“.
 - Bücher löschen, einzeln in der Detailansicht oder für eine Auswahl, mit Bestätigungsdialog. Die Dateien landen im Nextcloud-Papierkorb und lassen sich wiederherstellen.
 - Fortschrittsdialog beim Speichern im Editor: Upload-Fortschritt, Verarbeitung auf dem Server, vergangene Zeit.
+
+### Geändert
+- Das Ändern von Metadaten (z. B. ein einzelnes Tag) lädt große CBZ/EPUB/FB2-Dateien nicht mehr vollständig herunter, schreibt sie neu und lädt sie wieder hoch. Ohne tatsächliche Änderung wird gar nichts geschrieben, sonst im Hintergrund oder nach Einstellung.
+- Der Editor öffnet den Metadaten-Tab sofort aus der Bibliothek, ohne die Datei zu kopieren. Seiten, Inhalt und Inhaltsverzeichnis werden erst beim Öffnen des jeweiligen Tabs geladen.
+- Reine Metadaten-Änderungen im Editor behalten die Seitennamen von Comics bei und kopieren alle anderen Einträge unverändert; nur ComicInfo.xml, die OPF-Datei bzw. die FB2-Beschreibung werden ersetzt.
+- Auf lokalem Speicher liest der Server Bücher direkt von der Datei, statt sie vorher in eine temporäre Datei zu kopieren.
+- Das erneute Einlesen einer Datei überschreibt keine Metadaten, die noch auf das Schreiben in die Datei warten.
 
 ### Behoben
 - Nach dem Löschen oder Umsortieren von Comic-Seiten zeigte der Editor noch die alten Seitenbilder aus dem Browser-Cache. Die Vorschau-URLs sind jetzt an die Dateiversion gebunden.

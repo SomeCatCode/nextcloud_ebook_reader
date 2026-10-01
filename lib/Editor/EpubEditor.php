@@ -95,6 +95,9 @@ final class EpubEditor implements BookEditorInterface {
 		$zip = EditorUtil::openZip($srcPath);
 		$writer = null;
 		try {
+			if ($req->isMetadataOnly()) {
+				return $this->writeMetadataOnly($zip, $dstPath, $req);
+			}
 			$pkg = $this->loadPackage($zip);
 			$warnings = [];
 
@@ -234,6 +237,48 @@ final class EpubEditor implements BookEditorInterface {
 		} finally {
 			$zip->close();
 		}
+	}
+
+	/**
+	 * Metadata-only fast path: every entry is copied unchanged, only the package document (OPF) is replaced.
+	 * Spine, manifest, table of contents and resources are not looked at.
+	 *
+	 * @return array{warnings: list<string>, itemMap: array<string, ?string>}
+	 */
+	private function writeMetadataOnly(ZipArchive $zip, string $dstPath, EditRequest $req): array {
+		$pkg = $this->loadPackage($zip);
+		$this->applyMetadata($pkg, $req->metadata ?? []);
+		$opf = (string)$pkg->dom->saveXML();
+		if (!EditorUtil::isWellFormed($opf)) {
+			throw new EditorException('The rewritten package document is not well-formed.', 500);
+		}
+		$writer = new ZipWriter($dstPath);
+		try {
+			$mime = EditorUtil::readEntry($zip, 'mimetype', 1024);
+			$writer->addString('mimetype', $mime !== null && trim($mime) !== '' ? trim($mime) : 'application/epub+zip', true);
+			for ($i = 0; $i < $zip->numFiles; $i++) {
+				$name = (string)$zip->getNameIndex($i);
+				if ($name === 'mimetype' || str_ends_with($name, '/') || !EditorUtil::isSafeName($name)) {
+					continue;
+				}
+				if ($name === $pkg->opfPath) {
+					$writer->addString($name, $opf);
+					continue;
+				}
+				$writer->copyFrom($zip, $name);
+			}
+			$writer->close();
+		} catch (\Throwable $e) {
+			$writer->abort();
+			throw $e;
+		}
+		$check = EditorUtil::openZip($dstPath);
+		try {
+			$this->loadPackage($check);
+		} finally {
+			$check->close();
+		}
+		return ['warnings' => [], 'itemMap' => []];
 	}
 
 	/** Resolves a manifest id or spine id to a zip path (used by the item controller). */

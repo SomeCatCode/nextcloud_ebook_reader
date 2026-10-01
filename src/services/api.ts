@@ -8,6 +8,7 @@ import type {
 	EditRequest,
 	Facets,
 	FilterTerm,
+	MetadataOverrideField,
 	MetadataPatch,
 	OrganizePreview,
 	OrganizeRequest,
@@ -184,6 +185,16 @@ export function patchMetadata(fileId: number, patch: MetadataPatch): Promise<Sav
 }
 
 /**
+ * Drops the "edited in app" marker of one field (all when omitted) and takes the value from the file again.
+ *
+ * @param fileId
+ * @param field
+ */
+export function resetOverrides(fileId: number, field?: MetadataOverrideField): Promise<Book> {
+	return request<Book>('delete', `/books/${fileId}/overrides`, { params: field ? { field } : undefined })
+}
+
+/**
  *
  * @param req
  */
@@ -303,11 +314,13 @@ export function scan(): Promise<ScanResult> {
 // ---- Editor ----------------------------------------------------------
 
 /**
+ * "metadata" answers from the library without reading the book file (items/toc empty, partial = true).
  *
  * @param fileId
+ * @param parts
  */
-export function getStructure(fileId: number): Promise<Structure> {
-	return request<Structure>('get', `/books/${fileId}/structure`)
+export function getStructure(fileId: number, parts: 'all' | 'metadata' = 'all'): Promise<Structure> {
+	return request<Structure>('get', `/books/${fileId}/structure`, parts === 'all' ? {} : { params: { parts } })
 }
 
 /**

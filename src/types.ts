@@ -57,8 +57,12 @@ export interface Book {
 	editable: boolean
 	/** false for view-only shares with download disabled: content can not be read in the app */
 	downloadable: boolean
+	/** Metadata fields edited in the app only (they survive re-indexing of the file) */
+	overrides: MetadataOverrideField[]
 	progress: Progress | null
 }
+
+export type MetadataOverrideField = 'title' | 'authors' | 'series' | 'seriesIndex' | 'description' | 'language' | 'publisher' | 'isbn' | 'publishedAt'
 
 export type SortKey = 'title' | 'author' | 'series' | 'rating' | 'added' | 'read'
 
@@ -141,11 +145,15 @@ export interface BulkTagRequest {
 export interface BulkTagResult {
 	updated: number
 	failed: { fileId: number, error: string }[]
+	/** True if at least one file will be updated by a background job */
+	writeQueued?: boolean
 }
 
 export interface SaveResult {
 	book: Book
 	warnings: string[]
+	/** Metadata patch only: the file is written by a background job shortly afterwards */
+	writeQueued?: boolean
 }
 
 export interface ProgressPut {
@@ -179,12 +187,16 @@ export interface ReaderSettings {
 	[key: string]: unknown
 }
 
+export type MetadataWriteMode = 'background' | 'immediate' | 'never'
+
 export interface Settings {
 	libraryFolders: string[]
 	reader: ReaderSettings
 	filenamePattern: string
 	/** Server resolves null to the default list from resources/genres.json on GET */
 	genreList: string[] | null
+	/** When metadata edits are written into the file: later in one background job (default), right away, or never */
+	metadataWriteMode: MetadataWriteMode
 }
 
 export interface StructureCapabilities {
@@ -222,6 +234,8 @@ export interface Structure {
 	items: StructureItem[]
 	toc: TocNode[]
 	warnings: string[]
+	/** True if only the metadata part was loaded (items and toc are empty) */
+	partial: boolean
 }
 
 export type EditCover = { source: 'upload', data: string } | { source: 'item', itemId: string }

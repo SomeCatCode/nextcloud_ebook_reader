@@ -241,7 +241,6 @@
 
 	<BookDetails
 		v-if="store.activeBook"
-		:key="store.activeBook.fileId"
 		:book="store.activeBook"
 		@close="store.setActive(null)"
 		@filter="onDetailsFilter"

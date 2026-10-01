@@ -225,4 +225,29 @@ class EpubEditorTest extends TestCase {
 		$this->expectException(InvalidEditRequestException::class);
 		$this->editor->write($this->src(), $this->dst(), new EditRequest(cover: ['source' => 'upload', 'data' => base64_encode('not an image')]));
 	}
+
+	public function testMetadataOnlyFastPathKeepsAllOtherEntriesByteIdentical(): void {
+		$src = $this->src();
+		$dst = $this->dst();
+		$res = $this->editor->write($src, $dst, new EditRequest(metadata: ['title' => 'Quick', 'tags' => ['x']]));
+		$this->assertSame([], $res['itemMap']);
+		$this->assertSame($this->entries($src), $this->entries($dst));
+		$z = new ZipArchive();
+		$z->open($dst);
+		$this->assertSame('mimetype', $z->getNameIndex(0));
+		$z->close();
+		$changed = [];
+		foreach ($this->entries($src) as $name) {
+			if ($this->read($src, $name) !== $this->read($dst, $name)) {
+				$changed[] = $name;
+			}
+		}
+		$this->assertCount(1, $changed);
+		$this->assertStringEndsWith('.opf', $changed[0]);
+		$before = $this->editor->readStructure($src, 'epub');
+		$after = $this->editor->readStructure($dst, 'epub');
+		$this->assertSame($before['items'], $after['items']);
+		$this->assertSame($before['toc'], $after['toc']);
+		$this->assertSame('Quick', $after['metadata']['title']);
+	}
 }

@@ -63,6 +63,7 @@ class SettingsController extends AbstractOCSController {
 	 * @param array<string, mixed>|null $reader Reader preferences
 	 * @param string|null $filenamePattern Pattern for renaming, e.g. "{author} - {title}"
 	 * @param list<string>|null $genreList Custom genre list, null resets to the default list
+	 * @param string|null $metadataWriteMode When metadata edits are written into the file: "background" (default), "immediate" or "never"
 	 * @return DataResponse<Http::STATUS_OK, EbookReaderSettings, array{}>
 	 * @throws OCSBadRequestException Invalid settings
 	 * @throws OCSForbiddenException Not logged in
@@ -72,7 +73,7 @@ class SettingsController extends AbstractOCSController {
 	#[NoAdminRequired]
 	#[UserRateLimit(limit: 30, period: 60)]
 	#[ApiRoute(verb: 'PUT', url: '/api/v1/settings')]
-	public function put(?array $libraryFolders = null, ?array $reader = null, ?string $filenamePattern = null, ?array $genreList = null): DataResponse {
+	public function put(?array $libraryFolders = null, ?array $reader = null, ?string $filenamePattern = null, ?array $genreList = null, ?string $metadataWriteMode = null): DataResponse {
 		$userId = $this->uid();
 		$params = $this->request->getParams();
 		$update = [];
@@ -100,6 +101,13 @@ class SettingsController extends AbstractOCSController {
 		}
 		if (array_key_exists('genreList', $params)) {
 			$update['genreList'] = $genreList === null ? null : $this->validateGenres($genreList);
+		}
+
+		if (array_key_exists('metadataWriteMode', $params)) {
+			if ($metadataWriteMode === null || !in_array($metadataWriteMode, SettingsService::METADATA_WRITE_MODES, true)) {
+				throw new OCSBadRequestException('metadataWriteMode must be one of: ' . implode(', ', SettingsService::METADATA_WRITE_MODES));
+			}
+			$update['metadataWriteMode'] = $metadataWriteMode;
 		}
 
 		/** @var EbookReaderSettings $result */

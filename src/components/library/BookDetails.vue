@@ -79,6 +79,7 @@
 				</div>
 
 				<TagEditor
+					:key="`genres-${book.fileId}`"
 					:label="t('ebookreader', 'Genres')"
 					:addLabel="t('ebookreader', 'Add genre')"
 					:items="book.genres"
@@ -88,6 +89,7 @@
 					@add="(name: string) => saveTags([...book.genres, name], book.tags)" />
 
 				<TagEditor
+					:key="`tags-${book.fileId}`"
 					:label="t('ebookreader', 'Tags')"
 					:addLabel="t('ebookreader', 'Add tag')"
 					:items="book.tags"
@@ -98,6 +100,9 @@
 
 				<p v-if="warnings.length" class="book-details__warning">
 					{{ warnings.join(' ') }}
+				</p>
+				<p v-else-if="writeQueued" class="book-details__hint">
+					{{ t('ebookreader', 'Saved – will be written into the file in the background') }}
 				</p>
 
 				<!-- eslint-disable-next-line vue/no-v-html -->
@@ -120,6 +125,15 @@
 						</dd>
 					</template>
 				</dl>
+
+				<ul v-if="overrideRows.length" class="book-details__overrides">
+					<li v-for="o in overrideRows" :key="o.field">
+						<span>{{ o.text }}</span>
+						<NcButton variant="tertiary" :disabled="resettingOverride" @click="resetOverride(o.field)">
+							{{ t('ebookreader', 'Use value from file') }}
+						</NcButton>
+					</li>
+				</ul>
 			</div>
 		</NcAppSidebarTab>
 	</NcAppSidebar>
@@ -132,13 +146,13 @@
 </template>
 
 <script setup lang="ts">
-import type { Book, FilterTerm, ReadStatus } from '../../types.ts'
+import type { Book, FilterTerm, MetadataOverrideField, ReadStatus } from '../../types.ts'
 
 import { mdiBookOpenPageVariant, mdiBookOpenVariant, mdiDeleteOutline, mdiFolderMoveOutline, mdiFolderOutline, mdiPencil, mdiSwapHorizontal } from '@mdi/js'
 import { showError } from '@nextcloud/dialogs'
 import { t } from '@nextcloud/l10n'
 import { generateUrl } from '@nextcloud/router'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import NcAppSidebar from '@nextcloud/vue/components/NcAppSidebar'
 import NcAppSidebarTab from '@nextcloud/vue/components/NcAppSidebarTab'
@@ -171,6 +185,7 @@ const settings = useSettingsStore()
 
 const showConvert = ref(false)
 const warnings = ref<string[]>([])
+const writeQueued = ref(false)
 const convertible = computed(() => ['cbz', 'cbr', 'cb7', 'cbt'].includes(props.book.format))
 const genreOptions = computed(() => [...new Set([
 	...(settings.settings.genreList ?? []),
@@ -194,6 +209,47 @@ const currentStatus = computed(() => statusOptions.value.find((o) => o.id === pr
 
 const filesUrl = computed(() => generateUrl('/apps/files/files/{fileId}', { fileId: props.book.fileId })
 	+ '?dir=' + encodeURIComponent(dirName(props.book.path)) + '&openfile=false')
+
+const OVERRIDE_LABELS: Record<MetadataOverrideField, () => string> = {
+	title: () => t('ebookreader', 'Title'),
+	authors: () => t('ebookreader', 'Author'),
+	series: () => t('ebookreader', 'Series'),
+	seriesIndex: () => t('ebookreader', 'Series number'),
+	description: () => t('ebookreader', 'Description'),
+	language: () => t('ebookreader', 'Language'),
+	publisher: () => t('ebookreader', 'Publisher'),
+	isbn: () => t('ebookreader', 'ISBN'),
+	publishedAt: () => t('ebookreader', 'Published'),
+}
+
+/** Fields edited in the app only: a re-scan of the file does not overwrite them. */
+const overrideRows = computed(() => (props.book.overrides ?? []).map((field) => ({
+	field,
+	text: t('ebookreader', '{field} edited in app', { field: OVERRIDE_LABELS[field]() }),
+})))
+const resettingOverride = ref(false)
+
+// the sidebar stays mounted when another book is selected: drop per-book local state
+watch(() => props.book.fileId, () => {
+	showConvert.value = false
+	writeQueued.value = false
+	warnings.value = []
+	resettingOverride.value = false
+})
+
+/**
+ * @param field
+ */
+async function resetOverride(field: MetadataOverrideField): Promise<void> {
+	resettingOverride.value = true
+	try {
+		await store.resetOverrides(props.book.fileId, field)
+	} catch {
+		showError(t('ebookreader', 'Could not read the value from the file'))
+	} finally {
+		resettingOverride.value = false
+	}
+}
 
 interface MetaRow {
 	label: string
@@ -248,7 +304,9 @@ function formatSize(bytes: number): string {
  */
 async function saveTags(genres: string[], tags: string[]): Promise<void> {
 	try {
-		warnings.value = await store.saveBookTags(props.book.fileId, { genres, tags })
+		const res = await store.saveBookTags(props.book.fileId, { genres, tags })
+		warnings.value = res.warnings
+		writeQueued.value = res.writeQueued
 	} catch {
 		showError(t('ebookreader', 'Could not save genres and tags'))
 	}
@@ -352,7 +410,23 @@ async function setStatus(option: { id: ReadStatus } | null): Promise<void> {
 		}
 	}
 
-	&__warning {
+	&__overrides {
+		list-style: none;
+		margin: 8px 0 0;
+		padding: 0;
+		font-size: 0.85em;
+		color: var(--color-text-maxcontrast);
+
+		li {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: 8px;
+		}
+	}
+
+	&__warning,
+	&__hint {
 		margin: 0;
 		color: var(--color-text-maxcontrast);
 		font-size: 0.85em;
@@ -369,20 +443,26 @@ async function setStatus(option: { id: ReadStatus } | null): Promise<void> {
 	&__meta {
 		display: grid;
 		grid-template-columns: max-content 1fr;
-		gap: 4px 12px;
+		gap: 4px 16px;
 		margin: 0;
+		padding: 0;
 
 		dt {
+			margin: 0;
+			padding: 0;
 			color: var(--color-text-maxcontrast);
 		}
 
 		dd {
 			margin: 0;
+			padding: 0;
+			min-width: 0;
 			overflow-wrap: anywhere;
 		}
 	}
 
 	&__link {
+		margin: 0;
 		padding: 0;
 		border: none;
 		background: none;
