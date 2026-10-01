@@ -49,6 +49,12 @@
 						</template>
 						{{ t('ebookreader', 'Convert format…') }}
 					</NcButton>
+					<NcButton variant="tertiary" @click="$emit('delete', book.fileId)">
+						<template #icon>
+							<NcIconSvgWrapper :path="mdiDeleteOutline" />
+						</template>
+						{{ t('ebookreader', 'Delete…') }}
+					</NcButton>
 				</div>
 
 				<div class="book-details__row">
@@ -128,7 +134,7 @@
 <script setup lang="ts">
 import type { Book, FilterTerm, ReadStatus } from '../../types.ts'
 
-import { mdiBookOpenPageVariant, mdiBookOpenVariant, mdiFolderMoveOutline, mdiFolderOutline, mdiPencil, mdiSwapHorizontal } from '@mdi/js'
+import { mdiBookOpenPageVariant, mdiBookOpenVariant, mdiDeleteOutline, mdiFolderMoveOutline, mdiFolderOutline, mdiPencil, mdiSwapHorizontal } from '@mdi/js'
 import { showError } from '@nextcloud/dialogs'
 import { t } from '@nextcloud/l10n'
 import { generateUrl } from '@nextcloud/router'
@@ -156,6 +162,7 @@ const emit = defineEmits<{
 	filter: [term: FilterTerm]
 	organize: [fileId: number]
 	converted: [fileId: number]
+	delete: [fileId: number]
 }>()
 
 const router = useRouter()

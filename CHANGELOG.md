@@ -5,6 +5,14 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+### Hinzugefügt
+- Bücher löschen, einzeln in der Detailansicht oder für eine Auswahl, mit Bestätigungsdialog. Die Dateien landen im Nextcloud-Papierkorb und lassen sich wiederherstellen.
+- Fortschrittsdialog beim Speichern im Editor: Upload-Fortschritt, Verarbeitung auf dem Server, vergangene Zeit.
+
+### Behoben
+- Nach dem Löschen oder Umsortieren von Comic-Seiten zeigte der Editor noch die alten Seitenbilder aus dem Browser-Cache. Die Vorschau-URLs sind jetzt an die Dateiversion gebunden.
+- Nach dem Speichern mit Warnungen lud der Editor den neuen Stand erst beim Bestätigen des Dialogs. Wurde der Dialog anders geschlossen, meldete das nächste Speichern fälschlich „Datei wurde geändert“. Der Editor lädt jetzt immer sofort neu.
+
 ## 0.2.0 – 2026-10-01
 
 ### Hinzugefügt

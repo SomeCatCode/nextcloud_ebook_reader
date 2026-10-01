@@ -24,6 +24,7 @@ use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
 use OCP\Files\Node;
 use OCP\Files\NotFoundException;
+use OCP\Files\NotPermittedException;
 use OCP\Files\Storage\ISharedStorage;
 use OCP\IDBConnection;
 use Psr\Log\LoggerInterface;
@@ -698,6 +699,23 @@ class LibraryService {
 			throw new NotFoundException('File not found');
 		}
 		return $node;
+	}
+
+	/**
+	 * Deletes the e-book file. Nextcloud moves it to the trash bin when the files_trashbin app is
+	 * enabled, so it can be restored from Files → Deleted files. The book is tombstoned for the
+	 * user right away; other users of a shared file follow via the node-deleted event.
+	 *
+	 * @throws NotFoundException the user can not see the file
+	 * @throws NotPermittedException the user may not delete it (e.g. read-only share)
+	 */
+	public function deleteFileForUser(string $userId, int $fileId): void {
+		$file = $this->getFileForUser($userId, $fileId);
+		if (!$file->isDeletable()) {
+			throw new NotPermittedException('File can not be deleted');
+		}
+		$file->delete();
+		$this->removeFile($userId, $fileId);
 	}
 
 	/** @throws NotFoundException */

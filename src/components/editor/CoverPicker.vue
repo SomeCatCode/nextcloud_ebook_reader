@@ -49,7 +49,7 @@ const previewSrc = computed(() => {
 		return uploadedPreview.value
 	}
 	if (c?.source === 'item') {
-		return itemUrl(props.fileId, c.itemId)
+		return itemUrl(props.fileId, c.itemId, props.etag)
 	}
 	return coverUrl(props.fileId, 'large', props.etag)
 })

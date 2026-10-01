@@ -87,6 +87,8 @@ type Method = 'get' | 'put' | 'post' | 'patch' | 'delete'
 interface RequestOptions {
 	params?: object
 	body?: unknown
+	/** Upload progress 0..1 (only meaningful for larger request bodies) */
+	onUploadProgress?: (fraction: number) => void
 }
 
 /**
@@ -103,6 +105,9 @@ async function request<T>(method: Method, path: string, options: RequestOptions 
 			params: cleanParams(options.params),
 			data: options.body,
 			headers: { 'OCS-APIRequest': 'true' },
+			onUploadProgress: options.onUploadProgress
+				? (ev) => options.onUploadProgress?.(ev.total ? ev.loaded / ev.total : 0)
+				: undefined,
 		})
 		return res.data.ocs.data
 	} catch (e: unknown) {
@@ -144,6 +149,20 @@ export function listBooks(query: BookQuery = {}): Promise<BookList> {
  */
 export function getBook(fileId: number): Promise<Book> {
 	return request<Book>('get', `/books/${fileId}`)
+}
+
+export interface DeleteBooksResult {
+	deleted: number[]
+	failed: { fileId: number, error: 'not_found' | 'forbidden' | 'failed' }[]
+}
+
+/**
+ * Deletes books: the files go to the Nextcloud trash bin (if enabled). Max. 100 per call.
+ *
+ * @param fileIds
+ */
+export function deleteBooks(fileIds: number[]): Promise<DeleteBooksResult> {
+	return request<DeleteBooksResult>('post', '/books/delete', { body: { fileIds } })
 }
 
 /**
@@ -296,9 +315,10 @@ export function getStructure(fileId: number): Promise<Structure> {
  *
  * @param fileId
  * @param req
+ * @param onUploadProgress upload progress 0..1
  */
-export function putStructure(fileId: number, req: EditRequest): Promise<SaveResult> {
-	return request<SaveResult>('put', `/books/${fileId}/structure`, { body: req })
+export function putStructure(fileId: number, req: EditRequest, onUploadProgress?: (fraction: number) => void): Promise<SaveResult> {
+	return request<SaveResult>('put', `/books/${fileId}/structure`, { body: req, onUploadProgress })
 }
 
 /**
@@ -360,9 +380,16 @@ export async function uploadCover(fileId: number, data: Blob): Promise<void> {
  *
  * @param fileId
  * @param itemId
+ * @param etag
  */
-export function itemUrl(fileId: number, itemId: string): string {
-	return generateUrl('/apps/ebookreader/item/{fileId}', { fileId }) + '?' + new URLSearchParams({ id: itemId }).toString()
+export function itemUrl(fileId: number, itemId: string, etag?: string | null): string {
+	// The etag versions the URL: after saving, pages are renumbered (0001.jpg, …) and the browser
+	// must not show a cached image of the previous file version under the same entry name.
+	const params: Record<string, string> = { id: itemId }
+	if (etag) {
+		params.v = etag
+	}
+	return generateUrl('/apps/ebookreader/item/{fileId}', { fileId }) + '?' + new URLSearchParams(params).toString()
 }
 
 /**

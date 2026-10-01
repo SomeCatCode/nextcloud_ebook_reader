@@ -111,6 +111,32 @@
 			</NcNoteCard>
 		</NcDialog>
 
+		<!-- progress while saving (can take a while for large files) -->
+		<NcDialog
+			v-if="saveProgress"
+			:name="saveAsCopy ? t('ebookreader', 'Saving copy…') : t('ebookreader', 'Saving…')"
+			noClose
+			:closeOnClickOutside="false">
+			<div class="editor-view__progress" role="status" aria-live="polite">
+				<template v-if="saveProgress.phase === 'upload'">
+					<p>{{ t('ebookreader', 'Uploading changes… {percent} %', { percent: Math.round(saveProgress.upload * 100) }) }}</p>
+					<NcProgressBar :value="Math.round(saveProgress.upload * 100)" size="medium" />
+				</template>
+				<template v-else>
+					<p class="editor-view__progress-row">
+						<NcLoadingIcon :size="20" />
+						{{ saveProgress.phase === 'server'
+							? t('ebookreader', 'The server is rewriting and checking the book…')
+							: t('ebookreader', 'Loading the saved version…') }}
+					</p>
+					<NcProgressBar :value="saveProgress.phase === 'server' ? 66 : 95" size="medium" />
+				</template>
+				<p class="editor-view__muted">
+					{{ t('ebookreader', '{seconds} s elapsed. Large comics can take a minute; please keep this page open.', { seconds: saveProgress.seconds }) }}
+				</p>
+			</div>
+		</NcDialog>
+
 		<!-- warnings after save -->
 		<NcDialog
 			v-if="resultWarnings"
@@ -166,6 +192,7 @@ import NcButton from '@nextcloud/vue/components/NcButton'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
+import NcProgressBar from '@nextcloud/vue/components/NcProgressBar'
 import ContentList from '../components/editor/ContentList.vue'
 import MetadataForm from '../components/editor/MetadataForm.vue'
 import PageGrid from '../components/editor/PageGrid.vue'
@@ -187,6 +214,8 @@ const book = shallowRef<Book | null>(null)
 const loading = ref(true)
 const loadError = ref('')
 const busy = ref(false)
+/** Save progress for the progress dialog; null when not saving */
+const saveProgress = ref<{ phase: 'upload' | 'server' | 'reload', upload: number, seconds: number } | null>(null)
 const activeTab = ref<'metadata' | 'content' | 'toc'>('metadata')
 const isComic = computed(() => structure.value?.format === 'cbz' || structure.value?.format === 'cbr')
 
@@ -341,12 +370,25 @@ const summaryButtons = computed(() => [
 async function doSave(): Promise<void> {
 	summaryOpen.value = false
 	busy.value = true
+	saveProgress.value = { phase: 'upload', upload: 0, seconds: 0 }
+	const started = Date.now()
+	const timer = window.setInterval(() => {
+		if (saveProgress.value) {
+			saveProgress.value = { ...saveProgress.value, seconds: Math.round((Date.now() - started) / 1000) }
+		}
+	}, 1000)
 	try {
-		const result = await putStructure(fileIdNum.value, state.buildEditRequest(saveAsCopy.value))
+		const result = await putStructure(fileIdNum.value, state.buildEditRequest(saveAsCopy.value), (f) => {
+			if (saveProgress.value) {
+				saveProgress.value = { ...saveProgress.value, upload: f, phase: f >= 1 ? 'server' : 'upload' }
+			}
+		})
+		saveProgress.value = { phase: 'reload', upload: 1, seconds: saveProgress.value?.seconds ?? 0 }
+		// Always reload right away (new etag, renumbered pages); warnings are shown afterwards,
+		// so closing the warnings dialog in any way can not leave a stale state behind.
+		await afterSave(result)
 		if (result.warnings?.length) {
 			resultWarnings.value = result
-		} else {
-			await afterSave(result)
 		}
 	} catch (e) {
 		if (e instanceof ConflictError) {
@@ -355,6 +397,8 @@ async function doSave(): Promise<void> {
 			showError(t('ebookreader', 'Saving failed: {message}', { message: (e as Error).message }))
 		}
 	} finally {
+		window.clearInterval(timer)
+		saveProgress.value = null
 		busy.value = false
 	}
 }
@@ -362,12 +406,8 @@ async function doSave(): Promise<void> {
 /**
  *
  */
-async function finishSave(): Promise<void> {
-	const r = resultWarnings.value
+function finishSave(): void {
 	resultWarnings.value = null
-	if (r) {
-		await afterSave(r)
-	}
 }
 
 /**
@@ -452,6 +492,9 @@ async function convertCbr(): Promise<void> {
 </script>
 
 <style scoped lang="scss">
+.editor-view__progress { display: flex; flex-direction: column; gap: 12px; min-width: min(420px, 80vw); }
+.editor-view__progress-row { display: flex; align-items: center; gap: 8px; }
+.editor-view__muted { opacity: .7; font-size: .9em; }
 .editor-view {
 	display: flex;
 	flex-direction: column;

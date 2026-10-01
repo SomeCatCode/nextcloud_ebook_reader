@@ -564,7 +564,29 @@ export const useLibraryStore = defineStore('library', () => {
 		activeFileId.value = fileId
 	}
 
+	/**
+	 * Removes deleted books from the loaded lists, the selection and the details sidebar,
+	 * then refreshes the facet counts.
+	 *
+	 * @param fileIds
+	 */
+	function removeBooks(fileIds: number[]): void {
+		const gone = new Set(fileIds)
+		const before = books.value.length
+		books.value = books.value.filter((b) => !gone.has(b.fileId))
+		total.value = Math.max(0, total.value - (before - books.value.length))
+		recent.value = recent.value.filter((b) => !gone.has(b.fileId))
+		const next = new Set(selection.value)
+		gone.forEach((id) => next.delete(id))
+		selection.value = next
+		if (activeFileId.value !== null && gone.has(activeFileId.value)) {
+			activeFileId.value = null
+		}
+		void loadFacets()
+	}
+
 	return {
+		removeBooks,
 		books,
 		total,
 		loading,
