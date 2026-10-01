@@ -15,6 +15,7 @@ use OCP\BackgroundJob\QueuedJob;
 use OCP\Files\File;
 use OCP\Files\Folder;
 use OCP\Files\NotFoundException;
+use OCP\IUserManager;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -25,6 +26,7 @@ class ScanFileJob extends QueuedJob {
 	public function __construct(
 		ITimeFactory $time,
 		private LibraryService $library,
+		private IUserManager $userManager,
 		private LoggerInterface $logger,
 	) {
 		parent::__construct($time);
@@ -36,6 +38,9 @@ class ScanFileJob extends QueuedJob {
 		$userId = $argument['userId'] ?? null;
 		$fileId = $argument['fileId'] ?? null;
 		if (!is_string($userId) || !is_int($fileId)) {
+			return;
+		}
+		if (!$this->userManager->userExists($userId)) {
 			return;
 		}
 		try {

@@ -73,6 +73,12 @@ class CoverControllerTest extends TestCase {
 		return $f;
 	}
 
+	private function writable(): File&MockObject {
+		$file = $this->createMock(File::class);
+		$file->method('isUpdateable')->willReturn(true);
+		return $file;
+	}
+
 	public function testShowReturnsFileWithCacheHeaders(): void {
 		$this->covers->method('getCover')->willReturn($this->cover());
 		$r = $this->controller()->show(5, 'large');
@@ -102,7 +108,7 @@ class CoverControllerTest extends TestCase {
 	}
 
 	public function testUploadRejectsNonImage(): void {
-		$this->library->method('getFileForUser')->willReturn($this->createMock(File::class));
+		$this->library->method('getFileForUser')->willReturn($this->writable());
 		$this->books->method('findByUserAndFile')->willReturn(new Book());
 		$this->covers->expects($this->never())->method('storeCover');
 		$this->body = 'this is not an image';
@@ -110,14 +116,14 @@ class CoverControllerTest extends TestCase {
 	}
 
 	public function testUploadRejectsTooLargeByHeader(): void {
-		$this->library->method('getFileForUser')->willReturn($this->createMock(File::class));
+		$this->library->method('getFileForUser')->willReturn($this->writable());
 		$this->books->method('findByUserAndFile')->willReturn(new Book());
 		$this->request->method('getHeader')->willReturn((string)(CoverController::MAX_UPLOAD_BYTES + 1));
 		$this->assertSame(Http::STATUS_REQUEST_ENTITY_TOO_LARGE, $this->controller()->upload(5)->getStatus());
 	}
 
 	public function testUploadStoresCoverAndUpdatesBooks(): void {
-		$this->library->method('getFileForUser')->willReturn($this->createMock(File::class));
+		$this->library->method('getFileForUser')->willReturn($this->writable());
 		$this->books->method('findByUserAndFile')->willReturn(new Book());
 		$row = new Book();
 		$this->books->method('findByFileId')->willReturn([$row]);
@@ -139,6 +145,16 @@ class CoverControllerTest extends TestCase {
 		$book = new Book();
 		$book->setHasCover(true);
 		$this->books->method('findByUserAndFile')->willReturn($book);
+		$this->body = base64_decode(self::GIF);
+		$this->assertSame(Http::STATUS_FORBIDDEN, $this->controller()->upload(5)->getStatus());
+	}
+
+	public function testUploadForbiddenWithoutWritePermissionEvenWithoutExistingCover(): void {
+		$file = $this->createMock(File::class);
+		$file->method('isUpdateable')->willReturn(false);
+		$this->library->method('getFileForUser')->willReturn($file);
+		$this->books->method('findByUserAndFile')->willReturn(new Book());
+		$this->covers->expects($this->never())->method('storeCover');
 		$this->body = base64_decode(self::GIF);
 		$this->assertSame(Http::STATUS_FORBIDDEN, $this->controller()->upload(5)->getStatus());
 	}

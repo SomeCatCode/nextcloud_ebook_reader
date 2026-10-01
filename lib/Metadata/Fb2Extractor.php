@@ -11,7 +11,8 @@ namespace OCA\EbookReader\Metadata;
 
 /** FictionBook 2 (.fb2) and zipped FictionBook (.fb2.zip, format "fbz"). */
 class Fb2Extractor implements ExtractorInterface {
-	private const MAX_FB2_SIZE = 200 * 1024 * 1024;
+	private const MAX_FB2_SIZE = 50 * 1024 * 1024;
+	private const MAX_COVER = 20 * 1024 * 1024;
 
 	/** @var ?array<string, array{de?: string, en?: string}> */
 	private ?array $genreMap = null;
@@ -235,7 +236,15 @@ class Fb2Extractor implements ExtractorInterface {
 		if ($bin === null) {
 			return [null, null];
 		}
-		$data = base64_decode((string)preg_replace('/\s+/', '', $bin->textContent), true);
+		$text = $bin->textContent;
+		if (strlen($text) > self::MAX_COVER * 2) {
+			return [null, null];
+		}
+		$b64 = (string)preg_replace('/\s+/', '', $text);
+		if (strlen($b64) > intdiv(self::MAX_COVER * 4, 3) + 4) {
+			return [null, null];
+		}
+		$data = base64_decode($b64, true);
 		if ($data === false || $data === '') {
 			return [null, null];
 		}

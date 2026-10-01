@@ -29,6 +29,23 @@ class SettingsService {
 		'maxColumns' => 2,
 	];
 
+	/** Reader preference keys the UI (ReaderSettings.vue / ViewSettings) uses; everything else is dropped. */
+	private const READER_ENUMS = [
+		'theme' => ['auto', 'light', 'dark', 'sepia'],
+		'layout' => ['paginated', 'scrolled'],
+		'flow' => ['paginated', 'scrolled'],
+		'comicSpread' => ['single', 'double'],
+		'comicZoom' => ['fit-page', 'fit-width'],
+	];
+	/** @var array<string, array{0: float, 1: float}> */
+	private const READER_NUMBERS = [
+		'fontSize' => [8, 500],
+		'lineHeight' => [0.5, 5],
+		'margin' => [0, 300],
+		'maxColumns' => [1, 8],
+	];
+	private const MAX_FONT_FAMILY = 200;
+
 	public function __construct(
 		private IConfig $config,
 	) {
@@ -56,7 +73,7 @@ class SettingsService {
 			$merged['libraryFolders'] = $settings['libraryFolders'];
 		}
 		if (array_key_exists('reader', $settings) && is_array($settings['reader'])) {
-			$merged['reader'] = array_merge($current['reader'], $settings['reader']);
+			$merged['reader'] = array_merge($current['reader'], $this->sanitizeReader($settings['reader']));
 		}
 		if (array_key_exists('filenamePattern', $settings)) {
 			$merged['filenamePattern'] = $settings['filenamePattern'];
@@ -92,7 +109,7 @@ class SettingsService {
 
 		$reader = self::DEFAULT_READER;
 		if (isset($in['reader']) && is_array($in['reader'])) {
-			$reader = array_merge($reader, $in['reader']);
+			$reader = array_merge($reader, $this->sanitizeReader($in['reader']));
 		}
 
 		$pattern = isset($in['filenamePattern']) && is_string($in['filenamePattern']) && trim($in['filenamePattern']) !== ''
@@ -116,6 +133,39 @@ class SettingsService {
 			'filenamePattern' => $pattern,
 			'genreList' => $genres,
 		];
+	}
+
+	/**
+	 * Keeps only known reader keys with a value of the right type and range.
+	 * @param array<array-key, mixed> $in
+	 * @return array<string, mixed>
+	 */
+	public function sanitizeReader(array $in): array {
+		$out = [];
+		foreach ($in as $key => $value) {
+			if (!is_string($key)) {
+				continue;
+			}
+			if (isset(self::READER_ENUMS[$key])) {
+				if (is_string($value) && in_array($value, self::READER_ENUMS[$key], true)) {
+					$out[$key] = $value;
+				}
+			} elseif (isset(self::READER_NUMBERS[$key])) {
+				[$min, $max] = self::READER_NUMBERS[$key];
+				if ((is_int($value) || is_float($value)) && is_finite((float)$value) && $value >= $min && $value <= $max) {
+					$out[$key] = $key === 'maxColumns' ? (int)$value : $value;
+				}
+			} elseif ($key === 'fontFamily') {
+				if (is_string($value) && strlen($value) <= self::MAX_FONT_FAMILY && preg_match('/^[^<>{};\\\\]*$/', $value) === 1) {
+					$out[$key] = $value;
+				}
+			} elseif ($key === 'comicRtl') {
+				if (is_bool($value)) {
+					$out[$key] = $value;
+				}
+			}
+		}
+		return $out;
 	}
 
 	/** @return list<string> */

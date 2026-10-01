@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-export type BookFormat = 'epub' | 'mobi' | 'azw3' | 'fb2' | 'fbz' | 'cbz' | 'cbr'
+export type BookFormat = 'epub' | 'mobi' | 'azw3' | 'fb2' | 'fbz' | 'cbz' | 'cbr' | 'cb7' | 'cbt'
 export type ReadStatus = 'unread' | 'reading' | 'finished'
 
 /** Readium-compatible locator. */
@@ -55,18 +55,27 @@ export interface Book {
 	addedAt: number
 	updatedAt: number
 	editable: boolean
+	/** false for view-only shares with download disabled: content can not be read in the app */
+	downloadable: boolean
 	progress: Progress | null
 }
 
 export type SortKey = 'title' | 'author' | 'series' | 'rating' | 'added' | 'read'
 
+export type FilterType = 'genre' | 'tag' | 'author' | 'series' | 'format'
+
+export interface FilterTerm {
+	type: FilterType
+	name: string
+}
+
+export type MatchMode = 'all' | 'any'
+
 export interface BookQuery {
 	search?: string
-	format?: BookFormat
-	genre?: string
-	tag?: string
-	author?: string
-	series?: string
+	include?: FilterTerm[]
+	exclude?: FilterTerm[]
+	match?: MatchMode
 	status?: ReadStatus
 	sort?: SortKey
 	order?: 'asc' | 'desc'
@@ -240,4 +249,30 @@ export interface ScanResult {
 	indexed: number
 	/** Handed to background jobs because the time budget ran out */
 	queued: number
+}
+
+export interface OrganizeRequest {
+	fileIds: number[]
+	pattern: string
+	targetFolder?: string
+}
+
+export type OrganizeStatus = 'move' | 'unchanged' | 'conflict' | 'error' | 'moved' | 'failed'
+
+export interface OrganizeItem {
+	fileId: number
+	from: string
+	to: string
+	status: OrganizeStatus
+	message?: string
+}
+
+export interface OrganizePreview {
+	items: OrganizeItem[]
+}
+
+export interface OrganizeResult {
+	items: OrganizeItem[]
+	moved: number
+	failed: number
 }

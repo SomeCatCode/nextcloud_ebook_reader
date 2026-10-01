@@ -11,12 +11,15 @@ namespace OCA\EbookReader\Controller;
 
 use OCA\EbookReader\AppInfo\Application;
 use OCA\EbookReader\Editor\EditorUtil;
+use OCA\EbookReader\Metadata\ComicArchive;
+use OCA\EbookReader\Service\ArchiveTools;
 use OCA\EbookReader\Service\LibraryService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\FrontpageRoute;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
+use OCP\AppFramework\Http\Attribute\UserRateLimit;
 use OCP\AppFramework\Http\DataDisplayResponse;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\AppFramework\Http\Response;
@@ -31,7 +34,7 @@ use OCP\IUserSession;
 use Psr\Log\LoggerInterface;
 
 /**
- * Serves CBZ comics page by page, so the browser does not have to download and unpack
+ * Serves comics (CBZ, CBT, and CBR/CB7 when a tool is installed) page by page, so the browser does not have to download and unpack
  * the whole archive. Pages are scaled down to the requested width bucket and cached in app data.
  */
 class ComicController extends Controller {
@@ -40,6 +43,8 @@ class ComicController extends Controller {
 	/** Requested widths are rounded up to one of these, so the cache is shared between devices */
 	private const WIDTHS = [800, 1200, 1600, 2000, 2400];
 	private const MAX_PAGE = 60 * 1024 * 1024;
+	/** Pages with more pixels than this are never decoded (decompression bomb), they are served unscaled */
+	private const MAX_PIXELS = 40_000_000;
 	private const CACHE_FOLDER = 'comic-pages';
 
 	public function __construct(
@@ -50,12 +55,13 @@ class ComicController extends Controller {
 		private IAppData $appData,
 		private ICacheFactory $cacheFactory,
 		private LoggerInterface $logger,
+		private ArchiveTools $archiveTools,
 	) {
 		parent::__construct(Application::APP_ID, $request);
 	}
 
 	/**
-	 * Page list of a CBZ in reading order (natural sort, like the editor and foliate).
+	 * Page list of a comic in reading order (natural sort, like the editor and foliate).
 	 *
 	 * @param int $fileId File id
 	 */
@@ -66,6 +72,9 @@ class ComicController extends Controller {
 		$file = $this->comicFile($fileId);
 		if ($file === null) {
 			return new JSONResponse([], Http::STATUS_NOT_FOUND);
+		}
+		if (!$this->library->canReadContent($file)) {
+			return new JSONResponse([], Http::STATUS_FORBIDDEN);
 		}
 		try {
 			$pages = $this->pageList($file);
@@ -88,11 +97,15 @@ class ComicController extends Controller {
 	 */
 	#[NoAdminRequired]
 	#[NoCSRFRequired]
+	#[UserRateLimit(limit: 600, period: 60)]
 	#[FrontpageRoute(verb: 'GET', url: '/comic/{fileId}/page/{index}', requirements: ['fileId' => '\d+', 'index' => '\d+'])]
 	public function page(int $fileId, int $index, int $w = 0): DataDisplayResponse|JSONResponse|Response {
 		$file = $this->comicFile($fileId);
 		if ($file === null) {
 			return new JSONResponse([], Http::STATUS_NOT_FOUND);
+		}
+		if (!$this->library->canReadContent($file)) {
+			return new JSONResponse([], Http::STATUS_FORBIDDEN);
 		}
 		$width = $this->bucket($w);
 		$etag = md5((string)$file->getEtag() . '|' . $index . '|' . $width);
@@ -107,16 +120,19 @@ class ComicController extends Controller {
 				return new JSONResponse([], Http::STATUS_NOT_FOUND);
 			}
 			$name = $pages[$index]['name'];
-			$cacheName = $fileId . '-' . substr(md5((string)$file->getEtag()), 0, 12) . '-' . $index . '-' . $width . '.img';
+			$base = $fileId . '-' . substr(md5((string)$file->getEtag()), 0, 12) . '-' . $index . '-' . $width;
 			$folder = $this->cacheFolder();
-			[$data, $mime] = $this->cached($folder, $cacheName) ?? $this->render($file, $name, $width, $folder, $cacheName);
+			// The cache entry carries the extension of what it contains: .jpg when scaled, else the extension of the original page.
+			$origExt = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+			$candidates = array_values(array_unique($width > 0 ? [$base . '.jpg', $base . '.' . $origExt] : [$base . '.' . $origExt]));
+			[$data, $mime] = $this->cached($folder, $candidates) ?? $this->render($file, $name, $width, $folder, $base);
 		} catch (\Throwable $e) {
 			$this->logger->info('Cannot serve comic page ' . $index . ' of ' . $fileId . ': ' . $e->getMessage(), ['app' => Application::APP_ID]);
 			return new JSONResponse([], Http::STATUS_NOT_FOUND);
 		}
 		$response = new DataDisplayResponse($data, Http::STATUS_OK, ['Content-Type' => $mime, 'X-Content-Type-Options' => 'nosniff']);
 		$response->setETag($etag);
-		$response->addHeader('Cache-Control', 'private, max-age=604800, immutable');
+		$response->addHeader('Cache-Control', 'private, max-age=86400');
 		return $response;
 	}
 
@@ -130,7 +146,15 @@ class ComicController extends Controller {
 		} catch (NotFoundException) {
 			return null;
 		}
-		return strtolower(pathinfo($file->getName(), PATHINFO_EXTENSION)) === 'cbz' ? $file : null;
+		$format = $this->formatOf($file);
+		// CBZ and CBT are read in PHP; CBR/CB7 only if a tool (7z/unrar/bsdtar) is installed. Otherwise 404:
+		// the client then downloads the file and unpacks it in the browser.
+		return $format !== null && $this->archiveTools->canRead($format) ? $file : null;
+	}
+
+	private function formatOf(File $file): ?string {
+		$ext = strtolower(pathinfo($file->getName(), PATHINFO_EXTENSION));
+		return in_array($ext, ['cbz', 'cbt', 'cbr', 'cb7'], true) ? $ext : null;
 	}
 
 	private function bucket(int $w): int {
@@ -156,6 +180,17 @@ class ComicController extends Controller {
 		}
 		[$path, $tmp] = $this->localPath($file);
 		try {
+			$format = $this->formatOf($file) ?? 'cbz';
+			if ($format !== 'cbz') {
+				$archive = ComicArchive::open($path, $format, $this->archiveTools);
+				try {
+					$pages = array_map(static fn (string $name): array => ['name' => $name, 'size' => 0], $archive->pages());
+				} finally {
+					$archive->close();
+				}
+				$cache->set($key, $pages, 3600);
+				return $pages;
+			}
 			$zip = EditorUtil::openZip($path);
 			$pages = [];
 			for ($i = 0; $i < $zip->numFiles; $i++) {
@@ -179,25 +214,42 @@ class ComicController extends Controller {
 		return $pages;
 	}
 
-	/** @return array{0: string, 1: string}|null */
-	private function cached(ISimpleFolder $folder, string $name): ?array {
-		try {
-			$f = $folder->getFile($name);
-			return [$f->getContent(), $f->getMimeType() !== '' && $f->getMimeType() !== 'application/octet-stream' ? $f->getMimeType() : 'image/jpeg'];
-		} catch (NotFoundException) {
-			return null;
+	/**
+	 * @param list<string> $names candidate cache file names
+	 * @return array{0: string, 1: string}|null
+	 */
+	private function cached(ISimpleFolder $folder, array $names): ?array {
+		foreach ($names as $name) {
+			try {
+				$f = $folder->getFile($name);
+			} catch (NotFoundException) {
+				continue;
+			}
+			$ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+			return [$f->getContent(), self::IMAGE_EXT[$ext] ?? 'image/jpeg'];
 		}
+		return null;
 	}
 
 	/** @return array{0: string, 1: string} */
-	private function render(File $file, string $name, int $width, ISimpleFolder $folder, string $cacheName): array {
+	private function render(File $file, string $name, int $width, ISimpleFolder $folder, string $cacheBase): array {
 		[$path, $tmp] = $this->localPath($file);
 		try {
-			$zip = EditorUtil::openZip($path);
-			try {
-				$data = EditorUtil::readEntry($zip, $name, self::MAX_PAGE);
-			} finally {
-				$zip->close();
+			$format = $this->formatOf($file) ?? 'cbz';
+			if ($format === 'cbz') {
+				$zip = EditorUtil::openZip($path);
+				try {
+					$data = EditorUtil::readEntry($zip, $name, self::MAX_PAGE);
+				} finally {
+					$zip->close();
+				}
+			} else {
+				$archive = ComicArchive::open($path, $format, $this->archiveTools);
+				try {
+					$data = $archive->read($name, self::MAX_PAGE);
+				} finally {
+					$archive->close();
+				}
 			}
 		} finally {
 			if ($tmp !== null) {
@@ -207,15 +259,16 @@ class ComicController extends Controller {
 		if ($data === null) {
 			throw new NotFoundException('page not readable');
 		}
-		$mime = self::IMAGE_EXT[strtolower(pathinfo($name, PATHINFO_EXTENSION))] ?? 'image/jpeg';
+		$ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+		$mime = self::IMAGE_EXT[$ext] ?? 'image/jpeg';
 		if ($width > 0) {
 			$scaled = $this->scale($data, $width);
 			if ($scaled !== null) {
-				[$data, $mime] = [$scaled, 'image/jpeg'];
+				[$data, $mime, $ext] = [$scaled, 'image/jpeg', 'jpg'];
 			}
 		}
 		try {
-			$folder->newFile($cacheName, $data);
+			$folder->newFile($cacheBase . '.' . $ext, $data);
 		} catch (\Throwable $e) {
 			$this->logger->debug('Cannot cache comic page: ' . $e->getMessage(), ['app' => Application::APP_ID]);
 		}
@@ -228,7 +281,11 @@ class ComicController extends Controller {
 		if ($size === false || $size[0] <= $width || !function_exists('imagecreatefromstring')) {
 			return null;
 		}
-		$src = @imagecreatefromstring($data);
+		// The header is read without decoding; refuse to decode huge images (the page is then served unscaled).
+		if ($size[0] < 1 || $size[1] < 1 || $size[0] * $size[1] > self::MAX_PIXELS) {
+			return null;
+		}
+		$src = $this->decode($data);
 		if ($src === false) {
 			return null;
 		}
@@ -240,6 +297,10 @@ class ComicController extends Controller {
 		imagejpeg($dst, null, 85);
 		$out = (string)ob_get_clean();
 		return $out !== '' ? $out : null;
+	}
+
+	protected function decode(string $data): \GdImage|false {
+		return @imagecreatefromstring($data);
 	}
 
 	private function cacheFolder(): ISimpleFolder {
@@ -262,7 +323,7 @@ class ComicController extends Controller {
 				return [$local, null];
 			}
 		}
-		$tmp = $this->tempManager->getTemporaryFile('.zip');
+		$tmp = $this->tempManager->getTemporaryFile('.' . ($this->formatOf($file) ?? 'zip'));
 		if ($tmp === false) {
 			throw new \RuntimeException('temp file');
 		}

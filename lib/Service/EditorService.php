@@ -44,7 +44,7 @@ class EditorService {
 	/** Formats whose files can be rewritten by this app. */
 	private const WRITABLE = ['epub', 'cbz', 'fb2', 'fbz'];
 	/** Formats that only support metadata edits in the database. */
-	private const DB_ONLY = ['mobi', 'azw3', 'cbr'];
+	private const DB_ONLY = ['mobi', 'azw3', 'cbr', 'cb7', 'cbt'];
 	private const METADATA_KEYS = ['title', 'authors', 'series', 'seriesIndex', 'description', 'language', 'publisher', 'isbn', 'publishedAt', 'genres', 'tags'];
 
 	/** @var list<BookEditorInterface> */
@@ -252,6 +252,9 @@ class EditorService {
 		$current = $file->getName();
 		$candidate = $base . $ext;
 		if ($candidate !== $current) {
+			if (!$file->isUpdateable() || !$file->isDeletable()) {
+				throw new EditForbiddenException('Die Datei darf nicht umbenannt werden.');
+			}
 			$n = 1;
 			while ($parent->nodeExists($candidate)) {
 				$n++;

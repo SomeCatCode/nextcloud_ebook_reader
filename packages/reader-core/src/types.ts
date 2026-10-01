@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-export type ReaderFormat = 'epub' | 'mobi' | 'azw3' | 'fb2' | 'fbz' | 'cbz' | 'cbr'
+export type ReaderFormat = 'epub' | 'mobi' | 'azw3' | 'fb2' | 'fbz' | 'cbz' | 'cbr' | 'cb7' | 'cbt'
 export type ReaderThemeName = 'auto' | 'light' | 'dark' | 'sepia'
 
 /** Readium-compatible locator (mirrors CONTRACTS section 3). */
@@ -91,6 +91,8 @@ export interface ReaderEvents {
 	/** Emitted for a tap/click on the page */
 	tap: { zone: 'left' | 'center' | 'right' }
 	key: { key: string }
+	/** A link in the book points outside of it. foliate's default (window.open) is always cancelled; the UI decides. */
+	'external-link': { url: string }
 }
 
 /**
@@ -119,6 +121,8 @@ export interface ReaderHandle {
 	getInfo(): BookInfo | null
 	search(opts: SearchOptions): AsyncGenerator<SearchGroup | { progress: number }, void, void>
 	goToCfi(cfi: string): Promise<void>
+	/** Cover of the open book (first page of a comic), or null if the format has none */
+	getCover(): Promise<Blob | null>
 	clearSearch(): void
 	on<K extends keyof ReaderEvents>(event: K, cb: (payload: ReaderEvents[K]) => void): () => void
 	destroy(): void

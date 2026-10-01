@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace OCA\EbookReader\Tests\Unit\Controller;
 
 use OCA\EbookReader\Controller\ComicController;
+use OCA\EbookReader\Service\ArchiveTools;
 use OCA\EbookReader\Service\LibraryService;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\DataDisplayResponse;
@@ -36,6 +37,7 @@ class ComicControllerTest extends TestCase {
 
 	protected function setUp(): void {
 		$this->library = $this->createMock(LibraryService::class);
+		$this->library->method('canReadContent')->willReturn(true);
 		$this->cacheFolder = $this->createMock(ISimpleFolder::class);
 		$this->cacheFolder->method('getFile')->willThrowException(new NotFoundException());
 	}
@@ -60,7 +62,7 @@ class ComicControllerTest extends TestCase {
 		$request = $this->createMock(IRequest::class);
 		$request->method('getHeader')->willReturn('');
 		return new ComicController($request, $session, $this->library, $this->createMock(ITempManager::class),
-			$appData, $cacheFactory, $this->createMock(LoggerInterface::class));
+			$appData, $cacheFactory, $this->createMock(LoggerInterface::class), new ArchiveTools([]));
 	}
 
 	private function fileFor(string $localPath, string $name): File&MockObject {
@@ -134,5 +136,82 @@ class ComicControllerTest extends TestCase {
 		$controller = $this->controller();
 		$this->assertSame(Http::STATUS_NOT_FOUND, $controller->page(42, 99, 800)->getStatus());
 		$this->assertSame(Http::STATUS_NOT_FOUND, $controller->pages(42)->getStatus());
+	}
+
+	public function testViewOnlyShareGets403ForPagesAndPage(): void {
+		$this->library = $this->createMock(LibraryService::class);
+		$this->library->method('getFileForUser')->willReturn($this->fileFor($this->makeCbz(), 'c.cbz'));
+		$this->library->method('canReadContent')->willReturn(false);
+		$controller = $this->controller();
+		$this->assertSame(Http::STATUS_FORBIDDEN, $controller->pages(42)->getStatus());
+		$this->assertSame(Http::STATUS_FORBIDDEN, $controller->page(42, 0, 800)->getStatus());
+	}
+
+	/** PNG signature + IHDR claiming $w x $h pixels; not decodable, but getimagesizefromstring() reads the header. */
+	private function fakePng(int $w, int $h): string {
+		$ihdr = pack('NNCCCCC', $w, $h, 8, 2, 0, 0, 0);
+		return 'PNG
+
+' . pack('N', 13) . 'IHDR' . $ihdr . pack('N', crc32('IHDR' . $ihdr));
+	}
+
+	private function scaleWith(string $data, int $width, int &$decodeCalls): ?string {
+		$user = $this->createMock(IUser::class);
+		$session = $this->createMock(IUserSession::class);
+		$session->method('getUser')->willReturn($user);
+		$controller = new class($this->createMock(IRequest::class), $session, $this->library, $this->createMock(ITempManager::class), $this->createMock(IAppData::class), $this->createMock(ICacheFactory::class), $this->createMock(LoggerInterface::class), new ArchiveTools([]), $decodeCalls) extends ComicController {
+			public function __construct(
+				IRequest $r,
+				IUserSession $s,
+				LibraryService $l,
+				ITempManager $t,
+				IAppData $a,
+				ICacheFactory $c,
+				LoggerInterface $lg,
+				ArchiveTools $at,
+				private int &$calls,
+			) {
+				parent::__construct($r, $s, $l, $t, $a, $c, $lg, $at);
+			}
+
+			protected function decode(string $data): \GdImage|false {
+				$this->calls++;
+				return parent::decode($data);
+			}
+		};
+		$scale = new \ReflectionMethod(ComicController::class, 'scale');
+		/** @var ?string */
+		return $scale->invoke($controller, $data, $width);
+	}
+
+	public function testHugeDimensionsAreNotDecoded(): void {
+		$calls = 0;
+		$this->assertNull($this->scaleWith($this->fakePng(30000, 30000), 800, $calls));
+		$this->assertSame(0, $calls, 'a 900 MP image must never reach GD');
+	}
+
+	public function testNormalImageStillGoesThroughDecoder(): void {
+		$calls = 0;
+		$out = $this->scaleWith($this->png(1000, 1500), 800, $calls);
+		$this->assertSame(1, $calls);
+		$this->assertNotNull($out);
+		$this->assertSame(800, getimagesizefromstring($out)[0]);
+	}
+
+	public function testCacheNameCarriesExtensionAndCacheControlIsNotImmutable(): void {
+		$this->library->method('getFileForUser')->willReturn($this->fileFor($this->makeCbz(1500), 'c.cbz'));
+		$names = [];
+		$this->cacheFolder->method('newFile')->willReturnCallback(function (string $name) use (&$names) {
+			$names[] = $name;
+			return $this->createMock(\OCP\Files\SimpleFS\ISimpleFile::class);
+		});
+		$controller = $this->controller();
+		$controller->page(42, 2, 800);
+		$controller->page(42, 0, 0);
+		$this->assertMatchesRegularExpression('/-2-800\.jpg$/', $names[0]);
+		$this->assertMatchesRegularExpression('/-0-0\.png$/', $names[1]);
+		$r = $controller->page(42, 0, 0);
+		$headers = (new \ReflectionProperty(Http\Response::class, 'headers'))->getValue($r);
+		$this->assertSame('private, max-age=86400', $headers['Cache-Control']);
 	}
 }

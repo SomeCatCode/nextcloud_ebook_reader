@@ -11,12 +11,13 @@
 			:active="book.fileId === activeFileId"
 			:selected="selection.has(book.fileId)"
 			:selectMode="selectMode"
-			@click="$emit('click', $event)" />
+			@click="$emit('click', $event)"
+			@filter="$emit('filter', $event)" />
 	</div>
 </template>
 
 <script setup lang="ts">
-import type { Book } from '../../types.ts'
+import type { Book, FilterTerm } from '../../types.ts'
 
 import BookCard from './BookCard.vue'
 
@@ -27,7 +28,7 @@ withDefaults(defineProps<{
 	selectMode?: boolean
 }>(), { activeFileId: null, selection: () => new Set<number>(), selectMode: false })
 
-defineEmits<{ click: [book: Book] }>()
+defineEmits<{ click: [book: Book], filter: [term: FilterTerm] }>()
 </script>
 
 <style scoped lang="scss">

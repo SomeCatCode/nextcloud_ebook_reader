@@ -20,7 +20,7 @@ class Capabilities implements ICapability {
 			'ebookreader' => [
 				'apiVersion' => 1,
 				'apiStable' => false,
-				'formats' => ['epub', 'mobi', 'azw3', 'fb2', 'fbz', 'cbz', 'cbr'],
+				'formats' => ['epub', 'mobi', 'azw3', 'fb2', 'fbz', 'cbz', 'cbr', 'cb7', 'cbt'],
 				'editor' => true,
 			],
 		];

@@ -57,6 +57,7 @@ namespace OCA\EbookReader;
  *     addedAt: int,
  *     updatedAt: int,
  *     editable: bool,
+ *     downloadable: bool,
  *     progress: ?EbookReaderProgress,
  * }
  *
@@ -88,6 +89,24 @@ namespace OCA\EbookReader;
  * @psalm-type EbookReaderBookList = array{
  *     books: list<EbookReaderBook>,
  *     total: int,
+ * }
+ *
+ * @psalm-type EbookReaderOrganizeItem = array{
+ *     fileId: int,
+ *     from: string,
+ *     to: string,
+ *     status: 'move'|'unchanged'|'conflict'|'error'|'moved'|'failed',
+ *     message?: string,
+ * }
+ *
+ * @psalm-type EbookReaderOrganizePreview = array{
+ *     items: list<EbookReaderOrganizeItem>,
+ * }
+ *
+ * @psalm-type EbookReaderOrganizeResult = array{
+ *     items: list<EbookReaderOrganizeItem>,
+ *     moved: int,
+ *     failed: int,
  * }
  *
  * @psalm-type EbookReaderProgressBatchResult = array{

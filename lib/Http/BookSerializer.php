@@ -47,7 +47,8 @@ class BookSerializer {
 				$plain[] = $tag->getName();
 			}
 		}
-		$editable ??= $this->isEditable($userId, $book->getFileId());
+		[$fileEditable, $downloadable] = $this->fileFlags($userId, $book->getFileId());
+		$editable ??= $fileEditable;
 		$status = match ($book->getReadStatus()) {
 			Book::STATUS_READING => Book::STATUS_READING,
 			Book::STATUS_FINISHED => Book::STATUS_FINISHED,
@@ -78,6 +79,7 @@ class BookSerializer {
 			'addedAt' => $book->getAddedAt(),
 			'updatedAt' => $book->getUpdatedAt(),
 			'editable' => $editable,
+			'downloadable' => $downloadable,
 			'progress' => $progress?->toApi(),
 		];
 	}
@@ -108,11 +110,15 @@ class BookSerializer {
 		return $out;
 	}
 
-	private function isEditable(string $userId, int $fileId): bool {
+	/**
+	 * @return array{0: bool, 1: bool} editable (isUpdateable) and downloadable (false for view-only shares: the client must not fetch the content)
+	 */
+	private function fileFlags(string $userId, int $fileId): array {
 		try {
-			return $this->library->getFileForUser($userId, $fileId)->isUpdateable();
+			$file = $this->library->getFileForUser($userId, $fileId);
+			return [$file->isUpdateable(), $this->library->canReadContent($file)];
 		} catch (NotFoundException) {
-			return false;
+			return [false, false];
 		}
 	}
 }

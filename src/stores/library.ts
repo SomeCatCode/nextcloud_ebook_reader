@@ -4,10 +4,12 @@
  */
 import type {
 	Book,
-	BookFormat,
 	BookQuery,
 	BulkTagResult,
 	Facets,
+	FilterTerm,
+	FilterType,
+	MatchMode,
 	ReadStatus,
 	SortKey,
 } from '../types.ts'
@@ -19,31 +21,122 @@ import * as api from '../services/api.ts'
 export const PAGE_SIZE = 50
 export const SEARCH_DEBOUNCE_MS = 300
 
-export type FilterKey = 'format' | 'genre' | 'tag' | 'author' | 'series' | 'status'
+export type TermState = 'include' | 'exclude' | null
 
 export interface Filters {
+	include: FilterTerm[]
+	exclude: FilterTerm[]
+	match: MatchMode
 	search: string
-	format: BookFormat | null
-	genre: string | null
-	tag: string | null
-	author: string | null
-	series: string | null
 	status: ReadStatus | null
 }
+
+const FILTER_TYPES: FilterType[] = ['genre', 'tag', 'author', 'series', 'format']
+const SORT_KEYS: SortKey[] = ['title', 'author', 'series', 'rating', 'added', 'read']
+const STATUSES: ReadStatus[] = ['unread', 'reading', 'finished']
 
 /**
  *
  */
 function emptyFilters(): Filters {
-	return {
-		search: '',
-		format: null,
-		genre: null,
-		tag: null,
-		author: null,
-		series: null,
-		status: null,
+	return { include: [], exclude: [], match: 'all', search: '', status: null }
+}
+
+/**
+ * @param sort
+ */
+function defaultOrder(sort: SortKey): 'asc' | 'desc' {
+	return ['added', 'read', 'rating'].includes(sort) ? 'desc' : 'asc'
+}
+
+/**
+ * @param a
+ * @param b
+ */
+export function sameTerm(a: FilterTerm, b: FilterTerm): boolean {
+	return a.type === b.type && a.name === b.name
+}
+
+/**
+ * @param term
+ */
+export function termToString(term: FilterTerm): string {
+	return `${term.type}:${term.name}`
+}
+
+/**
+ * @param raw
+ */
+export function parseTerm(raw: string): FilterTerm | null {
+	const i = raw.indexOf(':')
+	if (i < 1) {
+		return null
 	}
+	const type = raw.slice(0, i) as FilterType
+	const name = raw.slice(i + 1)
+	if (!FILTER_TYPES.includes(type) || name === '') {
+		return null
+	}
+	return { type, name }
+}
+
+/**
+ * Serialises filter and sort state into URL query parameters; defaults are omitted.
+ *
+ * @param f
+ * @param sort
+ * @param order
+ */
+export function stateToQuery(f: Filters, sort: SortKey, order: 'asc' | 'desc'): Record<string, string | string[]> {
+	const q: Record<string, string | string[]> = {}
+	if (f.include.length) {
+		q.include = f.include.map(termToString)
+	}
+	if (f.exclude.length) {
+		q.exclude = f.exclude.map(termToString)
+	}
+	if (f.match === 'any') {
+		q.match = 'any'
+	}
+	if (f.search.trim()) {
+		q.q = f.search.trim()
+	}
+	if (f.status) {
+		q.status = f.status
+	}
+	if (sort !== 'title') {
+		q.sort = sort
+	}
+	if (order !== defaultOrder(sort)) {
+		q.order = order
+	}
+	return q
+}
+
+/**
+ * Parses URL query parameters (as given by vue-router) into filter and sort state.
+ *
+ * @param query
+ */
+export function queryToState(query: Record<string, unknown>): { filters: Filters, sort: SortKey, order: 'asc' | 'desc' } {
+	const list = (v: unknown): string[] => {
+		const arr = Array.isArray(v) ? v : (v === undefined || v === null ? [] : [v])
+		return arr.filter((x): x is string => typeof x === 'string')
+	}
+	const first = (v: unknown): string => list(v)[0] ?? ''
+	const terms = (v: unknown): FilterTerm[] => list(v).map(parseTerm).filter((x): x is FilterTerm => x !== null)
+	const filters = emptyFilters()
+	filters.include = terms(query.include)
+	filters.exclude = terms(query.exclude)
+	filters.match = first(query.match) === 'any' ? 'any' : 'all'
+	filters.search = first(query.q)
+	const status = first(query.status) as ReadStatus
+	filters.status = STATUSES.includes(status) ? status : null
+	const sortRaw = first(query.sort) as SortKey
+	const sort = SORT_KEYS.includes(sortRaw) ? sortRaw : 'title'
+	const orderRaw = first(query.order)
+	const order = orderRaw === 'asc' || orderRaw === 'desc' ? orderRaw : defaultOrder(sort)
+	return { filters, sort, order }
 }
 
 const emptyFacets = (): Facets => ({ genres: [], tags: [], authors: [], series: [], formats: [] })
@@ -71,7 +164,11 @@ export const useLibraryStore = defineStore('library', () => {
 	let searchTimer: ReturnType<typeof setTimeout> | null = null
 
 	const hasMore = computed(() => books.value.length < total.value)
-	const hasFilters = computed(() => Object.values(filters.value).some((v) => v !== null && v !== ''))
+	const hasFilters = computed(() => filters.value.include.length > 0
+		|| filters.value.exclude.length > 0
+		|| filters.value.status !== null
+		|| filters.value.search !== '')
+	const urlQuery = computed(() => stateToQuery(filters.value, sort.value, order.value))
 	const selectedIds = computed(() => [...selection.value])
 	const activeBook = computed(() => books.value.find((b) => b.fileId === activeFileId.value)
 		?? recent.value.find((b) => b.fileId === activeFileId.value)
@@ -86,11 +183,9 @@ export const useLibraryStore = defineStore('library', () => {
 		const f = filters.value
 		return {
 			search: f.search.trim() || undefined,
-			format: f.format ?? undefined,
-			genre: f.genre ?? undefined,
-			tag: f.tag ?? undefined,
-			author: f.author ?? undefined,
-			series: f.series ?? undefined,
+			include: f.include.length ? f.include : undefined,
+			exclude: f.exclude.length ? f.exclude : undefined,
+			match: f.include.length > 1 ? f.match : undefined,
 			status: f.status ?? undefined,
 			sort: sort.value,
 			order: order.value,
@@ -200,25 +295,91 @@ export const useLibraryStore = defineStore('library', () => {
 	}
 
 	/**
-	 * Sets (or clears with null) one facet filter and reloads.
+	 * Current state of a term: included, excluded or off.
 	 *
-	 * @param key
-	 * @param value
+	 * @param term
 	 */
-	function setFilter<K extends FilterKey>(key: K, value: Filters[K]): void {
-		filters.value[key] = value
+	function termState(term: FilterTerm): TermState {
+		if (filters.value.include.some((x) => sameTerm(x, term))) {
+			return 'include'
+		}
+		if (filters.value.exclude.some((x) => sameTerm(x, term))) {
+			return 'exclude'
+		}
+		return null
+	}
+
+	/**
+	 * Sets a term to include, exclude or off (null) and reloads.
+	 *
+	 * @param term
+	 * @param state
+	 */
+	function setTermState(term: FilterTerm, state: TermState): void {
+		const f = filters.value
+		f.include = f.include.filter((x) => !sameTerm(x, term))
+		f.exclude = f.exclude.filter((x) => !sameTerm(x, term))
+		if (state === 'include') {
+			f.include = [...f.include, term]
+		} else if (state === 'exclude') {
+			f.exclude = [...f.exclude, term]
+		}
 		clearSelection()
 		void reload()
 	}
 
 	/**
-	 * Toggles a facet filter: clicking the active value clears it.
+	 * Tri-state toggle: off, include, exclude, off.
 	 *
-	 * @param key
-	 * @param value
+	 * @param term
 	 */
-	function toggleFilter<K extends FilterKey>(key: K, value: NonNullable<Filters[K]>): void {
-		setFilter(key, (filters.value[key] === value ? null : value) as Filters[K])
+	function cycleTerm(term: FilterTerm): void {
+		const current = termState(term)
+		setTermState(term, current === null ? 'include' : (current === 'include' ? 'exclude' : null))
+	}
+
+	/**
+	 * "Only this": the term becomes the single include and excludes are dropped.
+	 *
+	 * @param term
+	 */
+	function onlyTerm(term: FilterTerm): void {
+		filters.value.include = [term]
+		filters.value.exclude = []
+		clearSelection()
+		void reload()
+	}
+
+	/**
+	 * @param mode
+	 */
+	function setMatch(mode: MatchMode): void {
+		filters.value.match = mode
+		clearSelection()
+		void reload()
+	}
+
+	/**
+	 * @param status
+	 */
+	function setStatus(status: ReadStatus | null): void {
+		filters.value.status = status
+		clearSelection()
+		void reload()
+	}
+
+	/**
+	 * Replaces filter and sort state (e.g. from the URL) without reloading.
+	 *
+	 * @param state
+	 * @param state.filters
+	 * @param state.sort
+	 * @param state.order
+	 */
+	function applyState(state: { filters: Filters, sort: SortKey, order: 'asc' | 'desc' }): void {
+		filters.value = state.filters
+		sort.value = state.sort
+		order.value = state.order
 	}
 
 	/**
@@ -241,7 +402,7 @@ export const useLibraryStore = defineStore('library', () => {
 	 */
 	function setSort(key: SortKey, newOrder?: 'asc' | 'desc'): void {
 		sort.value = key
-		order.value = newOrder ?? (['added', 'read', 'rating'].includes(key) ? 'desc' : 'asc')
+		order.value = newOrder ?? defaultOrder(key)
 		void reload()
 	}
 
@@ -349,6 +510,37 @@ export const useLibraryStore = defineStore('library', () => {
 	}
 
 	/**
+	 * Saves a book's genres and tags (optimistic, rolls back and rethrows on failure).
+	 * Returns the server warnings (e.g. stored in the app only).
+	 *
+	 * @param fileId
+	 * @param value
+	 * @param value.genres
+	 * @param value.tags
+	 */
+	async function saveBookTags(fileId: number, value: { genres: string[], tags: string[] }): Promise<string[]> {
+		const find = () => [...books.value, ...recent.value].find((b) => b.fileId === fileId)
+		const previous = find()
+		if (!previous) {
+			return []
+		}
+		const snapshot = { genres: previous.genres, tags: previous.tags }
+		applyBook({ ...previous, ...value })
+		try {
+			const res = await api.patchMetadata(fileId, value)
+			applyBook(res.book)
+			void loadFacets()
+			return res.warnings ?? []
+		} catch (e) {
+			const current = find()
+			if (current) {
+				applyBook({ ...current, ...snapshot })
+			}
+			throw e
+		}
+	}
+
+	/**
 	 * Applies genre/tag changes to the selected books, then refreshes list and facets.
 	 *
 	 * @param changes
@@ -389,6 +581,7 @@ export const useLibraryStore = defineStore('library', () => {
 		activeFileId,
 		hasMore,
 		hasFilters,
+		urlQuery,
 		selectedIds,
 		activeBook,
 		reload,
@@ -397,8 +590,13 @@ export const useLibraryStore = defineStore('library', () => {
 		loadRecent,
 		init,
 		setSearch,
-		setFilter,
-		toggleFilter,
+		termState,
+		setTermState,
+		cycleTerm,
+		onlyTerm,
+		setMatch,
+		setStatus,
+		applyState,
 		resetFilters,
 		setSort,
 		toggleOrder,
@@ -409,6 +607,7 @@ export const useLibraryStore = defineStore('library', () => {
 		applyBook,
 		setRating,
 		setReadStatus,
+		saveBookTags,
 		bulkTags,
 		setActive,
 	}

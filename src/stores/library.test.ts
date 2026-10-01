@@ -7,7 +7,7 @@ import type { Book } from '../types.ts'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as api from '../services/api.ts'
-import { PAGE_SIZE, SEARCH_DEBOUNCE_MS, useLibraryStore } from './library.ts'
+import { PAGE_SIZE, queryToState, SEARCH_DEBOUNCE_MS, stateToQuery, useLibraryStore } from './library.ts'
 
 vi.mock('../services/api.ts', () => ({
 	listBooks: vi.fn(),
@@ -15,6 +15,7 @@ vi.mock('../services/api.ts', () => ({
 	recentBooks: vi.fn(),
 	patchAppData: vi.fn(),
 	bulkTags: vi.fn(),
+	patchMetadata: vi.fn(),
 }))
 
 const mocked = vi.mocked(api)
@@ -48,6 +49,7 @@ function book(fileId: number, extra: Partial<Book> = {}): Book {
 		addedAt: 0,
 		updatedAt: 0,
 		editable: true,
+		downloadable: true,
 		progress: null,
 		...extra,
 	}
@@ -96,16 +98,75 @@ describe('library store', () => {
 		expect(mocked.listBooks).toHaveBeenCalledWith(expect.objectContaining({ search: 'ab' }))
 	})
 
-	it('combines filters and toggles them', () => {
+	it('cycles a term through include, exclude and off', () => {
 		const store = useLibraryStore()
-		store.toggleFilter('genre', 'Fantasy')
-		store.setFilter('status', 'unread')
-		expect(mocked.listBooks).toHaveBeenLastCalledWith(expect.objectContaining({ genre: 'Fantasy', status: 'unread' }))
-		store.toggleFilter('genre', 'Fantasy')
-		expect(store.filters.genre).toBeNull()
-		expect(store.hasFilters).toBe(true)
+		const term = { type: 'genre' as const, name: 'Fantasy' }
+		store.cycleTerm(term)
+		expect(store.termState(term)).toBe('include')
+		expect(mocked.listBooks).toHaveBeenLastCalledWith(expect.objectContaining({ include: [term], exclude: undefined, match: undefined }))
+		store.cycleTerm(term)
+		expect(store.termState(term)).toBe('exclude')
+		expect(mocked.listBooks).toHaveBeenLastCalledWith(expect.objectContaining({ include: undefined, exclude: [term] }))
+		store.cycleTerm(term)
+		expect(store.termState(term)).toBeNull()
+		expect(store.hasFilters).toBe(false)
+	})
+
+	it('builds include, exclude and match into the query', () => {
+		const store = useLibraryStore()
+		const a = { type: 'genre' as const, name: 'Fantasy' }
+		const b = { type: 'tag' as const, name: 'Favorite' }
+		const c = { type: 'author' as const, name: 'X' }
+		store.setTermState(a, 'include')
+		store.setTermState(b, 'include')
+		store.setTermState(c, 'exclude')
+		store.setMatch('any')
+		store.setStatus('unread')
+		expect(mocked.listBooks).toHaveBeenLastCalledWith(expect.objectContaining({
+			include: [a, b],
+			exclude: [c],
+			match: 'any',
+			status: 'unread',
+		}))
+		store.onlyTerm(b)
+		expect(store.filters.include).toEqual([b])
+		expect(store.filters.exclude).toEqual([])
 		store.resetFilters()
 		expect(store.hasFilters).toBe(false)
+	})
+
+	it('round-trips filter state through the URL query', () => {
+		const state = queryToState({
+			include: ['genre:Sci-Fi: Space', 'bogus', 'tag:x'],
+			exclude: 'author:Y',
+			match: 'any',
+			q: 'dune',
+			status: 'reading',
+			sort: 'added',
+			order: 'asc',
+		})
+		expect(state.filters.include).toEqual([{ type: 'genre', name: 'Sci-Fi: Space' }, { type: 'tag', name: 'x' }])
+		expect(state.filters.exclude).toEqual([{ type: 'author', name: 'Y' }])
+		expect(state.filters.match).toBe('any')
+		expect(state.sort).toBe('added')
+		expect(state.order).toBe('asc')
+		const q = stateToQuery(state.filters, state.sort, state.order)
+		expect(queryToState(q)).toEqual(state)
+		expect(stateToQuery(queryToState({}).filters, 'title', 'asc')).toEqual({})
+	})
+
+	it('saves book tags optimistically and rolls back on failure', async () => {
+		const store = useLibraryStore()
+		mocked.getFacets.mockResolvedValue({ genres: [], tags: [], authors: [], series: [], formats: [] })
+		await store.reload()
+		mocked.patchMetadata.mockImplementationOnce(() => Promise.resolve({ book: book(1, { tags: ['a'] }), warnings: ['app only'] }))
+		const p = store.saveBookTags(1, { genres: [], tags: ['a'] })
+		expect(store.books[0].tags).toEqual(['a'])
+		expect(await p).toEqual(['app only'])
+		mocked.patchMetadata.mockRejectedValueOnce(new Error('nope'))
+		await expect(store.saveBookTags(1, { genres: ['G'], tags: [] })).rejects.toThrow('nope')
+		expect(store.books[0].tags).toEqual(['a'])
+		expect(store.books[0].genres).toEqual([])
 	})
 
 	it('picks a sensible default order per sort key', () => {

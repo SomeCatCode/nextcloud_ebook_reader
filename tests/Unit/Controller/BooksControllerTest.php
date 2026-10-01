@@ -96,4 +96,13 @@ class BooksControllerTest extends TestCase {
 		$this->expectException(OCSBadRequestException::class);
 		$this->controller->patchAppData(5, null, 'done');
 	}
+
+	public function testIndexForwardsIncludeExcludeAndMatch(): void {
+		$this->library->expects($this->once())->method('findBooks')
+			->with('u', $this->callback(static fn (\OCA\EbookReader\Service\BookQuery $q): bool => $q->include === [['type' => 'genre', 'name' => 'Krimi']]
+				&& $q->exclude === [['type' => 'tag', 'name' => 'Horror']] && $q->match === 'any'))
+			->willReturn(['books' => [], 'total' => 0]);
+		$this->serializer->method('serializeMany')->willReturn([]);
+		$this->controller->index(include: ['genre:Krimi'], exclude: 'tag:Horror', match: 'any');
+	}
 }

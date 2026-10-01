@@ -76,7 +76,7 @@ class RegisterMimeTypes implements IRepairStep {
 		}
 		if ($changed) {
 			$json = json_encode($custom, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-			if ($json === false || @file_put_contents($file, $json . "\n") === false) {
+			if ($json === false || !$this->writeAtomically($file, $json . "\n")) {
 				$output->warning('Cannot write ' . $file . '; add the e-book MIME types manually (see docs)');
 				$this->logger->warning('Cannot write ' . $file, ['app' => 'ebookreader']);
 				return;
@@ -91,6 +91,20 @@ class RegisterMimeTypes implements IRepairStep {
 				$this->logger->warning('Updating filecache for .' . $ext . ' failed: ' . $e->getMessage(), ['app' => 'ebookreader']);
 			}
 		}
+	}
+
+	/** Temp file in the same directory + rename, so a concurrent reader or a crash never sees a half written mapping. */
+	private function writeAtomically(string $file, string $content): bool {
+		$tmp = $file . '.' . bin2hex(random_bytes(6)) . '.tmp';
+		if (@file_put_contents($tmp, $content, LOCK_EX) === false) {
+			@unlink($tmp);
+			return false;
+		}
+		if (!@rename($tmp, $file)) {
+			@unlink($tmp);
+			return false;
+		}
+		return true;
 	}
 
 	/** @psalm-suppress UndefinedClass, MixedAssignment */

@@ -87,7 +87,7 @@ class CoverController extends Controller {
 	 * Upload a client generated cover (raw image body, max 10 MB), e.g. for CBR files
 	 */
 	#[NoAdminRequired]
-	#[UserRateLimit(limit: 30, period: 60)]
+	#[UserRateLimit(limit: 10, period: 60)]
 	#[FrontpageRoute(verb: 'POST', url: '/cover/{fileId}', requirements: ['fileId' => '\d+'])]
 	public function upload(int $fileId): JSONResponse {
 		if ($this->userId === null) {
@@ -99,7 +99,7 @@ class CoverController extends Controller {
 		} catch (NotFoundException|DoesNotExistException) {
 			return new JSONResponse(['message' => 'Not found'], Http::STATUS_NOT_FOUND);
 		}
-		if ($book->getHasCover() && !$file->isUpdateable()) {
+		if (!$file->isUpdateable()) {
 			return new JSONResponse(['message' => 'Cover cannot be replaced'], Http::STATUS_FORBIDDEN);
 		}
 

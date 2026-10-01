@@ -142,6 +142,21 @@
 				</NcButton>
 			</template>
 		</NcDialog>
+
+		<NcDialog
+			v-if="externalLink"
+			:name="t('ebookreader', 'Open external link?')"
+			:message="externalLinkMessage"
+			@closing="externalLink = null">
+			<template #actions>
+				<NcButton @click="externalLink = null">
+					{{ t('ebookreader', 'Cancel') }}
+				</NcButton>
+				<NcButton variant="primary" @click="openExternalLink">
+					{{ t('ebookreader', 'Open') }}
+				</NcButton>
+			</template>
+		</NcDialog>
 	</div>
 </template>
 
@@ -165,7 +180,7 @@ import ReaderToc from '../components/reader/ReaderToc.vue'
 import { createReader, ReaderError } from '../../packages/reader-core/index.ts'
 import { loadLibarchive } from '../components/reader/libarchive.ts'
 import { getBook, getSettings, putSettings } from '../services/api.ts'
-import { loadBookSource } from '../services/bookSource.ts'
+import { loadBookSource, needsClientCover, uploadClientCover } from '../services/bookSource.ts'
 import { createProgressSync } from '../services/progressSync.ts'
 
 const props = defineProps<{ fileId: string }>()
@@ -216,6 +231,39 @@ let sync: ProgressSync | null = null
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let serverSettings: ServerReaderSettings | null = null
 const unsubs: (() => void)[] = []
+
+/** Pending external link from the book (confirmation dialog). Only http(s) and mailto are ever opened. */
+const externalLink = ref<{ url: string, host: string } | null>(null)
+const externalLinkMessage = computed(() => externalLink.value
+	? t('ebookreader', 'The book wants to open {host}. Full address: {url}', { host: externalLink.value.host, url: externalLink.value.url }, undefined, { escape: false })
+	: '')
+
+/**
+ * @param url
+ */
+function askExternalLink(url: string): void {
+	let parsed: URL
+	try {
+		parsed = new URL(url)
+	} catch {
+		return
+	}
+	if (!['http:', 'https:', 'mailto:'].includes(parsed.protocol)) {
+		return
+	}
+	externalLink.value = { url: parsed.href, host: parsed.protocol === 'mailto:' ? parsed.pathname : parsed.host }
+}
+
+/**
+ * Opens the confirmed link without opener/referrer.
+ */
+function openExternalLink(): void {
+	const link = externalLink.value
+	externalLink.value = null
+	if (link) {
+		window.open(link.url, '_blank', 'noopener,noreferrer')
+	}
+}
 const abort = new AbortController()
 
 const title = computed(() => book.value?.title || book.value?.path.split('/').pop() || '')
@@ -534,8 +582,14 @@ onMounted(async () => {
 		const fileId = Number(props.fileId)
 		const [b, settings] = await Promise.all([getBook(fileId), getSettings().catch(() => null)])
 		book.value = b
+		if (b.downloadable === false) {
+			state.value = 'error'
+			errorTitle.value = t('ebookreader', 'View-only share')
+			errorText.value = t('ebookreader', 'This book was shared with download disabled, so it can not be read in the app.')
+			return
+		}
 		applyServerSettings(settings?.reader)
-		isComic.value = b.format === 'cbz' || b.format === 'cbr'
+		isComic.value = ['cbz', 'cbr', 'cb7', 'cbt'].includes(b.format)
 		isRtl.value = isComic.value && viewSettings.comicRtl
 
 		sync = createProgressSync(fileId, {
@@ -572,6 +626,7 @@ onMounted(async () => {
 			}),
 			reader.on('tap', ({ zone }) => onTap(zone)),
 			reader.on('key', ({ key }) => handleKey(key)),
+			reader.on('external-link', ({ url }) => askExternalLink(url)),
 		)
 		await reader.open(source, b.format, (remote?.locator ?? null) as ReaderLocator | null)
 		const info = reader.getInfo()
@@ -579,6 +634,11 @@ onMounted(async () => {
 		isRtl.value = info?.rtl ?? isRtl.value
 		toc.value = reader.getToc()
 		state.value = 'ready'
+		if (needsClientCover(b, source)) {
+			// the server could not extract a cover (CBR/CB7 without tool): send the first page
+			const r = reader
+			uploadClientCover(b.fileId, () => r.getCover())
+		}
 	} catch (e) {
 		if ((e as Error)?.name === 'AbortError') {
 			return

@@ -54,16 +54,7 @@ bump:
 appstore: build
 	rm -rf build/artifacts/$(APP_ID)
 	mkdir -p build/artifacts/$(APP_ID)
-	tar -c --exclude-vcs \
-		--exclude='./build' --exclude='./node_modules' --exclude='./tests' --exclude='./src' \
-		--exclude='./docker' --exclude='./.github' --exclude='./docs' --exclude='./PLAN.md' \
-		--exclude='./vendor' --exclude='./.phpunit.cache' \
-		--exclude='./packages' \
-		--exclude='./package.json' --exclude='./package-lock.json' --exclude='./vite.config.ts' --exclude='./tsconfig.json' \
-		--exclude='./composer.json' --exclude='./composer.lock' --exclude='./psalm.xml' --exclude='./phpunit.xml' \
-		--exclude='./.php-cs-fixer.dist.php' --exclude='./Makefile' \
-		--exclude='./.tools' --exclude='./scripts' --exclude='./eslint.config.js' \
-		--exclude='./psalm-baseline.xml' --exclude='./.gitignore' --exclude='./.gitattributes' \
-		--exclude='./*.map' --exclude='./js/*.map' . | tar -x -C build/artifacts/$(APP_ID)
+	# Allowlist: only these paths go into the package (l10n is optional).
+	tar -c --exclude-vcs --exclude='*.map' 		$$(for p in appinfo css dist img js l10n lib resources templates LICENSE README.md CHANGELOG.md openapi.json; do [ -e "$$p" ] && echo "./$$p"; done) 		| tar -x -C build/artifacts/$(APP_ID)
 	tar -czf build/artifacts/$(APP_ID).tar.gz -C build/artifacts $(APP_ID)
 	@echo "Created build/artifacts/$(APP_ID).tar.gz"

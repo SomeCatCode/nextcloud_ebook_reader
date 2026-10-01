@@ -98,7 +98,7 @@ class MobiExtractor implements ExtractorInterface {
 		$exthPos = 16 + $headerLen;
 		/** @var array{f: int} $fl */
 		$fl = unpack('Nf', substr($rec0, 128, 4));
-		if (($fl['f'] & 0x40) !== 0 && substr($rec0, $exthPos, 4) === 'EXTH') {
+		if (($fl['f'] & 0x40) !== 0 && $exthPos >= 0 && $exthPos + 12 <= strlen($rec0) && substr($rec0, $exthPos, 4) === 'EXTH') {
 			$exth = $this->parseExth($rec0, $exthPos);
 		}
 
@@ -172,6 +172,9 @@ class MobiExtractor implements ExtractorInterface {
 
 	/** @return array<int, list<string>> record type => raw values */
 	private function parseExth(string $rec0, int $pos): array {
+		if ($pos < 0 || $pos + 12 > strlen($rec0)) {
+			return [];
+		}
 		/** @var array{len: int, n: int} $u */
 		$u = unpack('Nlen/Nn', substr($rec0, $pos + 4, 8));
 		$p = $pos + 12;

@@ -19,20 +19,37 @@ final class XmlUtil {
 		if (str_starts_with($xml, "\xEF\xBB\xBF")) {
 			$xml = substr($xml, 3);
 		}
-		if (stripos($xml, '<!ENTITY') !== false) {
-			return null;
-		}
 		$prev = libxml_use_internal_errors(true);
 		try {
 			$doc = new \DOMDocument();
 			$doc->resolveExternals = false;
 			$doc->substituteEntities = false;
 			$ok = $doc->loadXML($xml, LIBXML_NONET | LIBXML_NOWARNING | LIBXML_NOERROR);
-			return $ok ? $doc : null;
+			if (!$ok || self::hasInternalSubset($doc)) {
+				return null;
+			}
+			return $doc;
 		} finally {
 			libxml_clear_errors();
 			libxml_use_internal_errors($prev);
 		}
+	}
+
+	/** True if the document declares an internal DTD subset or entities (billion laughs); checked on the parsed tree, so it also covers UTF-16 input. */
+	public static function hasInternalSubset(\DOMDocument $doc): bool {
+		$dt = $doc->doctype;
+		if ($dt === null) {
+			return false;
+		}
+		if ((string)$dt->internalSubset !== '' || $dt->entities->length > 0) {
+			return true;
+		}
+		foreach ($doc->childNodes as $n) {
+			if ($n->nodeType === XML_ENTITY_DECL_NODE) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/** Trimmed, whitespace-collapsed text of the first node of the query, or null if empty. */

@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace OCA\EbookReader\Listener;
 
+use OCP\App\IAppManager;
 use OCP\AppFramework\Http\ContentSecurityPolicy;
 use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
@@ -25,10 +26,14 @@ use OCP\Security\CSP\AddContentSecurityPolicyEvent;
  * @template-implements IEventListener<Event>
  */
 class CspListener implements IEventListener {
-	private const PATH_PREFIXES = ['/apps/ebookreader', '/apps/files', '/apps/viewer', '/f/'];
+	/** Reader routes: always relevant. */
+	private const APP_PREFIXES = ['/apps/ebookreader'];
+	/** Files (and the Viewer inside it): only relevant while the Viewer app is enabled. */
+	private const FILES_PREFIXES = ['/apps/files', '/f'];
 
 	public function __construct(
 		private IRequest $request,
+		private IAppManager $appManager,
 	) {
 	}
 
@@ -67,8 +72,23 @@ class CspListener implements IEventListener {
 		if (!is_string($path)) {
 			return false;
 		}
-		foreach (self::PATH_PREFIXES as $prefix) {
-			if (str_starts_with($path, $prefix)) {
+		if (self::matchesPath($path, self::APP_PREFIXES)) {
+			return true;
+		}
+		if (self::matchesPath($path, self::FILES_PREFIXES)) {
+			return $this->appManager->isEnabledForAnyone('viewer');
+		}
+		return false;
+	}
+
+	/**
+	 * Path match with a boundary: equal to a prefix or below it ("/apps/files2" does not match "/apps/files").
+	 *
+	 * @param list<string> $prefixes prefixes without trailing slash
+	 */
+	public static function matchesPath(string $path, array $prefixes): bool {
+		foreach ($prefixes as $prefix) {
+			if ($path === $prefix || str_starts_with($path, $prefix . '/')) {
 				return true;
 			}
 		}

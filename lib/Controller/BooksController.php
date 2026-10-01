@@ -57,6 +57,9 @@ class BooksController extends AbstractOCSController {
 	 * @param string $order Sort order (asc|desc)
 	 * @param int<1, 200> $limit Page size
 	 * @param int $offset Offset
+	 * @param list<string>|string|null $include Entries "genre:<name>", "tag:<name>", "author:<name>", "series:<name>" or "format:<fmt>" the book must match (see match)
+	 * @param list<string>|string|null $exclude Entries in the same form; books having any of them are excluded
+	 * @param string $match "all" (every include must match) or "any" (at least one)
 	 * @return DataResponse<Http::STATUS_OK, EbookReaderBookList, array{}>
 	 * @throws OCSForbiddenException Not logged in
 	 *
@@ -76,12 +79,16 @@ class BooksController extends AbstractOCSController {
 		string $order = 'asc',
 		int $limit = BookQuery::DEFAULT_LIMIT,
 		int $offset = 0,
+		array|string|null $include = null,
+		array|string|null $exclude = null,
+		string $match = 'all',
 	): DataResponse {
 		$userId = $this->uid();
 		$query = BookQuery::fromRequestParams([
 			'search' => $search, 'format' => $format, 'genre' => $genre, 'tag' => $tag,
 			'author' => $author, 'series' => $series, 'status' => $status,
 			'sort' => $sort, 'order' => $order, 'limit' => $limit, 'offset' => $offset,
+			'include' => $include, 'exclude' => $exclude, 'match' => $match,
 		]);
 		$result = $this->library->findBooks($userId, $query);
 		return new DataResponse([

@@ -41,9 +41,11 @@ class Application extends App implements IBootstrap {
 		'fbz' => 'application/x-zip-compressed-fb2',
 		'cbz' => 'application/comicbook+zip',
 		'cbr' => 'application/comicbook+rar',
+		'cb7' => 'application/x-cb7',
+		'cbt' => 'application/x-cbt',
 	];
 
-	public const PREVIEW_MIME_REGEX = '/^application\/(epub\+zip|x-mobipocket-ebook|vnd\.amazon\.mobi8-ebook|x-fictionbook\+xml|x-zip-compressed-fb2|vnd\.comicbook\+zip|vnd\.comicbook-rar)$/';
+	public const PREVIEW_MIME_REGEX = '/^application\/(epub\+zip|x-mobipocket-ebook|vnd\.amazon\.mobi8-ebook|x-fictionbook\+xml|x-zip-compressed-fb2|vnd\.comicbook\+zip|vnd\.comicbook-rar|x-cb7|x-cbt)$/';
 
 	public function __construct(array $urlParams = []) {
 		parent::__construct(self::APP_ID, $urlParams);

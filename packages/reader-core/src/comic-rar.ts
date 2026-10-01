@@ -3,8 +3,9 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 /**
- * CBR support through libarchive.js (wasm worker). Builds a foliate-compatible loader
- * ({ entries, loadBlob, getSize }) that is fed to comic-book.js makeComicBook().
+ * CBR, CB7 and CBT support through libarchive.js (wasm worker; it reads RAR, 7z and tar alike).
+ * Builds a foliate-compatible loader ({ entries, loadBlob, getSize }) that is fed to comic-book.js
+ * makeComicBook().
  */
 import type { ReaderOptions } from './types.ts'
 
@@ -25,10 +26,11 @@ export interface ComicLoader {
 /**
  * @param file
  * @param opts
+ * @param extension file extension used as the archive's name (cbr, cb7 or cbt)
  */
-export async function makeRarLoader(file: Blob, opts: ReaderOptions): Promise<ComicLoader> {
+export async function makeArchiveLoader(file: Blob, opts: ReaderOptions, extension = 'cbr'): Promise<ComicLoader> {
 	if (!opts.loadLibarchive) {
-		throw new Error('CBR support is not configured (loadLibarchive missing)')
+		throw new Error('Archive support is not configured (loadLibarchive missing)')
 	}
 	const { workerSource, wasmUrl } = await opts.loadLibarchive()
 	const absWasm = new URL(wasmUrl, globalThis.location?.href ?? 'http://localhost/').href
@@ -40,7 +42,7 @@ export async function makeRarLoader(file: Blob, opts: ReaderOptions): Promise<Co
 	const workerBlobUrl = URL.createObjectURL(new Blob([patched], { type: 'text/javascript' }))
 	const { Archive } = await import('libarchive.js')
 	Archive.init({ workerUrl: workerBlobUrl })
-	const archive = await Archive.open(file instanceof File ? file : new File([file], 'book.cbr'))
+	const archive = await Archive.open(file instanceof File ? file : new File([file], `book.${extension}`))
 	const files = await archive.getFilesArray() as unknown as { file: CompressedFile, path: string }[]
 	const map = new Map<string, CompressedFile>()
 	for (const { file: f, path } of files) {
@@ -56,4 +58,12 @@ export async function makeRarLoader(file: Blob, opts: ReaderOptions): Promise<Co
 			URL.revokeObjectURL(workerBlobUrl)
 		},
 	}
+}
+
+/**
+ * @param file
+ * @param opts
+ */
+export function makeRarLoader(file: Blob, opts: ReaderOptions): Promise<ComicLoader> {
+	return makeArchiveLoader(file, opts, 'cbr')
 }
