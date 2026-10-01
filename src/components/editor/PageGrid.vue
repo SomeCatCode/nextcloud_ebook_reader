@@ -33,7 +33,7 @@
 					'page-grid__page--removed': removed.has(item.id),
 				}">
 				<img
-					:src="itemUrl(fileId, item.id)"
+					:src="itemUrl(fileId, item.id, state.structure.value?.etag)"
 					loading="lazy"
 					draggable="false"
 					:alt="t('ebookreader', 'Page {n}', { n: index + 1 })"

@@ -25,6 +25,8 @@ use OCP\AppFramework\OCS\OCSBadRequestException;
 use OCP\AppFramework\OCS\OCSForbiddenException;
 use OCP\AppFramework\OCS\OCSNotFoundException;
 use OCP\AppFramework\Utility\ITimeFactory;
+use OCP\Files\NotFoundException;
+use OCP\Files\NotPermittedException;
 use OCP\IRequest;
 
 /**
@@ -32,6 +34,8 @@ use OCP\IRequest;
  * @psalm-import-type EbookReaderBookList from \OCA\EbookReader\ResponseDefinitions
  */
 class BooksController extends AbstractOCSController {
+	private const MAX_BULK_DELETE = 100;
+
 	public function __construct(
 		IRequest $request,
 		?string $userId,
@@ -112,6 +116,69 @@ class BooksController extends AbstractOCSController {
 	public function show(int $fileId): DataResponse {
 		$userId = $this->uid();
 		return new DataResponse($this->serializer->serializeWithProgress($userId, $this->findBook($userId, $fileId)));
+	}
+
+	/**
+	 * Delete a book: the file is moved to the Nextcloud trash bin (if enabled)
+	 *
+	 * @param int $fileId Nextcloud file id
+	 * @return DataResponse<Http::STATUS_OK, array{deleted: int}, array{}>
+	 * @throws OCSNotFoundException Book not found
+	 * @throws OCSForbiddenException Not logged in or no permission to delete the file
+	 *
+	 * 200: File deleted
+	 */
+	#[NoAdminRequired]
+	#[UserRateLimit(limit: 60, period: 60)]
+	#[ApiRoute(verb: 'DELETE', url: '/api/v1/books/{fileId}', requirements: ['fileId' => '\d+'])]
+	public function destroy(int $fileId): DataResponse {
+		$userId = $this->uid();
+		$this->findBook($userId, $fileId);
+		try {
+			$this->library->deleteFileForUser($userId, $fileId);
+		} catch (NotFoundException) {
+			throw new OCSNotFoundException('Book not found');
+		} catch (NotPermittedException) {
+			throw new OCSForbiddenException('No permission to delete this file');
+		}
+		return new DataResponse(['deleted' => $fileId]);
+	}
+
+	/**
+	 * Delete several books (max. 100); files go to the trash bin (if enabled)
+	 *
+	 * @param list<int> $fileIds Nextcloud file ids
+	 * @return DataResponse<Http::STATUS_OK, array{deleted: list<int>, failed: list<array{fileId: int, error: string}>}, array{}>
+	 * @throws OCSBadRequestException Empty or too large selection
+	 * @throws OCSForbiddenException Not logged in
+	 *
+	 * 200: Result per file
+	 */
+	#[NoAdminRequired]
+	#[UserRateLimit(limit: 10, period: 60)]
+	#[ApiRoute(verb: 'POST', url: '/api/v1/books/delete')]
+	public function destroyMany(array $fileIds = []): DataResponse {
+		$userId = $this->uid();
+		$ids = array_values(array_unique(array_map('intval', $fileIds)));
+		if ($ids === [] || count($ids) > self::MAX_BULK_DELETE) {
+			throw new OCSBadRequestException('Select between 1 and ' . self::MAX_BULK_DELETE . ' books');
+		}
+		$deleted = [];
+		$failed = [];
+		foreach ($ids as $id) {
+			try {
+				$this->findBook($userId, $id);
+				$this->library->deleteFileForUser($userId, $id);
+				$deleted[] = $id;
+			} catch (OCSNotFoundException|NotFoundException) {
+				$failed[] = ['fileId' => $id, 'error' => 'not_found'];
+			} catch (NotPermittedException) {
+				$failed[] = ['fileId' => $id, 'error' => 'forbidden'];
+			} catch (\Throwable) {
+				$failed[] = ['fileId' => $id, 'error' => 'failed'];
+			}
+		}
+		return new DataResponse(['deleted' => $deleted, 'failed' => $failed]);
 	}
 
 	/**

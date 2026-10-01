@@ -16,6 +16,7 @@ vi.mock('../services/api.ts', () => ({
 	patchAppData: vi.fn(),
 	bulkTags: vi.fn(),
 	patchMetadata: vi.fn(),
+	resetOverrides: vi.fn(),
 }))
 
 const mocked = vi.mocked(api)
@@ -50,6 +51,7 @@ function book(fileId: number, extra: Partial<Book> = {}): Book {
 		updatedAt: 0,
 		editable: true,
 		downloadable: true,
+		overrides: [],
 		progress: null,
 		...extra,
 	}
@@ -162,7 +164,7 @@ describe('library store', () => {
 		mocked.patchMetadata.mockImplementationOnce(() => Promise.resolve({ book: book(1, { tags: ['a'] }), warnings: ['app only'] }))
 		const p = store.saveBookTags(1, { genres: [], tags: ['a'] })
 		expect(store.books[0].tags).toEqual(['a'])
-		expect(await p).toEqual(['app only'])
+		expect(await p).toEqual({ warnings: ['app only'], writeQueued: false })
 		mocked.patchMetadata.mockRejectedValueOnce(new Error('nope'))
 		await expect(store.saveBookTags(1, { genres: ['G'], tags: [] })).rejects.toThrow('nope')
 		expect(store.books[0].tags).toEqual(['a'])
@@ -223,5 +225,23 @@ describe('library store', () => {
 		expect(mocked.bulkTags).toHaveBeenCalledWith(expect.objectContaining({ fileIds: [2], addGenres: ['X'] }))
 		store.setSelectMode(false)
 		expect(store.selectedIds).toEqual([])
+	})
+
+	it('resets an override and applies the book re-read from the file', async () => {
+		const store = useLibraryStore()
+		mocked.getFacets.mockResolvedValue({ genres: [], tags: [], authors: [], series: [], formats: [] })
+		await store.reload()
+		mocked.resetOverrides.mockResolvedValueOnce(book(1, { title: 'From file', overrides: [] }))
+		await store.resetOverrides(1, 'title')
+		expect(mocked.resetOverrides).toHaveBeenCalledWith(1, 'title')
+		expect(store.books[0].title).toBe('From file')
+	})
+
+	it('shows that saving tags queued a background write', async () => {
+		const store = useLibraryStore()
+		mocked.getFacets.mockResolvedValue({ genres: [], tags: [], authors: [], series: [], formats: [] })
+		await store.reload()
+		mocked.patchMetadata.mockResolvedValueOnce({ book: book(1, { tags: ['a'] }), warnings: [], writeQueued: true })
+		expect(await store.saveBookTags(1, { genres: [], tags: ['a'] })).toEqual({ warnings: [], writeQueued: true })
 	})
 })

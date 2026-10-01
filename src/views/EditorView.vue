@@ -77,6 +77,13 @@
 					<p v-if="!structure.capabilities.content" class="editor-view__na">
 						{{ t('ebookreader', 'Reordering and removing content is not supported for this format.') }}
 					</p>
+					<NcNoteCard v-else-if="contentError" type="error">
+						{{ contentError }}
+						<NcButton @click="ensureContent">
+							{{ t('ebookreader', 'Retry') }}
+						</NcButton>
+					</NcNoteCard>
+					<NcLoadingIcon v-else-if="structure.partial" :size="44" class="editor-view__loading" />
 					<PageGrid v-else-if="isComic" :fileId="structure.fileId" />
 					<ContentList v-else :fileId="structure.fileId" :format="structure.format" />
 				</template>
@@ -84,6 +91,13 @@
 					<p v-if="!structure.capabilities.toc" class="editor-view__na">
 						{{ t('ebookreader', 'Editing the table of contents is not supported for this format.') }}
 					</p>
+					<NcNoteCard v-else-if="contentError" type="error">
+						{{ contentError }}
+						<NcButton @click="ensureContent">
+							{{ t('ebookreader', 'Retry') }}
+						</NcButton>
+					</NcNoteCard>
+					<NcLoadingIcon v-else-if="structure.partial" :size="44" class="editor-view__loading" />
 					<TocTreeEditor v-else />
 				</template>
 			</main>
@@ -109,6 +123,32 @@
 			<NcNoteCard v-else-if="structure && !structure.capabilities.writesFile" type="info">
 				{{ t('ebookreader', 'Only the app database is updated.') }}
 			</NcNoteCard>
+		</NcDialog>
+
+		<!-- progress while saving (can take a while for large files) -->
+		<NcDialog
+			v-if="saveProgress"
+			:name="saveAsCopy ? t('ebookreader', 'Saving copy…') : t('ebookreader', 'Saving…')"
+			noClose
+			:closeOnClickOutside="false">
+			<div class="editor-view__progress" role="status" aria-live="polite">
+				<template v-if="saveProgress.phase === 'upload'">
+					<p>{{ t('ebookreader', 'Uploading changes… {percent} %', { percent: Math.round(saveProgress.upload * 100) }) }}</p>
+					<NcProgressBar :value="Math.round(saveProgress.upload * 100)" size="medium" />
+				</template>
+				<template v-else>
+					<p class="editor-view__progress-row">
+						<NcLoadingIcon :size="20" />
+						{{ saveProgress.phase === 'server'
+							? t('ebookreader', 'The server is rewriting and checking the book…')
+							: t('ebookreader', 'Loading the saved version…') }}
+					</p>
+					<NcProgressBar :value="saveProgress.phase === 'server' ? 66 : 95" size="medium" />
+				</template>
+				<p class="editor-view__muted">
+					{{ t('ebookreader', '{seconds} s elapsed. Large comics can take a minute; please keep this page open.', { seconds: saveProgress.seconds }) }}
+				</p>
+			</div>
 		</NcDialog>
 
 		<!-- warnings after save -->
@@ -156,7 +196,7 @@
 </template>
 
 <script setup lang="ts">
-import type { Book, SaveResult, Structure } from '../types.ts'
+import type { Book, MetadataPatch, SaveResult, Structure } from '../types.ts'
 
 import { showError, showSuccess } from '@nextcloud/dialogs'
 import { translate as t } from '@nextcloud/l10n'
@@ -166,14 +206,15 @@ import NcButton from '@nextcloud/vue/components/NcButton'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
+import NcProgressBar from '@nextcloud/vue/components/NcProgressBar'
 import ContentList from '../components/editor/ContentList.vue'
 import MetadataForm from '../components/editor/MetadataForm.vue'
 import PageGrid from '../components/editor/PageGrid.vue'
 import RenameDialog from '../components/editor/RenameDialog.vue'
 import TocTreeEditor from '../components/editor/TocTreeEditor.vue'
 import { convertCbrToCbz, deleteOriginal, TargetExistsError, uploadCbz } from '../editor/cbrToCbz.ts'
-import { EDITOR_STATE_KEY, useEditorState } from '../editor/useEditorState.ts'
-import { ConflictError, getBook, getStructure, putStructure, scan } from '../services/api.ts'
+import { EDITOR_STATE_KEY, isMetadataOnlyRequest, useEditorState } from '../editor/useEditorState.ts'
+import { ConflictError, getBook, getStructure, patchMetadata, putStructure, scan } from '../services/api.ts'
 
 const props = defineProps<{ fileId?: string }>()
 
@@ -187,6 +228,8 @@ const book = shallowRef<Book | null>(null)
 const loading = ref(true)
 const loadError = ref('')
 const busy = ref(false)
+/** Save progress for the progress dialog; null when not saving */
+const saveProgress = ref<{ phase: 'upload' | 'server' | 'reload', upload: number, seconds: number } | null>(null)
 const activeTab = ref<'metadata' | 'content' | 'toc'>('metadata')
 const isComic = computed(() => structure.value?.format === 'cbz' || structure.value?.format === 'cbr')
 
@@ -198,14 +241,22 @@ const tabs = computed(() => [
 
 let allowLeave = false
 
+const contentLoading = ref(false)
+const contentError = ref('')
+
 /**
+ * Loads the structure. By default only the metadata part (answered from the library, the book file is not read);
+ * items and table of contents follow when a tab needs them.
+ *
  * @param fileId
+ * @param withContent load items and toc right away (reload after a content save or conflict)
  */
-async function load(fileId = fileIdNum.value): Promise<void> {
+async function load(fileId = fileIdNum.value, withContent = false): Promise<void> {
 	loading.value = true
 	loadError.value = ''
+	contentError.value = ''
 	try {
-		const [s, b] = await Promise.all([getStructure(fileId), getBook(fileId).catch(() => null)])
+		const [s, b] = await Promise.all([getStructure(fileId, withContent ? 'all' : 'metadata'), getBook(fileId).catch(() => null)])
 		state.load(s as Structure)
 		book.value = b
 	} catch (e) {
@@ -213,7 +264,35 @@ async function load(fileId = fileIdNum.value): Promise<void> {
 	} finally {
 		loading.value = false
 	}
+	if (activeTab.value !== 'metadata') {
+		void ensureContent()
+	}
 }
+
+/**
+ * Loads items and table of contents (reads the book file) if only the metadata part is present yet.
+ */
+async function ensureContent(): Promise<void> {
+	const s = structure.value
+	if (!s || !s.partial || contentLoading.value || (!s.capabilities.content && !s.capabilities.toc)) {
+		return
+	}
+	contentLoading.value = true
+	contentError.value = ''
+	try {
+		state.loadContent(await getStructure(s.fileId, 'all'))
+	} catch (e) {
+		contentError.value = (e as Error).message || t('ebookreader', 'Could not load the book structure.')
+	} finally {
+		contentLoading.value = false
+	}
+}
+
+watch(activeTab, (tab) => {
+	if (tab !== 'metadata') {
+		void ensureContent()
+	}
+})
 
 watch(() => props.fileId, () => {
 	allowLeave = false
@@ -340,13 +419,33 @@ const summaryButtons = computed(() => [
  */
 async function doSave(): Promise<void> {
 	summaryOpen.value = false
+	const req = state.buildEditRequest(saveAsCopy.value)
+	// Background writes only while the content is not loaded: once pages/TOC are open, a queued
+	// metadata job would change the file etag under the editor and make the next page save a 409.
+	if (isMetadataOnlyRequest(req) && req.metadata && structure.value?.partial !== false) {
+		await saveMetadataOnly(req.metadata)
+		return
+	}
 	busy.value = true
+	saveProgress.value = { phase: 'upload', upload: 0, seconds: 0 }
+	const started = Date.now()
+	const timer = window.setInterval(() => {
+		if (saveProgress.value) {
+			saveProgress.value = { ...saveProgress.value, seconds: Math.round((Date.now() - started) / 1000) }
+		}
+	}, 1000)
 	try {
-		const result = await putStructure(fileIdNum.value, state.buildEditRequest(saveAsCopy.value))
+		const result = await putStructure(fileIdNum.value, req, (f) => {
+			if (saveProgress.value) {
+				saveProgress.value = { ...saveProgress.value, upload: f, phase: f >= 1 ? 'server' : 'upload' }
+			}
+		})
+		saveProgress.value = { phase: 'reload', upload: 1, seconds: saveProgress.value?.seconds ?? 0 }
+		// Always reload right away (new etag, renumbered pages); warnings are shown afterwards,
+		// so closing the warnings dialog in any way can not leave a stale state behind.
+		await afterSave(result)
 		if (result.warnings?.length) {
 			resultWarnings.value = result
-		} else {
-			await afterSave(result)
 		}
 	} catch (e) {
 		if (e instanceof ConflictError) {
@@ -355,6 +454,34 @@ async function doSave(): Promise<void> {
 			showError(t('ebookreader', 'Saving failed: {message}', { message: (e as Error).message }))
 		}
 	} finally {
+		window.clearInterval(timer)
+		saveProgress.value = null
+		busy.value = false
+	}
+}
+
+/**
+ * Metadata-only save: PATCH metadata, which honours the user's write mode (the file is usually written later in the
+ * background). The book file is not read or rewritten here, so no progress dialog and no content reload are needed.
+ *
+ * @param patch
+ */
+async function saveMetadataOnly(patch: MetadataPatch): Promise<void> {
+	busy.value = true
+	try {
+		const result = await patchMetadata(fileIdNum.value, patch)
+		showSuccess(result.writeQueued
+			? t('ebookreader', 'Saved – will be written into the file in the background')
+			: t('ebookreader', 'Changes saved'))
+		const [s, b] = await Promise.all([getStructure(fileIdNum.value, 'metadata'), getBook(fileIdNum.value).catch(() => null)])
+		state.reloadMetadata(s)
+		book.value = b
+		if (result.warnings?.length) {
+			resultWarnings.value = result
+		}
+	} catch (e) {
+		showError(t('ebookreader', 'Saving failed: {message}', { message: (e as Error).message }))
+	} finally {
 		busy.value = false
 	}
 }
@@ -362,12 +489,8 @@ async function doSave(): Promise<void> {
 /**
  *
  */
-async function finishSave(): Promise<void> {
-	const r = resultWarnings.value
+function finishSave(): void {
 	resultWarnings.value = null
-	if (r) {
-		await afterSave(r)
-	}
 }
 
 /**
@@ -380,7 +503,7 @@ async function afterSave(result: SaveResult): Promise<void> {
 		await router.push({ name: 'editor', params: { fileId: String(result.book.fileId) } })
 	} else {
 		showSuccess(t('ebookreader', 'Changes saved'))
-		await load()
+		await load(fileIdNum.value, !structure.value?.partial)
 	}
 }
 
@@ -389,7 +512,7 @@ async function afterSave(result: SaveResult): Promise<void> {
  */
 async function reloadAfterConflict(): Promise<void> {
 	conflictOpen.value = false
-	await load()
+	await load(fileIdNum.value, !structure.value?.partial)
 }
 
 /**
@@ -452,6 +575,9 @@ async function convertCbr(): Promise<void> {
 </script>
 
 <style scoped lang="scss">
+.editor-view__progress { display: flex; flex-direction: column; gap: 12px; min-width: min(420px, 80vw); }
+.editor-view__progress-row { display: flex; align-items: center; gap: 8px; }
+.editor-view__muted { opacity: .7; font-size: .9em; }
 .editor-view {
 	display: flex;
 	flex-direction: column;

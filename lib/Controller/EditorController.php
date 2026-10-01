@@ -48,6 +48,7 @@ class EditorController extends AbstractOCSController {
 	 * Structure (metadata, chapters/pages, table of contents) of a book for the editor
 	 *
 	 * @param int $fileId File id
+	 * @param string $parts "all" (default) reads the file; "metadata" returns only the metadata from the library without touching the file (items and toc empty, partial = true)
 	 * @return DataResponse<Http::STATUS_OK|Http::STATUS_BAD_REQUEST|Http::STATUS_FORBIDDEN|Http::STATUS_NOT_FOUND|Http::STATUS_CONFLICT|Http::STATUS_REQUEST_ENTITY_TOO_LARGE|Http::STATUS_UNSUPPORTED_MEDIA_TYPE|Http::STATUS_UNPROCESSABLE_ENTITY|Http::STATUS_LOCKED|Http::STATUS_INTERNAL_SERVER_ERROR, array<string, mixed>, array{}>
 	 *
 	 * 200: Structure returned
@@ -64,11 +65,11 @@ class EditorController extends AbstractOCSController {
 	#[NoAdminRequired]
 	#[UserRateLimit(limit: 60, period: 60)]
 	#[ApiRoute(verb: 'GET', url: '/api/v1/books/{fileId}/structure', requirements: ['fileId' => '\d+'])]
-	public function structure(int $fileId): DataResponse {
+	public function structure(int $fileId, string $parts = 'all'): DataResponse {
 		$userId = $this->uid();
-		return $this->guard(function () use ($userId, $fileId): DataResponse {
+		return $this->guard(function () use ($userId, $fileId, $parts): DataResponse {
 			$this->requireContentAccess($userId, $fileId);
-			return new DataResponse($this->editor->getStructure($userId, $fileId));
+			return new DataResponse($this->editor->getStructure($userId, $fileId, $parts));
 		});
 	}
 
@@ -110,7 +111,8 @@ class EditorController extends AbstractOCSController {
 	}
 
 	/**
-	 * Patches the metadata of a book (also genres and tags)
+	 * Patches the metadata of a book (also genres and tags). Depending on the user's write mode the file is written right
+	 * away, later in the background (writeQueued = true) or not at all.
 	 *
 	 * @param int $fileId File id
 	 * @return DataResponse<Http::STATUS_OK|Http::STATUS_BAD_REQUEST|Http::STATUS_FORBIDDEN|Http::STATUS_NOT_FOUND|Http::STATUS_CONFLICT|Http::STATUS_REQUEST_ENTITY_TOO_LARGE|Http::STATUS_UNSUPPORTED_MEDIA_TYPE|Http::STATUS_UNPROCESSABLE_ENTITY|Http::STATUS_LOCKED|Http::STATUS_INTERNAL_SERVER_ERROR, array<string, mixed>, array{}>
@@ -139,7 +141,7 @@ class EditorController extends AbstractOCSController {
 		}
 		return $this->guard(function () use ($userId, $fileId, $patch): DataResponse {
 			$res = $this->editor->saveMetadataOnly($userId, $fileId, $patch);
-			return new DataResponse(['book' => $this->serializer->serializeWithProgress($userId, $res['book']), 'warnings' => $res['warnings']]);
+			return new DataResponse(['book' => $this->serializer->serializeWithProgress($userId, $res['book']), 'warnings' => $res['warnings'], 'writeQueued' => $res['writeQueued']]);
 		});
 	}
 
@@ -174,6 +176,35 @@ class EditorController extends AbstractOCSController {
 		}
 		$body = compact('fileIds', 'addGenres', 'removeGenres', 'addTags', 'removeTags');
 		return $this->guard(fn (): DataResponse => new DataResponse($this->editor->bulkTags($userId, $body)));
+	}
+
+	/**
+	 * Drops the "edited in the app" marker of one metadata field (or all) and takes the value from the file again
+	 *
+	 * @param int $fileId File id
+	 * @param string|null $field Field name (title, authors, series, seriesIndex, description, language, publisher, isbn, publishedAt); all fields when omitted
+	 * @return DataResponse<Http::STATUS_OK|Http::STATUS_BAD_REQUEST|Http::STATUS_FORBIDDEN|Http::STATUS_NOT_FOUND|Http::STATUS_CONFLICT|Http::STATUS_REQUEST_ENTITY_TOO_LARGE|Http::STATUS_UNSUPPORTED_MEDIA_TYPE|Http::STATUS_UNPROCESSABLE_ENTITY|Http::STATUS_LOCKED|Http::STATUS_INTERNAL_SERVER_ERROR, array<string, mixed>, array{}>
+	 *
+	 * 200: Override removed, the book is returned
+	 * 400: Unknown field
+	 * 403: No permission
+	 * 404: File not found
+	 * 409: File was modified in the meantime
+	 * 413: File too large
+	 * 415: Format not supported
+	 * 422: Validation failed
+	 * 423: File is locked
+	 * 500: Internal error
+	 */
+	#[NoAdminRequired]
+	#[UserRateLimit(limit: 30, period: 60)]
+	#[ApiRoute(verb: 'DELETE', url: '/api/v1/books/{fileId}/overrides', requirements: ['fileId' => '\d+'])]
+	public function resetOverrides(int $fileId, ?string $field = null): DataResponse {
+		$userId = $this->uid();
+		return $this->guard(function () use ($userId, $fileId, $field): DataResponse {
+			$book = $this->editor->resetOverrides($userId, $fileId, $field);
+			return new DataResponse($this->serializer->serializeWithProgress($userId, $book));
+		});
 	}
 
 	/**

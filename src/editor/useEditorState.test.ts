@@ -5,7 +5,7 @@
 import type { Structure } from '../types.ts'
 
 import { describe, expect, it } from 'vitest'
-import { useEditorState } from './useEditorState.ts'
+import { isMetadataOnlyRequest, useEditorState } from './useEditorState.ts'
 
 /**
  *
@@ -36,6 +36,7 @@ function fixture(): Structure {
 			{ id: 't3', label: 'Three', itemId: 'c3', fragment: null, children: [] },
 		],
 		warnings: [],
+		partial: false,
 	}
 }
 
@@ -122,5 +123,96 @@ describe('useEditorState', () => {
 		s.load(f)
 		s.removeItems(['c1'])
 		expect(s.computeChangeSummary()).toContain('1 page removed')
+	})
+})
+
+/**
+ * Metadata part as the server answers `parts=metadata`.
+ */
+function partial(): Structure {
+	return { ...fixture(), etag: 'e-meta', items: [], toc: [], partial: true }
+}
+
+describe('useEditorState lazy content', () => {
+	it('is clean after a metadata-only load and builds a metadata-only request', () => {
+		const s = useEditorState()
+		s.load(partial())
+		expect(s.dirty.value).toBe(false)
+		expect(s.orderedItems.value).toEqual([])
+		s.metadata.value.tags = ['new']
+		const req = s.buildEditRequest(false)
+		expect(req).toEqual({ etag: 'e-meta', saveAsCopy: false, metadata: { tags: ['new'] } })
+		expect(isMetadataOnlyRequest(req)).toBe(true)
+	})
+
+	it('merges items, toc and etag without discarding metadata edits', () => {
+		const s = useEditorState()
+		s.load(partial())
+		s.metadata.value.title = 'Edited'
+		expect(s.dirty.value).toBe(true)
+
+		s.loadContent({ ...fixture(), etag: 'e-full' })
+		expect(s.structure.value?.partial).toBe(false)
+		expect(s.structure.value?.etag).toBe('e-full')
+		expect(s.orderedItems.value.map((i) => i.id)).toEqual(['c1', 'c2', 'c3', 'c4'])
+		expect(s.toc.value).toHaveLength(2)
+		// the metadata edit survives and is still the only change
+		expect(s.metadata.value.title).toBe('Edited')
+		expect(s.dirty.value).toBe(true)
+		const req = s.buildEditRequest(false)
+		expect(req).toEqual({ etag: 'e-full', saveAsCopy: false, metadata: { title: 'Edited' } })
+		expect(s.computeChangeSummary()).toEqual(['Title changed'])
+	})
+
+	it('is clean after loadContent when nothing was edited', () => {
+		const s = useEditorState()
+		s.load(partial())
+		s.loadContent(fixture())
+		expect(s.dirty.value).toBe(false)
+	})
+
+	it('keeps content edits possible afterwards and undo does not wipe the content', () => {
+		const s = useEditorState()
+		s.load(partial())
+		s.pushUndo()
+		s.metadata.value.title = 'Edited'
+		s.loadContent(fixture())
+		s.removeItems(['c2'])
+		expect(s.buildEditRequest(false).removed).toEqual(['c2'])
+		expect(isMetadataOnlyRequest(s.buildEditRequest(false))).toBe(false)
+		s.undo() // undoes the removal
+		s.undo() // snapshot taken before the content was loaded
+		expect(s.orderedItems.value).toHaveLength(4)
+		expect(s.toc.value).toHaveLength(2)
+	})
+
+	it('ignores a partial structure in loadContent and takes fresh metadata with reloadMetadata', () => {
+		const s = useEditorState()
+		s.load(fixture())
+		s.loadContent(partial())
+		expect(s.orderedItems.value).toHaveLength(4)
+		s.metadata.value.title = 'Edited'
+		s.reloadMetadata({ ...partial(), etag: 'e2', metadata: { ...fixture().metadata, title: 'Edited' } })
+		expect(s.dirty.value).toBe(false)
+		expect(s.structure.value?.etag).toBe('e2')
+		expect(s.orderedItems.value).toHaveLength(4)
+	})
+})
+
+describe('isMetadataOnlyRequest', () => {
+	const base = { etag: 'x', saveAsCopy: false }
+	it('routes pure metadata edits to PATCH', () => {
+		expect(isMetadataOnlyRequest({ ...base, metadata: { title: 'a' } })).toBe(true)
+		expect(isMetadataOnlyRequest({ ...base, metadata: { title: 'a' }, removed: [] })).toBe(true)
+	})
+
+	it('keeps everything else on PUT', () => {
+		expect(isMetadataOnlyRequest({ ...base })).toBe(false)
+		expect(isMetadataOnlyRequest({ ...base, metadata: {} })).toBe(false)
+		expect(isMetadataOnlyRequest({ ...base, saveAsCopy: true, metadata: { title: 'a' } })).toBe(false)
+		expect(isMetadataOnlyRequest({ ...base, metadata: { title: 'a' }, cover: { source: 'item', itemId: 'p1' } })).toBe(false)
+		expect(isMetadataOnlyRequest({ ...base, metadata: { title: 'a' }, order: ['a'] })).toBe(false)
+		expect(isMetadataOnlyRequest({ ...base, metadata: { title: 'a' }, removed: ['a'] })).toBe(false)
+		expect(isMetadataOnlyRequest({ ...base, metadata: { title: 'a' }, toc: [] })).toBe(false)
 	})
 })

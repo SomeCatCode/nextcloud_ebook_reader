@@ -163,6 +163,12 @@
 					</template>
 					{{ t('ebookreader', 'Edit genres and tags') }}
 				</NcButton>
+				<NcButton variant="tertiary" :disabled="store.selectedIds.length === 0" @click="askDelete(store.selectedIds)">
+					<template #icon>
+						<NcIconSvgWrapper :path="mdiDeleteOutline" />
+					</template>
+					{{ t('ebookreader', 'Delete…') }}
+				</NcButton>
 			</div>
 
 			<FilterBar />
@@ -235,14 +241,19 @@
 
 	<BookDetails
 		v-if="store.activeBook"
-		:key="store.activeBook.fileId"
 		:book="store.activeBook"
 		@close="store.setActive(null)"
 		@filter="onDetailsFilter"
 		@organize="(id: number) => (organizeIds = [id])"
+		@delete="(id: number) => askDelete([id])"
 		@converted="onConverted" />
 
 	<BulkTagDialog v-if="showBulk" @close="showBulk = false" />
+	<DeleteBooksDialog
+		v-if="deleteList.length"
+		:books="deleteList"
+		@close="deleteList = []"
+		@deleted="onDeleted" />
 	<OrganizeDialog
 		v-if="organizeIds.length"
 		:fileIds="organizeIds"
@@ -264,6 +275,7 @@ import {
 	mdiBookshelf,
 	mdiCheckboxMultipleMarkedOutline,
 	mdiCog,
+	mdiDeleteOutline,
 	mdiDramaMasks,
 	mdiFileOutline,
 	mdiFolderMoveOutline,
@@ -301,6 +313,7 @@ import BookGrid from '../components/library/BookGrid.vue'
 import BookList from '../components/library/BookList.vue'
 import BulkTagDialog from '../components/library/BulkTagDialog.vue'
 import ContinueReading from '../components/library/ContinueReading.vue'
+import DeleteBooksDialog from '../components/library/DeleteBooksDialog.vue'
 import FilterBar from '../components/library/FilterBar.vue'
 import SettingsDialog from '../components/library/SettingsDialog.vue'
 import OrganizeDialog from '../components/organize/OrganizeDialog.vue'
@@ -316,6 +329,26 @@ const router = useRouter()
 
 const showBulk = ref(false)
 const organizeIds = ref<number[]>([])
+/** Books in the delete confirmation dialog; empty = closed */
+const deleteList = ref<Book[]>([])
+
+/**
+ * @param ids
+ */
+function askDelete(ids: number[]): void {
+	const byId = new Map([...store.books, ...store.recent].map((b) => [b.fileId, b]))
+	deleteList.value = ids.map((id) => byId.get(id)).filter((b): b is Book => b !== undefined)
+}
+
+/**
+ * @param ids
+ */
+function onDeleted(ids: number[]): void {
+	store.removeBooks(ids)
+	if (store.selectMode && store.selectedIds.length === 0) {
+		store.setSelectMode(false)
+	}
+}
 const showSettings = ref(false)
 const scanning = ref(false)
 const sentinel = ref<HTMLElement | null>(null)

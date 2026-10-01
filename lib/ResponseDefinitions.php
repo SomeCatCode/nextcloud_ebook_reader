@@ -58,6 +58,7 @@ namespace OCA\EbookReader;
  *     updatedAt: int,
  *     editable: bool,
  *     downloadable: bool,
+ *     overrides: list<string>,
  *     progress: ?EbookReaderProgress,
  * }
  *
@@ -76,6 +77,7 @@ namespace OCA\EbookReader;
  *     reader: array<string, mixed>,
  *     filenamePattern: string,
  *     genreList: ?list<string>,
+ *     metadataWriteMode: string,
  * }
  *
  * @psalm-type EbookReaderSyncResult = array{

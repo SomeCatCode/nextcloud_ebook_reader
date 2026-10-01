@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace OCA\EbookReader\Tests\Unit\Service;
 
+use OCA\EbookReader\BackgroundJob\WriteMetadataJob;
 use OCA\EbookReader\Db\Book;
 use OCA\EbookReader\Db\BookMapper;
 use OCA\EbookReader\Db\Tag;
@@ -37,6 +38,7 @@ class LibraryServiceTest extends TestCase {
 	private MetadataService&MockObject $metadata;
 	private CoverService&MockObject $covers;
 	private SettingsService&MockObject $settings;
+	private IJobList&MockObject $jobList;
 	private IRootFolder&MockObject $root;
 	private LibraryService $service;
 	/** @var list<Tag> */
@@ -55,6 +57,7 @@ class LibraryServiceTest extends TestCase {
 			'genreList' => ['Fantasy', 'Krimi'],
 		]);
 		$this->root = $this->createMock(IRootFolder::class);
+		$this->jobList = $this->createMock(IJobList::class);
 		$this->insertedTags = [];
 		$this->tags->method('insert')->willReturnCallback(function (Tag $t): Tag {
 			$this->insertedTags[] = $t;
@@ -71,7 +74,7 @@ class LibraryServiceTest extends TestCase {
 			new GenreClassifier($this->settings, $this->tags),
 			$this->settings,
 			$this->root,
-			$this->createMock(IJobList::class),
+			$this->jobList,
 			$this->createMock(IDBConnection::class),
 			$this->createMock(LoggerInterface::class),
 		);
@@ -177,6 +180,90 @@ class LibraryServiceTest extends TestCase {
 		}
 		$this->assertSame(['Krimi', 'Fantasy'], $byType['genre']);
 		$this->assertSame(['Eigenes', 'Lieblingsbuch'], $byType['tag']);
+	}
+
+	public function testIndexFileKeepsDatabaseMetadataWhileWriteJobIsPending(): void {
+		$this->metadata->method('detectFormat')->willReturn('epub');
+		$existing = new Book();
+		$existing->setId(3);
+		$existing->setTitle('Edited in library');
+		$existing->setAuthorsArray(['Me']);
+		$existing->setFileMtime(1);
+		$existing->setFileEtag('old');
+		$this->books->method('findByUserAndFile')->willReturn($existing);
+		$this->jobList->method('has')->with(WriteMetadataJob::class, ['userId' => 'u', 'fileId' => 5])->willReturn(true);
+		$this->metadata->method('extract')->willReturn(new BookMetadata(title: 'Old file title', authors: ['Other'], genres: ['Krimi'], coverData: 'IMG'));
+		$this->covers->method('storeCover')->willReturn('c2');
+		$this->books->expects($this->once())->method('update')->willReturnArgument(0);
+		// file tags must not be replaced either
+		$this->tags->expects($this->never())->method('deleteByBook');
+
+		$book = $this->service->indexFile('u', $this->file(5, 200, 'new'));
+		$this->assertNotNull($book);
+		$this->assertSame('Edited in library', $book->getTitle());
+		$this->assertSame(['Me'], $book->getAuthorsArray());
+		// but file facts are refreshed
+		$this->assertSame(200, $book->getFileMtime());
+		$this->assertSame('new', $book->getFileEtag());
+		$this->assertSame(1234, $book->getSize());
+		$this->assertSame('c2', $book->getCoverEtag());
+		$this->assertSame([], $this->insertedTags);
+	}
+
+	public function testIndexFileKeepsOverriddenFieldsAfterFileChange(): void {
+		$this->metadata->method('detectFormat')->willReturn('mobi');
+		$existing = new Book();
+		$existing->setId(3);
+		$existing->setTitle('My title');
+		$existing->setAuthorsArray(['Me']);
+		$existing->setPublisher('Old publisher');
+		$existing->setOverridesArray(['title', 'authors']);
+		$existing->setFileMtime(1);
+		$existing->setFileEtag('old');
+		$this->books->method('findByUserAndFile')->willReturn($existing);
+		$this->metadata->method('extract')->willReturn(new BookMetadata(title: 'File title', authors: ['File author'], publisher: 'New publisher'));
+		$this->books->method('update')->willReturnArgument(0);
+
+		$book = $this->service->indexFile('u', $this->file(5, 200, 'new'));
+		$this->assertNotNull($book);
+		$this->assertSame('My title', $book->getTitle());
+		$this->assertSame(['Me'], $book->getAuthorsArray());
+		// fields without override follow the file
+		$this->assertSame('New publisher', $book->getPublisher());
+		$this->assertSame(200, $book->getFileMtime());
+		$this->assertSame(['title', 'authors'], $book->getOverridesArray());
+	}
+
+	public function testResetOverridesRereadsOnlyThatField(): void {
+		$this->metadata->method('detectFormat')->willReturn('mobi');
+		$existing = new Book();
+		$existing->setId(3);
+		$existing->setTitle('My title');
+		$existing->setAuthorsArray(['Me']);
+		$existing->setOverridesArray(['title', 'authors']);
+		$existing->setFileMtime(100);
+		$existing->setFileEtag('e1');
+		$this->books->method('findByUserAndFile')->willReturn($existing);
+		$this->books->method('update')->willReturnArgument(0);
+		$this->metadata->method('extract')->willReturn(new BookMetadata(title: 'File title', authors: ['File author']));
+		$file = $this->file();
+		$userFolder = $this->root->getUserFolder('u');
+		$userFolder->method('getFirstNodeById')->willReturn($file);
+		$file->method('isReadable')->willReturn(true);
+
+		$book = $this->service->resetOverrides('u', 5, 'title');
+		$this->assertSame('File title', $book->getTitle());
+		$this->assertSame(['Me'], $book->getAuthorsArray());
+		$this->assertSame(['authors'], $book->getOverridesArray());
+
+		$book = $this->service->resetOverrides('u', 5, null);
+		$this->assertSame(['File author'], $book->getAuthorsArray());
+		$this->assertSame([], $book->getOverridesArray());
+	}
+
+	public function testResetOverridesRejectsUnknownField(): void {
+		$this->expectException(\InvalidArgumentException::class);
+		$this->service->resetOverrides('u', 5, 'rating');
 	}
 
 	public function testRemoveFileCreatesTombstoneAndDropsTags(): void {

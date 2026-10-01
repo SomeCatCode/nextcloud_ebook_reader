@@ -80,6 +80,7 @@ class BookSerializer {
 			'updatedAt' => $book->getUpdatedAt(),
 			'editable' => $editable,
 			'downloadable' => $downloadable,
+			'overrides' => $book->getOverridesArray(),
 			'progress' => $progress?->toApi(),
 		];
 	}

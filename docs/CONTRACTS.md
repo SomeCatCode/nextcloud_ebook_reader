@@ -59,16 +59,18 @@ public function getCover(int $fileId, string $size): ?\OCP\Files\SimpleFS\ISimpl
 public function deleteCover(int $fileId): void;
 // lib/Service/SettingsService.php (Owner Foundation)
 public function get(string $userId): array; public function set(string $userId, array $settings): array;
-// Keys: libraryFolders (string[], default ['/Books']), reader (object), filenamePattern (default '{author} - {title}'), genreList (string[]|null = Default aus resources/genres.json)
+// Keys: libraryFolders (string[], default ['/Books']), reader (object), filenamePattern (default '{author} - {title}'), genreList (string[]|null = Default aus resources/genres.json), metadataWriteMode ('background' Standard | 'immediate' | 'never')
 // lib/Service/ProgressService.php (Owner W2)
 public function get(string $userId, int $fileId): ?Progress;
 public function put(string $userId, int $fileId, array $locator, float $percentage, ?string $device, int $clientUpdatedAt): array; // ['status'=>'ok'|'conflict','progress'=>Progress]
 public function remapAfterEdit(int $fileId, array $itemMap): void;        // Owner W3 ruft auf; itemMap alt-href => neu-href|null
 // lib/Editor/* (Owner W3): BookEditorInterface { supports(string $format): bool; readStructure(string $localPath, string $format): array; write(string $srcPath, string $dstPath, EditRequest $req): array /* ['warnings'=>string[], 'itemMap'=>array] */ }
 // lib/Service/EditorService.php (Owner W3)
-public function getStructure(string $userId, int $fileId): array;
+public function getStructure(string $userId, int $fileId, string $parts = 'all'): array; // parts='metadata': nur DB, kein Dateizugriff (partial=true, items/toc leer)
 public function save(string $userId, int $fileId, array $request): array;  // ['book'=>Book,'warnings'=>string[]]
-public function saveMetadataOnly(string $userId, int $fileId, array $metadataPatch): array; // für Detailansicht/Bulk-Tagging; MOBI/AZW3/CBR -> nur DB, source=app
+public function saveMetadataOnly(string $userId, int $fileId, array $metadataPatch): array; // für Detailansicht/Bulk-Tagging; Rückgabe + writeQueued. Schreibmodus (Setting metadataWriteMode): background (Standard: DB sofort, Datei per WriteMetadataJob), immediate, never. MOBI/AZW3/CBR/CB7/CBT und never -> nur DB, source=app, geänderte Felder landen in books.overrides
+public function writePendingMetadata(string $userId, int $fileId): bool; // WriteMetadataJob: schreibt die DB-Metadaten in die Datei, falls sie abweichen
+public function resetOverrides(string $userId, int $fileId, ?string $field): Book; // Override aufheben, Wert wieder aus der Datei lesen
 public function rename(string $userId, int $fileId, ?string $name, bool $usePattern): Book;
 ```
 
@@ -82,7 +84,7 @@ OCS-Basis: `/ocs/v2.php/apps/ebookreader/api/v1`. Alle Endpunkte haben `#[NoAdmi
   "description": "<p>…</p>", "language": "de", "publisher": null, "isbn": null, "publishedAt": "2020",
   "genres": ["Fantasy"], "tags": ["Lieblingsbuch"], "rating": 4, "readStatus": "reading",
   "hasCover": true, "coverEtag": "abc", "mtime": 1727…, "addedAt": 1727…, "updatedAt": 1727…,
-  "editable": true, "progress": null }
+  "editable": true, "overrides": ["title"] /* nur in der App geänderte Felder, überleben ein Neuindizieren */, "progress": null }
 ```
 **Progress JSON:** `{ "fileId", "locator", "percentage", "device", "clientUpdatedAt", "updatedAt" }`
 
@@ -91,8 +93,9 @@ OCS-Basis: `/ocs/v2.php/apps/ebookreader/api/v1`. Alle Endpunkte haben `#[NoAdmi
 | GET `/books` | search, format, genre, tag, author, series, status, sort=title\|author\|series\|rating\|added\|read, order=asc\|desc, limit(50, max 200), offset | `{books: Book[], total}` | W2 |
 | GET `/books/{fileId}` | | `Book` | W2 |
 | PATCH `/books/{fileId}/app-data` | `{rating?, readStatus?}` | `Book` | W2 |
-| PATCH `/books/{fileId}/metadata` | Teil-Metadaten (inkl. genres/tags) → `EditorService::saveMetadataOnly` | `{book, warnings}` | W3 |
-| POST `/books/bulk-tags` | `{fileIds[], addGenres[], removeGenres[], addTags[], removeTags[]}` | `{updated, failed:[{fileId,error}]}` | W3 |
+| PATCH `/books/{fileId}/metadata` | Teil-Metadaten (inkl. genres/tags) → `EditorService::saveMetadataOnly` | `{book, warnings, writeQueued}` | W3 |
+| DELETE `/books/{fileId}/overrides` | `field?` (eines von title, authors, series, seriesIndex, description, language, publisher, isbn, publishedAt; ohne = alle) | `Book` | W3 |
+| POST `/books/bulk-tags` | `{fileIds[], addGenres[], removeGenres[], addTags[], removeTags[]}` | `{updated, failed:[{fileId,error}], writeQueued}` | W3 |
 | GET `/facets` | | `{genres:[{name,count}], tags:[…], authors:[…], series:[…], formats:[…]}` | W2 |
 | GET `/sync` | cursor (opak, leer = alles) | `{books: Book[], deleted: int[] /*fileIds*/, progress: Progress[], cursor}` | W2 |
 | GET `/progress/{fileId}` | | `Progress` oder 404 | W2 |
@@ -101,7 +104,7 @@ OCS-Basis: `/ocs/v2.php/apps/ebookreader/api/v1`. Alle Endpunkte haben `#[NoAdmi
 | GET `/progress/recent` | limit(10) | `{books: Book[]}` | W2 |
 | GET/PUT `/settings` | siehe SettingsService | settings | W2 |
 | POST `/scan` | | `{queued}` | W2 |
-| GET `/books/{fileId}/structure` | | Structure (unten) | W3 |
+| GET `/books/{fileId}/structure` | `parts=all\|metadata` (Standard all; metadata liest die Datei nicht) | Structure (unten) | W3 |
 | PUT `/books/{fileId}/structure` | EditRequest | `{book, warnings}`, **409** bei etag-Konflikt | W3 |
 | POST `/books/{fileId}/rename` | `{name?, usePattern?}` | `Book` | W3 |
 
@@ -115,7 +118,8 @@ Nicht-OCS-Controller (`#[FrontpageRoute]`):
 { "fileId", "format", "etag", "editable", "capabilities": {"metadata":true,"cover":true,"content":true,"toc":true,"writesFile":true},
   "metadata": {title, authors[], series, seriesIndex, description, language, publisher, isbn, publishedAt, genres[], tags[]},
   "items": [{"id":"ch1","label":"Kapitel 1","href":"OEBPS/ch1.xhtml","kind":"chapter|page","linear":true,"size":1234}],
-  "toc": [{"id":"t1","label":"Kapitel 1","itemId":"ch1","fragment":null,"children":[]}], "warnings": [] }
+  "toc": [{"id":"t1","label":"Kapitel 1","itemId":"ch1","fragment":null,"children":[]}], "warnings": [],
+  "partial": false /* true bei parts=metadata: items und toc leer */ }
 ```
 Item-IDs: EPUB = Manifest-`idref` des Spine-Eintrags; CBZ = Zip-Eintragsname; FB2 = Pfad `b0/s3/s1` (Body/Section-Index).
 

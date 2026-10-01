@@ -50,6 +50,25 @@
 			</section>
 
 			<section>
+				<h3>{{ t('ebookreader', 'Writing metadata into files') }}</h3>
+				<p class="hint">
+					{{ t('ebookreader', 'Applies when you change e.g. tags or the title of a book. Large files take a while to rewrite.') }}
+				</p>
+				<div v-for="mode in writeModes" :key="mode.value">
+					<NcCheckboxRadioSwitch
+						v-model="writeMode"
+						type="radio"
+						name="metadata-write-mode"
+						:value="mode.value">
+						{{ mode.label }}
+					</NcCheckboxRadioSwitch>
+					<p class="hint library-settings__option-help">
+						{{ mode.help }}
+					</p>
+				</div>
+			</section>
+
+			<section>
 				<h3>{{ t('ebookreader', 'Genres') }}</h3>
 				<NcTextArea
 					v-model="genreText"
@@ -62,11 +81,14 @@
 </template>
 
 <script setup lang="ts">
+import type { MetadataWriteMode } from '../../types.ts'
+
 import { mdiClose, mdiFolderPlusOutline } from '@mdi/js'
 import { getFilePickerBuilder, showError, showSuccess } from '@nextcloud/dialogs'
 import { t } from '@nextcloud/l10n'
 import { computed, ref } from 'vue'
 import NcButton from '@nextcloud/vue/components/NcButton'
+import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import NcTextArea from '@nextcloud/vue/components/NcTextArea'
@@ -80,6 +102,12 @@ const initial = settingsStore.settings
 
 const folders = ref<string[]>([...initial.libraryFolders])
 const pattern = ref(initial.filenamePattern)
+const writeMode = ref<MetadataWriteMode>(initial.metadataWriteMode ?? 'background')
+const writeModes = computed(() => [
+	{ value: 'background' as const, label: t('ebookreader', 'In the background (recommended)'), help: t('ebookreader', 'Saved instantly in the library and written into the file shortly afterwards in one go.') },
+	{ value: 'immediate' as const, label: t('ebookreader', 'Immediately'), help: t('ebookreader', 'Written into the file right away (slow for large files).') },
+	{ value: 'never' as const, label: t('ebookreader', 'Never'), help: t('ebookreader', 'Only stored in the library, the files stay untouched.') },
+])
 const genreText = ref((initial.genreList ?? []).join('\n'))
 
 const buttons = computed(() => [
@@ -150,6 +178,7 @@ async function save(): Promise<void> {
 			libraryFolders: folders.value,
 			filenamePattern: pattern.value.trim() || '{author} - {title}',
 			genreList: genres.length ? genres : null,
+			metadataWriteMode: writeMode.value,
 		})
 		showSuccess(t('ebookreader', 'Settings saved'))
 		emit('saved')
@@ -185,6 +214,10 @@ async function save(): Promise<void> {
 			justify-content: space-between;
 			gap: 8px;
 		}
+	}
+
+	&__option-help {
+		margin: 0 0 8px 44px;
 	}
 
 	&__path {

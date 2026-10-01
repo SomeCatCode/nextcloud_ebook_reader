@@ -66,4 +66,14 @@ class SettingsServiceReaderTest extends TestCase {
 		$this->assertSame('sepia', $s['reader']['theme']);
 		$this->assertArrayNotHasKey('junk', $s['reader']);
 	}
+
+	public function testMetadataWriteModeIsValidatedAndDefaultsToBackground(): void {
+		$stored = null;
+		$svc = $this->service($stored);
+		$this->assertSame('background', $svc->get('u')['metadataWriteMode']);
+		$this->assertSame('never', $svc->set('u', ['metadataWriteMode' => 'never'])['metadataWriteMode']);
+		$this->assertSame('immediate', $svc->set('u', ['metadataWriteMode' => 'immediate'])['metadataWriteMode']);
+		// unknown values fall back to the default
+		$this->assertSame('background', $svc->set('u', ['metadataWriteMode' => 'sometimes'])['metadataWriteMode']);
+	}
 }

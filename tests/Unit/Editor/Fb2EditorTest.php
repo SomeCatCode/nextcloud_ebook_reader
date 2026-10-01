@@ -112,4 +112,18 @@ class Fb2EditorTest extends TestCase {
 		$this->assertSame('Zipped', $s['metadata']['title']);
 		$this->assertCount(2, $s['items']);
 	}
+
+	public function testMetadataOnlyFastPath(): void {
+		foreach ([false, true] as $zipped) {
+			$src = $this->src($zipped);
+			$dst = $this->tmp[] = Fixtures::tmp($zipped ? '.fbz' : '.fb2');
+			$res = (new Fb2Editor())->write($src, $dst, new EditRequest(metadata: ['title' => 'Quick']));
+			$this->assertSame([], $res['itemMap']);
+			$before = (new Fb2Editor())->readStructure($src, $zipped ? 'fbz' : 'fb2');
+			$after = (new Fb2Editor())->readStructure($dst, $zipped ? 'fbz' : 'fb2');
+			$this->assertSame($before['items'], $after['items']);
+			$this->assertSame($before['toc'], $after['toc']);
+			$this->assertSame('Quick', $after['metadata']['title']);
+		}
+	}
 }

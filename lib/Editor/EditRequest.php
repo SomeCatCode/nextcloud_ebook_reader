@@ -31,6 +31,18 @@ final class EditRequest {
 	) {
 	}
 
+	/**
+	 * True if only metadata is to be changed (no cover, order, removals or toc): editors can then copy every
+	 * entry unchanged and replace just the metadata document.
+	 */
+	public function isMetadataOnly(): bool {
+		return $this->metadata !== null
+			&& $this->cover === null
+			&& $this->order === null
+			&& ($this->removed ?? []) === []
+			&& $this->toc === null;
+	}
+
 	/** @param array<string, mixed> $data */
 	public static function fromArray(array $data): self {
 		$strList = static function (mixed $v): ?array {

@@ -46,12 +46,15 @@ class SettingsService {
 	];
 	private const MAX_FONT_FAMILY = 200;
 
+	public const METADATA_WRITE_MODES = ['background', 'immediate', 'never'];
+	public const DEFAULT_METADATA_WRITE_MODE = 'background';
+
 	public function __construct(
 		private IConfig $config,
 	) {
 	}
 
-	/** @return array{libraryFolders: list<string>, reader: array<string, mixed>, filenamePattern: string, genreList: list<string>|null} */
+	/** @return array{libraryFolders: list<string>, reader: array<string, mixed>, filenamePattern: string, genreList: list<string>|null, metadataWriteMode: string} */
 	public function get(string $userId): array {
 		$raw = $this->config->getUserValue($userId, Application::APP_ID, self::KEY, '');
 		$stored = $raw === '' ? [] : json_decode($raw, true);
@@ -81,6 +84,9 @@ class SettingsService {
 		if (array_key_exists('genreList', $settings)) {
 			$merged['genreList'] = $settings['genreList'];
 		}
+		if (array_key_exists('metadataWriteMode', $settings)) {
+			$merged['metadataWriteMode'] = $settings['metadataWriteMode'];
+		}
 		$clean = $this->normalise($merged, false);
 		$this->config->setUserValue($userId, Application::APP_ID, self::KEY, json_encode($clean, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
 		return $this->get($userId);
@@ -89,7 +95,7 @@ class SettingsService {
 	/**
 	 * @param array<string, mixed> $in
 	 * @param bool $resolveGenres if true a missing genreList is replaced by the default list
-	 * @return array{libraryFolders: list<string>, reader: array<string, mixed>, filenamePattern: string, genreList: list<string>|null}
+	 * @return array{libraryFolders: list<string>, reader: array<string, mixed>, filenamePattern: string, genreList: list<string>|null, metadataWriteMode: string}
 	 */
 	private function normalise(array $in, bool $resolveGenres): array {
 		$folders = [];
@@ -127,11 +133,16 @@ class SettingsService {
 			$genres = $this->defaultGenres();
 		}
 
+		$mode = isset($in['metadataWriteMode']) && is_string($in['metadataWriteMode']) && in_array($in['metadataWriteMode'], self::METADATA_WRITE_MODES, true)
+			? $in['metadataWriteMode']
+			: self::DEFAULT_METADATA_WRITE_MODE;
+
 		return [
 			'libraryFolders' => $folders,
 			'reader' => $reader,
 			'filenamePattern' => $pattern,
 			'genreList' => $genres,
+			'metadataWriteMode' => $mode,
 		];
 	}
 

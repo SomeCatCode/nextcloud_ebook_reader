@@ -60,7 +60,7 @@
 				class="content-list__preview"
 				sandbox=""
 				:title="t('ebookreader', 'Preview')"
-				:src="itemUrl(fileId, preview.id)" />
+				:src="itemUrl(fileId, preview.id, state.structure.value?.etag)" />
 		</NcDialog>
 	</div>
 </template>

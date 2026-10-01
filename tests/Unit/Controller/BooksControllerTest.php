@@ -47,6 +47,41 @@ class BooksControllerTest extends TestCase {
 		return $b;
 	}
 
+	public function testDeleteCallsServiceAndReturnsId(): void {
+		$this->library->method('getBook')->willReturn($this->book());
+		$this->library->expects($this->once())->method('deleteFileForUser')->with('u', 5);
+		$this->assertSame(['deleted' => 5], $this->controller->destroy(5)->getData());
+	}
+
+	public function testDeleteWithoutPermissionIs403(): void {
+		$this->library->method('getBook')->willReturn($this->book());
+		$this->library->method('deleteFileForUser')->willThrowException(new \OCP\Files\NotPermittedException());
+		$this->expectException(\OCP\AppFramework\OCS\OCSForbiddenException::class);
+		$this->controller->destroy(5);
+	}
+
+	public function testBulkDeleteReportsPerFileResults(): void {
+		$this->library->method('getBook')->willReturnCallback(function (string $u, int $id): Book {
+			if ($id === 3) {
+				throw new DoesNotExistException('');
+			}
+			return $this->book();
+		});
+		$this->library->method('deleteFileForUser')->willReturnCallback(function (string $u, int $id): void {
+			if ($id === 2) {
+				throw new \OCP\Files\NotPermittedException();
+			}
+		});
+		$data = $this->controller->destroyMany([1, 2, 3, 1])->getData();
+		$this->assertSame([1], $data['deleted']);
+		$this->assertSame([['fileId' => 2, 'error' => 'forbidden'], ['fileId' => 3, 'error' => 'not_found']], $data['failed']);
+	}
+
+	public function testBulkDeleteRejectsTooManyFiles(): void {
+		$this->expectException(OCSBadRequestException::class);
+		$this->controller->destroyMany(range(1, 101));
+	}
+
 	public function testShowUnknownBookIs404(): void {
 		$this->library->method('getBook')->willThrowException(new DoesNotExistException(''));
 		$this->expectException(OCSNotFoundException::class);

@@ -80,6 +80,16 @@ final class Fb2Editor implements BookEditorInterface {
 			throw new EditorException('Invalid FB2 document.', 422);
 		}
 		$warnings = [];
+		if ($req->isMetadataOnly()) {
+			// fast path: only the description is replaced, sections are not looked at
+			array_push($warnings, ...$this->applyMetadata($dom, $root, $req->metadata ?? []));
+			$xml = (string)$dom->saveXML();
+			if (!EditorUtil::isWellFormed($xml)) {
+				throw new EditorException('The rewritten FB2 document is not well-formed.', 500);
+			}
+			$this->writeDocument($xml, $innerName, $dstPath);
+			return ['warnings' => $warnings, 'itemMap' => []];
+		}
 		$bodyIndex = 0;
 		$main = $this->mainBody($root, $bodyIndex);
 		$prefix = 'b' . $bodyIndex;
@@ -134,27 +144,31 @@ final class Fb2Editor implements BookEditorInterface {
 			throw new EditorException('The rewritten FB2 document is not well-formed.', 500);
 		}
 
-		if ($innerName === null) {
-			if (file_put_contents($dstPath, $xml) === false) {
-				throw new EditorException('Cannot write the output file.', 500);
-			}
-			$fmt = 'fb2';
-		} else {
-			$w = new ZipWriter($dstPath);
-			try {
-				$w->addString($innerName, $xml);
-				$w->close();
-			} catch (\Throwable $e) {
-				$w->abort();
-				throw $e;
-			}
-			$fmt = 'fbz';
-		}
+		$fmt = $this->writeDocument($xml, $innerName, $dstPath);
 		$check = $this->readStructure($dstPath, $fmt);
 		if (count($check['items']) !== count($res['order'])) {
 			throw new EditorException('Verification of the rewritten FB2 failed (section count).', 500);
 		}
 		return ['warnings' => $warnings, 'itemMap' => $itemMap];
+	}
+
+	/** @return string the written format ("fb2" or "fbz") */
+	private function writeDocument(string $xml, ?string $innerName, string $dstPath): string {
+		if ($innerName === null) {
+			if (file_put_contents($dstPath, $xml) === false) {
+				throw new EditorException('Cannot write the output file.', 500);
+			}
+			return 'fb2';
+		}
+		$w = new ZipWriter($dstPath);
+		try {
+			$w->addString($innerName, $xml);
+			$w->close();
+		} catch (\Throwable $e) {
+			$w->abort();
+			throw $e;
+		}
+		return 'fbz';
 	}
 
 	// ------------------------------------------------------------------ loading

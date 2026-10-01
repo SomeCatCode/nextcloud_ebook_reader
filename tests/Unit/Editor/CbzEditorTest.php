@@ -110,4 +110,44 @@ class CbzEditorTest extends TestCase {
 		$this->expectException(InvalidEditRequestException::class);
 		(new CbzEditor())->write($this->src(), $this->dst(), new EditRequest(removed: ['page1.png', 'page2.png', 'page3.png', 'page4.png', 'page10.png']));
 	}
+
+	public function testMetadataOnlyKeepsPageNamesAndEntriesByteIdentical(): void {
+		$e = new CbzEditor();
+		$src = $this->src(true);
+		$dst = $this->dst();
+		$res = $e->write($src, $dst, new EditRequest(metadata: ['title' => 'New', 'tags' => ['t1']]));
+		$this->assertSame([], $res['itemMap']);
+
+		$a = new ZipArchive();
+		$a->open($src);
+		$b = new ZipArchive();
+		$b->open($dst);
+		foreach (['page1.png', 'page2.png', 'page3.png', 'page4.png', 'page10.png'] as $name) {
+			$this->assertNotFalse($b->locateName($name), $name . ' must keep its name');
+			$this->assertSame($a->getFromName($name), $b->getFromName($name));
+		}
+		$this->assertFalse($b->locateName('0001.png'));
+		$this->assertSame($a->numFiles, $b->numFiles);
+		$xml = (string)$b->getFromName('ComicInfo.xml');
+		$a->close();
+		$b->close();
+		// pages / bookmarks of ComicInfo.xml are untouched
+		$this->assertStringContainsString('<Page Image="2" Bookmark="Act 2"/>', $xml);
+		$this->assertStringContainsString('<PageCount>5</PageCount>', $xml);
+
+		$s = $e->readStructure($dst, 'cbz');
+		$this->assertSame(['page1.png', 'page2.png', 'page3.png', 'page4.png', 'page10.png'], array_column($s['items'], 'id'));
+		$this->assertSame('New', $s['metadata']['title']);
+		$this->assertSame(['t1'], $s['metadata']['tags']);
+		$this->assertSame('Act 2', $s['toc'][0]['label']);
+	}
+
+	public function testMetadataOnlyCreatesComicInfoWhenMissing(): void {
+		$e = new CbzEditor();
+		$dst = $this->dst();
+		$e->write($this->src(), $dst, new EditRequest(metadata: ['title' => 'Fresh']));
+		$s = $e->readStructure($dst, 'cbz');
+		$this->assertCount(5, $s['items']);
+		$this->assertSame('Fresh', $s['metadata']['title']);
+	}
 }

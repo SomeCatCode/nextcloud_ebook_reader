@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace OCA\EbookReader\Service;
 
 use OCA\EbookReader\BackgroundJob\ScanFileJob;
+use OCA\EbookReader\BackgroundJob\WriteMetadataJob;
 use OCA\EbookReader\Db\Book;
 use OCA\EbookReader\Db\BookMapper;
 use OCA\EbookReader\Db\Tag;
@@ -24,6 +25,7 @@ use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
 use OCP\Files\Node;
 use OCP\Files\NotFoundException;
+use OCP\Files\NotPermittedException;
 use OCP\Files\Storage\ISharedStorage;
 use OCP\IDBConnection;
 use Psr\Log\LoggerInterface;
@@ -82,6 +84,10 @@ class LibraryService {
 		$meta = $this->metadata->extract($file, $format);
 		$now = self::nowMs();
 
+		// metadata edits waiting to be written into the file (WriteMetadataJob) must not be overwritten by the old file content
+		$keepMetadata = $existing !== null
+			&& $this->jobList->has(WriteMetadataJob::class, WriteMetadataJob::argument($userId, $fileId));
+
 		$book = $existing ?? new Book();
 		$isNew = $existing === null;
 		if ($isNew) {
@@ -92,25 +98,40 @@ class LibraryService {
 		$book->setFormat($format);
 		$book->setPath($path);
 		$book->setSize((int)$file->getSize());
-		$book->setTitle($meta->title);
-		$book->setAuthorsArray($meta->authors);
-		$book->setSeries($meta->series);
-		$book->setSeriesIndex($meta->seriesIndex);
-		$book->setDescription($meta->description);
-		$book->setLanguage($meta->language !== null ? mb_substr($meta->language, 0, 32) : null);
-		$book->setPublisher($meta->publisher !== null ? mb_substr($meta->publisher, 0, 255) : null);
-		$book->setIsbn($meta->isbn !== null ? mb_substr($meta->isbn, 0, 32) : null);
-		$book->setPublishedAt($meta->publishedAt !== null ? substr($meta->publishedAt, 0, 10) : null);
+		// fields edited in the app only (overrides) and edits waiting to be written into the file stay as they are
+		$overrides = $existing?->getOverridesArray() ?? [];
+		$take = static fn (string $field): bool => !$keepMetadata && !in_array($field, $overrides, true);
+		if ($take('title')) {
+			$book->setTitle($meta->title !== null ? mb_substr($meta->title, 0, 512) : null);
+		}
+		if ($take('authors')) {
+			$book->setAuthorsArray($meta->authors);
+		}
+		if ($take('series')) {
+			$book->setSeries($meta->series !== null ? mb_substr($meta->series, 0, 512) : null);
+		}
+		if ($take('seriesIndex')) {
+			$book->setSeriesIndex($meta->seriesIndex);
+		}
+		if ($take('description')) {
+			$book->setDescription($meta->description);
+		}
+		if ($take('language')) {
+			$book->setLanguage($meta->language !== null ? mb_substr($meta->language, 0, 32) : null);
+		}
+		if ($take('publisher')) {
+			$book->setPublisher($meta->publisher !== null ? mb_substr($meta->publisher, 0, 255) : null);
+		}
+		if ($take('isbn')) {
+			$book->setIsbn($meta->isbn !== null ? mb_substr($meta->isbn, 0, 32) : null);
+		}
+		if ($take('publishedAt')) {
+			$book->setPublishedAt($meta->publishedAt !== null ? substr($meta->publishedAt, 0, 10) : null);
+		}
 		$book->setFileMtime($mtime);
 		$book->setFileEtag($etag);
 		$book->setDeletedAt(null);
 		$book->setUpdatedAt($now);
-		if ($book->getTitle() !== null) {
-			$book->setTitle(mb_substr($book->getTitle(), 0, 512));
-		}
-		if ($book->getSeries() !== null) {
-			$book->setSeries(mb_substr($book->getSeries(), 0, 512));
-		}
 
 		// cover
 		if ($meta->coverData !== null) {
@@ -162,7 +183,9 @@ class LibraryService {
 			$book = $this->bookMapper->update($book);
 		}
 
-		$this->replaceFileTags($userId, $book, $meta->genres, $meta->tags, $meta->subjects);
+		if (!$keepMetadata) {
+			$this->replaceFileTags($userId, $book, $meta->genres, $meta->tags, $meta->subjects);
+		}
 		return $book;
 	}
 
@@ -593,6 +616,26 @@ class LibraryService {
 		$qb->addOrderBy('b.id', 'ASC');
 	}
 
+	/**
+	 * Removes metadata overrides (one field or all) and re-reads those fields from the file.
+	 *
+	 * @param ?string $field one of Book::OVERRIDABLE_FIELDS, null = all
+	 * @throws DoesNotExistException
+	 * @throws NotFoundException
+	 * @throws \InvalidArgumentException unknown field
+	 */
+	public function resetOverrides(string $userId, int $fileId, ?string $field = null): Book {
+		if ($field !== null && !in_array($field, Book::OVERRIDABLE_FIELDS, true)) {
+			throw new \InvalidArgumentException('Unknown field: ' . $field);
+		}
+		$book = $this->bookMapper->findByUserAndFile($userId, $fileId);
+		$remaining = $field === null ? [] : array_values(array_diff($book->getOverridesArray(), [$field]));
+		$book->setOverridesArray($remaining);
+		$book = $this->bookMapper->update($book);
+		$file = $this->getFileForUser($userId, $fileId);
+		return $this->indexFile($userId, $file, true) ?? $book;
+	}
+
 	/** @throws DoesNotExistException */
 	public function getBook(string $userId, int $fileId): Book {
 		return $this->bookMapper->findByUserAndFile($userId, $fileId);
@@ -698,6 +741,23 @@ class LibraryService {
 			throw new NotFoundException('File not found');
 		}
 		return $node;
+	}
+
+	/**
+	 * Deletes the e-book file. Nextcloud moves it to the trash bin when the files_trashbin app is
+	 * enabled, so it can be restored from Files → Deleted files. The book is tombstoned for the
+	 * user right away; other users of a shared file follow via the node-deleted event.
+	 *
+	 * @throws NotFoundException the user can not see the file
+	 * @throws NotPermittedException the user may not delete it (e.g. read-only share)
+	 */
+	public function deleteFileForUser(string $userId, int $fileId): void {
+		$file = $this->getFileForUser($userId, $fileId);
+		if (!$file->isDeletable()) {
+			throw new NotPermittedException('File can not be deleted');
+		}
+		$file->delete();
+		$this->removeFile($userId, $fileId);
 	}
 
 	/** @throws NotFoundException */

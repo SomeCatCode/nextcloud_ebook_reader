@@ -69,6 +69,9 @@ final class CbzEditor implements BookEditorInterface {
 	public function write(string $srcPath, string $dstPath, EditRequest $req): array {
 		$zip = EditorUtil::openZip($srcPath);
 		try {
+			if ($req->isMetadataOnly()) {
+				return $this->writeMetadataOnly($zip, $dstPath, $req);
+			}
 			$pages = $this->listPages($zip);
 			$oldNames = array_keys($pages);
 			$oldIndex = array_flip($oldNames);
@@ -207,6 +210,52 @@ final class CbzEditor implements BookEditorInterface {
 	}
 
 	// ------------------------------------------------------------------
+
+	/**
+	 * Metadata-only fast path: every entry is copied unchanged (page names are kept, nothing is renumbered),
+	 * only ComicInfo.xml is replaced. Pages and bookmarks inside ComicInfo.xml stay as they are.
+	 *
+	 * @return array{warnings: list<string>, itemMap: array<string, ?string>}
+	 */
+	private function writeMetadataOnly(ZipArchive $zip, string $dstPath, EditRequest $req): array {
+		$pageCount = count($this->listPages($zip));
+		$info = $this->loadComicInfo($zip);
+		if ($info === null) {
+			$info = new DOMDocument('1.0', 'UTF-8');
+			$root = $info->createElement('ComicInfo');
+			$root->setAttribute('xmlns:xsi', 'http://www.w3.org/2001/XMLSchema-instance');
+			$root->setAttribute('xmlns:xsd', 'http://www.w3.org/2001/XMLSchema');
+			$info->appendChild($root);
+		}
+		$root = $info->documentElement;
+		if (!$root instanceof DOMElement) {
+			throw new EditorException('ComicInfo.xml is invalid.', 422);
+		}
+		$this->applyMetadata($info, $root, $req->metadata ?? []);
+		$this->setChild($info, $root, 'PageCount', (string)$pageCount);
+		$infoXml = (string)$info->saveXML();
+
+		$writer = new ZipWriter($dstPath);
+		try {
+			for ($i = 0; $i < $zip->numFiles; $i++) {
+				$name = (string)$zip->getNameIndex($i);
+				if ($name === '' || str_ends_with($name, '/') || $name === self::COMICINFO || !EditorUtil::isSafeName($name)) {
+					continue;
+				}
+				$writer->copyFrom($zip, $name);
+			}
+			$writer->addString(self::COMICINFO, $infoXml);
+			$writer->close();
+		} catch (\Throwable $e) {
+			$writer->abort();
+			throw $e;
+		}
+		$check = $this->readStructure($dstPath, 'cbz');
+		if (count($check['items']) !== $pageCount) {
+			throw new EditorException('Verification of the rewritten CBZ failed (page count).', 500);
+		}
+		return ['warnings' => [], 'itemMap' => []];
+	}
 
 	/**
 	 * @param ?array{data: string, mime: string, ext: string} $coverUpload

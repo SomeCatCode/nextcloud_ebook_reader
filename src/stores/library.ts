@@ -10,6 +10,7 @@ import type {
 	FilterTerm,
 	FilterType,
 	MatchMode,
+	MetadataOverrideField,
 	ReadStatus,
 	SortKey,
 } from '../types.ts'
@@ -511,18 +512,18 @@ export const useLibraryStore = defineStore('library', () => {
 
 	/**
 	 * Saves a book's genres and tags (optimistic, rolls back and rethrows on failure).
-	 * Returns the server warnings (e.g. stored in the app only).
+	 * Returns the server warnings (e.g. stored in the app only) and whether the file is written by a background job.
 	 *
 	 * @param fileId
 	 * @param value
 	 * @param value.genres
 	 * @param value.tags
 	 */
-	async function saveBookTags(fileId: number, value: { genres: string[], tags: string[] }): Promise<string[]> {
+	async function saveBookTags(fileId: number, value: { genres: string[], tags: string[] }): Promise<{ warnings: string[], writeQueued: boolean }> {
 		const find = () => [...books.value, ...recent.value].find((b) => b.fileId === fileId)
 		const previous = find()
 		if (!previous) {
-			return []
+			return { warnings: [], writeQueued: false }
 		}
 		const snapshot = { genres: previous.genres, tags: previous.tags }
 		applyBook({ ...previous, ...value })
@@ -530,7 +531,7 @@ export const useLibraryStore = defineStore('library', () => {
 			const res = await api.patchMetadata(fileId, value)
 			applyBook(res.book)
 			void loadFacets()
-			return res.warnings ?? []
+			return { warnings: res.warnings ?? [], writeQueued: res.writeQueued === true }
 		} catch (e) {
 			const current = find()
 			if (current) {
@@ -538,6 +539,18 @@ export const useLibraryStore = defineStore('library', () => {
 			}
 			throw e
 		}
+	}
+
+	/**
+	 * Resets "edited in app" overrides of a book (one field or all): the values are read from the file again.
+	 *
+	 * @param fileId
+	 * @param field
+	 */
+	async function resetOverrides(fileId: number, field?: MetadataOverrideField): Promise<void> {
+		const book = await api.resetOverrides(fileId, field)
+		applyBook(book)
+		void loadFacets()
 	}
 
 	/**
@@ -564,7 +577,29 @@ export const useLibraryStore = defineStore('library', () => {
 		activeFileId.value = fileId
 	}
 
+	/**
+	 * Removes deleted books from the loaded lists, the selection and the details sidebar,
+	 * then refreshes the facet counts.
+	 *
+	 * @param fileIds
+	 */
+	function removeBooks(fileIds: number[]): void {
+		const gone = new Set(fileIds)
+		const before = books.value.length
+		books.value = books.value.filter((b) => !gone.has(b.fileId))
+		total.value = Math.max(0, total.value - (before - books.value.length))
+		recent.value = recent.value.filter((b) => !gone.has(b.fileId))
+		const next = new Set(selection.value)
+		gone.forEach((id) => next.delete(id))
+		selection.value = next
+		if (activeFileId.value !== null && gone.has(activeFileId.value)) {
+			activeFileId.value = null
+		}
+		void loadFacets()
+	}
+
 	return {
+		removeBooks,
 		books,
 		total,
 		loading,
@@ -608,6 +643,7 @@ export const useLibraryStore = defineStore('library', () => {
 		setRating,
 		setReadStatus,
 		saveBookTags,
+		resetOverrides,
 		bulkTags,
 		setActive,
 	}
