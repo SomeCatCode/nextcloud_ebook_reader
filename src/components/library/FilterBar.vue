@@ -51,8 +51,8 @@
 		</NcButton>
 
 		<NcButton
-			size="small"
 			v-if="store.smartShelfDirty"
+			size="small"
 			variant="secondary"
 			:disabled="updating"
 			@click="updateShelf">
@@ -62,8 +62,8 @@
 			{{ t('ebookreader', 'Update shelf') }}
 		</NcButton>
 		<NcButton
-			size="small"
 			v-if="canSaveShelf"
+			size="small"
 			variant="tertiary"
 			@click="showSave = true">
 			<template #icon>
