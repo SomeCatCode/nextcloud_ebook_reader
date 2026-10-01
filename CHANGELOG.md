@@ -5,6 +5,12 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+## 0.3.1 – 2026-10-01
+
+### Behoben
+- Tags ließen sich nicht speichern (MariaDB/MySQL: „Field 'type' doesn't have a default value“). Neue Datensätze schreiben jetzt immer alle Felder. Das betraf auch Hintergrundaufgaben beim Bearbeiten von Seiten.
+- Der Hintergrundjob zum Schreiben von Metadaten brach mit „fclose(): Argument #1 must be an open stream resource“ ab. Auch das Speichern im Editor, „Als Kopie speichern“ und Konvertierungen waren betroffen.
+
 ## 0.3.0 – 2026-10-01
 
 ### Hinzugefügt

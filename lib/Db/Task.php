@@ -38,6 +38,8 @@ use OCP\AppFramework\Db\Entity;
  * @method void setUpdatedAt(int $ts)
  */
 class Task extends Entity {
+	use MarksFieldsOnCreate;
+
 	public const TYPE_EDIT = 'edit';
 	public const TYPE_CONVERT = 'convert';
 	public const STATUS_QUEUED = 'queued';
@@ -60,6 +62,7 @@ class Task extends Entity {
 	protected int $updatedAt = 0;
 
 	public function __construct() {
+		$this->markAllFieldsUpdated();
 		$this->addType('fileId', 'integer');
 		$this->addType('progress', 'float');
 		$this->addType('createdAt', 'integer');

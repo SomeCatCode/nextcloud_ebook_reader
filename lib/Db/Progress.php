@@ -28,6 +28,8 @@ use OCP\AppFramework\Db\Entity;
  * @method void setUpdatedAt(int $ts)
  */
 class Progress extends Entity {
+	use MarksFieldsOnCreate;
+
 	protected string $userId = '';
 	protected int $fileId = 0;
 	/** JSON string (Readium-like locator) */
@@ -38,6 +40,7 @@ class Progress extends Entity {
 	protected int $updatedAt = 0;
 
 	public function __construct() {
+		$this->markAllFieldsUpdated();
 		$this->addType('fileId', 'integer');
 		$this->addType('percentage', 'float');
 		$this->addType('clientUpdatedAt', 'integer');

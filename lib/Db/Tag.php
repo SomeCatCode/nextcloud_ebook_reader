@@ -22,6 +22,8 @@ use OCP\AppFramework\Db\Entity;
  * @method void setSource(string $source)
  */
 class Tag extends Entity {
+	use MarksFieldsOnCreate;
+
 	public const TYPE_GENRE = 'genre';
 	public const TYPE_TAG = 'tag';
 	public const SOURCE_FILE = 'file';
@@ -33,6 +35,7 @@ class Tag extends Entity {
 	protected string $source = self::SOURCE_FILE;
 
 	public function __construct() {
+		$this->markAllFieldsUpdated();
 		$this->addType('bookId', 'integer');
 	}
 }
