@@ -397,8 +397,24 @@ onBeforeUnmount(() => {
 /**
  *
  */
+/**
+ * Back to the list the editor was opened from (keeps filters, shelf and scroll position, like the
+ * reader does); falls back to the library when the editor was opened directly.
+ */
+function returnToList(): void {
+	const back = window.history.state?.back
+	if (typeof back === 'string' && !back.startsWith('/edit/')) {
+		router.back()
+	} else {
+		void router.push({ name: 'library' })
+	}
+}
+
+/**
+ *
+ */
 function goBack(): void {
-	void router.push({ name: 'library' })
+	returnToList()
 }
 
 /**
@@ -418,6 +434,22 @@ const summaryOpen = ref(false)
 const saveAsCopy = ref(false)
 const summary = ref<string[]>([])
 const resultWarnings = ref<SaveResult | null>(null)
+
+/** After a successful save: return to the list, but only after the warnings dialog was closed */
+let returnAfterWarnings = false
+
+/**
+ * @param result
+ * @param result.warnings
+ */
+function finishSaved(result: { warnings?: string[] }): void {
+	if (result.warnings?.length) {
+		returnAfterWarnings = true
+		resultWarnings.value = result as SaveResult
+	} else {
+		returnToList()
+	}
+}
 const conflictOpen = ref(false)
 const renameOpen = ref(false)
 
@@ -483,7 +515,9 @@ async function doSave(): Promise<void> {
 		// Always reload right away (new etag, renumbered pages); warnings are shown afterwards,
 		// so closing the warnings dialog in any way can not leave a stale state behind.
 		await afterSave(result)
-		if (result.warnings?.length) {
+		if (!saveAsCopy.value) {
+			finishSaved(result)
+		} else if (result.warnings?.length) {
 			resultWarnings.value = result
 		}
 	} catch (e) {
@@ -530,9 +564,7 @@ async function saveMetadataOnly(patch: MetadataPatch): Promise<void> {
 		const [s, b] = await Promise.all([getStructure(fileIdNum.value, 'metadata'), getBook(fileIdNum.value).catch(() => null)])
 		state.reloadMetadata(s)
 		book.value = b
-		if (result.warnings?.length) {
-			resultWarnings.value = result
-		}
+		finishSaved(result)
 	} catch (e) {
 		showError(t('ebookreader', 'Saving failed: {message}', { message: (e as Error).message }))
 	} finally {
@@ -545,6 +577,10 @@ async function saveMetadataOnly(patch: MetadataPatch): Promise<void> {
  */
 function finishSave(): void {
 	resultWarnings.value = null
+	if (returnAfterWarnings) {
+		returnAfterWarnings = false
+		returnToList()
+	}
 }
 
 /**

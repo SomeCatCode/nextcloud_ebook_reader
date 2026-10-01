@@ -24,6 +24,7 @@
 				:name="group.name"
 				:allowCollapse="true"
 				:open="openGroups[group.key]"
+				@click="openGroups[group.key] = !openGroups[group.key]"
 				@update:open="(v: boolean) => (openGroups[group.key] = v)">
 				<template #icon>
 					<NcIconSvgWrapper :path="group.icon" />
