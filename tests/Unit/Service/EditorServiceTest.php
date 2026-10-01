@@ -276,6 +276,8 @@ class EditorServiceTest extends TestCase {
 		$written = null;
 		$file->expects($this->once())->method('putContent')->willReturnCallback(function ($stream) use (&$written): void {
 			$written = stream_get_contents($stream);
+			// like View::file_put_contents(): the stream is closed by Nextcloud (regression: fclose TypeError)
+			fclose($stream);
 		});
 		$this->library->method('reindexFileForAllUsers');
 		$this->books->method('update')->willReturnArgument(0);
