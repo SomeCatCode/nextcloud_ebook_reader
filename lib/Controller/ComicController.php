@@ -12,6 +12,7 @@ namespace OCA\EbookReader\Controller;
 use OCA\EbookReader\AppInfo\Application;
 use OCA\EbookReader\Editor\EditorUtil;
 use OCA\EbookReader\Metadata\ComicArchive;
+use OCA\EbookReader\Service\ArchiveCache;
 use OCA\EbookReader\Service\ArchiveTools;
 use OCA\EbookReader\Service\LibraryService;
 use OCP\AppFramework\Controller;
@@ -29,7 +30,6 @@ use OCP\Files\NotFoundException;
 use OCP\Files\SimpleFS\ISimpleFolder;
 use OCP\ICacheFactory;
 use OCP\IRequest;
-use OCP\ITempManager;
 use OCP\IUserSession;
 use Psr\Log\LoggerInterface;
 
@@ -51,7 +51,7 @@ class ComicController extends Controller {
 		IRequest $request,
 		private IUserSession $userSession,
 		private LibraryService $library,
-		private ITempManager $tempManager,
+		private ArchiveCache $archiveCache,
 		private IAppData $appData,
 		private ICacheFactory $cacheFactory,
 		private LoggerInterface $logger,
@@ -178,7 +178,7 @@ class ComicController extends Controller {
 			/** @var list<array{name: string, size: int}> $hit */
 			return $hit;
 		}
-		[$path, $tmp] = $this->localPath($file);
+		$path = $this->archiveCache->localPath($file);
 		try {
 			$format = $this->formatOf($file) ?? 'cbz';
 			if ($format !== 'cbz') {
@@ -205,9 +205,7 @@ class ComicController extends Controller {
 			}
 			$zip->close();
 		} finally {
-			if ($tmp !== null) {
-				@unlink($tmp);
-			}
+			$this->archiveCache->release($path);
 		}
 		usort($pages, static fn (array $a, array $b): int => strnatcasecmp($a['name'], $b['name']));
 		$cache->set($key, $pages, 3600);
@@ -233,7 +231,7 @@ class ComicController extends Controller {
 
 	/** @return array{0: string, 1: string} */
 	private function render(File $file, string $name, int $width, ISimpleFolder $folder, string $cacheBase): array {
-		[$path, $tmp] = $this->localPath($file);
+		$path = $this->archiveCache->localPath($file);
 		try {
 			$format = $this->formatOf($file) ?? 'cbz';
 			if ($format === 'cbz') {
@@ -252,9 +250,7 @@ class ComicController extends Controller {
 				}
 			}
 		} finally {
-			if ($tmp !== null) {
-				@unlink($tmp);
-			}
+			$this->archiveCache->release($path);
 		}
 		if ($data === null) {
 			throw new NotFoundException('page not readable');
@@ -309,32 +305,5 @@ class ComicController extends Controller {
 		} catch (NotFoundException) {
 			return $this->appData->newFolder(self::CACHE_FOLDER);
 		}
-	}
-
-	/**
-	 * Local path of the file: direct for local storages, otherwise a temporary copy.
-	 * @return array{0: string, 1: ?string} path and temp file to delete
-	 */
-	private function localPath(File $file): array {
-		$storage = $file->getStorage();
-		if ($storage->isLocal()) {
-			$local = $storage->getLocalFile($file->getInternalPath());
-			if (is_string($local) && is_file($local)) {
-				return [$local, null];
-			}
-		}
-		$tmp = $this->tempManager->getTemporaryFile('.' . ($this->formatOf($file) ?? 'zip'));
-		if ($tmp === false) {
-			throw new \RuntimeException('temp file');
-		}
-		$in = $file->fopen('r');
-		$out = fopen($tmp, 'wb');
-		if ($in === false || $out === false) {
-			throw new \RuntimeException('cannot read file');
-		}
-		stream_copy_to_stream($in, $out);
-		fclose($in);
-		fclose($out);
-		return [$tmp, $tmp];
 	}
 }

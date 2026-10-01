@@ -66,11 +66,11 @@ final class CbzEditor implements BookEditorInterface {
 	}
 
 	#[\Override]
-	public function write(string $srcPath, string $dstPath, EditRequest $req): array {
+	public function write(string $srcPath, string $dstPath, EditRequest $req, ?callable $progress = null): array {
 		$zip = EditorUtil::openZip($srcPath);
 		try {
 			if ($req->isMetadataOnly()) {
-				return $this->writeMetadataOnly($zip, $dstPath, $req);
+				return $this->writeMetadataOnly($zip, $srcPath, $dstPath, $req, $progress);
 			}
 			$pages = $this->listPages($zip);
 			$oldNames = array_keys($pages);
@@ -203,7 +203,7 @@ final class CbzEditor implements BookEditorInterface {
 			$root->appendChild($pagesEl);
 			$infoXml = (string)$info->saveXML();
 
-			return $this->writeRenamed($zip, $dstPath, $coverUpload, $order, $newNames, $infoXml, $itemMap, $pages);
+			return $this->writeRenamed($zip, $dstPath, $coverUpload, $order, $newNames, $infoXml, $itemMap, $pages, $progress);
 		} finally {
 			$zip->close();
 		}
@@ -212,12 +212,14 @@ final class CbzEditor implements BookEditorInterface {
 	// ------------------------------------------------------------------
 
 	/**
-	 * Metadata-only fast path: every entry is copied unchanged (page names are kept, nothing is renumbered),
-	 * only ComicInfo.xml is replaced. Pages and bookmarks inside ComicInfo.xml stay as they are.
+	 * Metadata-only fast path: the source is copied as a file and only ComicInfo.xml is replaced in the copy. libzip
+	 * copies every other entry raw (no decompression, no recompression), so pages keep their compressed size and CRC.
+	 * Page names are kept, nothing is renumbered; pages and bookmarks inside ComicInfo.xml stay as they are.
 	 *
+	 * @param ?callable(float, string): void $progress
 	 * @return array{warnings: list<string>, itemMap: array<string, ?string>}
 	 */
-	private function writeMetadataOnly(ZipArchive $zip, string $dstPath, EditRequest $req): array {
+	private function writeMetadataOnly(ZipArchive $zip, string $srcPath, string $dstPath, EditRequest $req, ?callable $progress = null): array {
 		$pageCount = count($this->listPages($zip));
 		$info = $this->loadComicInfo($zip);
 		if ($info === null) {
@@ -235,23 +237,20 @@ final class CbzEditor implements BookEditorInterface {
 		$this->setChild($info, $root, 'PageCount', (string)$pageCount);
 		$infoXml = (string)$info->saveXML();
 
-		$writer = new ZipWriter($dstPath);
-		try {
-			for ($i = 0; $i < $zip->numFiles; $i++) {
-				$name = (string)$zip->getNameIndex($i);
-				if ($name === '' || str_ends_with($name, '/') || $name === self::COMICINFO || !EditorUtil::isSafeName($name)) {
-					continue;
-				}
-				$writer->copyFrom($zip, $name);
+		$unsafe = [];
+		for ($i = 0; $i < $zip->numFiles; $i++) {
+			$name = (string)$zip->getNameIndex($i);
+			if ($name !== '' && !str_ends_with($name, '/') && !EditorUtil::isSafeName($name)) {
+				$unsafe[] = $name;
 			}
-			$writer->addString(self::COMICINFO, $infoXml);
-			$writer->close();
-		} catch (\Throwable $e) {
-			$writer->abort();
-			throw $e;
 		}
+		EditorUtil::report($progress, 0, 1, 'Copying file');
+		EditorUtil::replaceInCopy($srcPath, $dstPath, self::COMICINFO, $infoXml, $unsafe);
+		EditorUtil::report($progress, 1, 1, 'Verifying file');
+
 		$check = $this->readStructure($dstPath, 'cbz');
 		if (count($check['items']) !== $pageCount) {
+			@unlink($dstPath);
 			throw new EditorException('Verification of the rewritten CBZ failed (page count).', 500);
 		}
 		return ['warnings' => [], 'itemMap' => []];
@@ -263,16 +262,19 @@ final class CbzEditor implements BookEditorInterface {
 	 * @param array<string, string> $newNames
 	 * @param array<string, ?string> $itemMap
 	 * @param array<string, int> $pages
+	 * @param ?callable(float, string): void $progress
 	 * @return array{warnings: list<string>, itemMap: array<string, ?string>}
 	 */
-	private function writeRenamed(ZipArchive $zip, string $dstPath, ?array $coverUpload, array $order, array $newNames, string $infoXml, array $itemMap, array $pages): array {
+	private function writeRenamed(ZipArchive $zip, string $dstPath, ?array $coverUpload, array $order, array $newNames, string $infoXml, array $itemMap, array $pages, ?callable $progress = null): array {
 		$writer = new ZipWriter($dstPath);
 		try {
 			$width = strlen(pathinfo(end($newNames) ?: '0001.jpg', PATHINFO_FILENAME));
 			if ($coverUpload !== null) {
 				$writer->addString(sprintf('%0' . $width . 'd.%s', 1, $coverUpload['ext']), $coverUpload['data'], true);
 			}
-			foreach ($order as $old) {
+			$totalPages = count($order);
+			foreach ($order as $n => $old) {
+				EditorUtil::report($progress, $n + 1, $totalPages, 'Writing page');
 				$writer->copyFromAs($zip, $old, $newNames[$old]);
 			}
 			// other entries (not pages, not ComicInfo.xml, not directories)
@@ -287,6 +289,7 @@ final class CbzEditor implements BookEditorInterface {
 				$writer->copyFrom($zip, $name);
 			}
 			$writer->addString(self::COMICINFO, $infoXml);
+			EditorUtil::report($progress, $totalPages, $totalPages, 'Finalizing archive');
 			$writer->close();
 		} catch (\Throwable $e) {
 			$writer->abort();

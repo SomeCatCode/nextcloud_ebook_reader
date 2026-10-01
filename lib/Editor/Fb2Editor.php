@@ -73,7 +73,10 @@ final class Fb2Editor implements BookEditorInterface {
 	}
 
 	#[\Override]
-	public function write(string $srcPath, string $dstPath, EditRequest $req): array {
+	public function write(string $srcPath, string $dstPath, EditRequest $req, ?callable $progress = null): array {
+		if ($progress !== null) {
+			$progress(0.1, 'Reading document');
+		}
 		[$dom, $innerName] = $this->load($srcPath, str_ends_with(strtolower($srcPath), '.fbz') || $this->isZip($srcPath) ? 'fbz' : 'fb2');
 		$root = $dom->documentElement;
 		if (!$root instanceof DOMElement) {
@@ -86,6 +89,9 @@ final class Fb2Editor implements BookEditorInterface {
 			$xml = (string)$dom->saveXML();
 			if (!EditorUtil::isWellFormed($xml)) {
 				throw new EditorException('The rewritten FB2 document is not well-formed.', 500);
+			}
+			if ($progress !== null) {
+				$progress(0.7, 'Writing document');
 			}
 			$this->writeDocument($xml, $innerName, $dstPath);
 			return ['warnings' => $warnings, 'itemMap' => []];
@@ -144,6 +150,9 @@ final class Fb2Editor implements BookEditorInterface {
 			throw new EditorException('The rewritten FB2 document is not well-formed.', 500);
 		}
 
+		if ($progress !== null) {
+			$progress(0.7, 'Writing document');
+		}
 		$fmt = $this->writeDocument($xml, $innerName, $dstPath);
 		$check = $this->readStructure($dstPath, $fmt);
 		if (count($check['items']) !== count($res['order'])) {

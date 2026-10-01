@@ -21,6 +21,7 @@ use OCA\EbookReader\Service\EditorService;
 use OCA\EbookReader\Service\GenreClassifier;
 use OCA\EbookReader\Service\LibraryService;
 use OCA\EbookReader\Service\SettingsService;
+use OCA\EbookReader\Service\TaskService;
 use OCP\AppFramework\Http;
 use OCP\BackgroundJob\IJobList;
 use OCP\Files\File;
@@ -104,12 +105,12 @@ class ViewOnlyShareTest extends TestCase {
 		$logger = $this->createMock(LoggerInterface::class);
 		$request = $this->createMock(IRequest::class);
 
-		$editor = new EditorController($request, 'u', $editorService, $library, $serializer, $logger);
+		$editor = new EditorController($request, 'u', $editorService, $library, $serializer, $logger, $this->createMock(TaskService::class));
 		$this->assertSame(Http::STATUS_FORBIDDEN, $editor->structure(5)->getStatus());
 		$this->assertSame(Http::STATUS_FORBIDDEN, $editor->save(5)->getStatus());
 		$this->assertSame(Http::STATUS_FORBIDDEN, $editor->save(5, 'e', true)->getStatus());
 
-		$convert = new ConvertController($request, 'u', $convertService, $library, $serializer, $logger);
+		$convert = new ConvertController($request, 'u', $convertService, $library, $serializer, $logger, $this->createMock(TaskService::class));
 		$this->assertSame(Http::STATUS_FORBIDDEN, $convert->convertBook(5, 'cbz')->getStatus());
 	}
 

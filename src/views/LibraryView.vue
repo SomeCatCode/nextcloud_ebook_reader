@@ -173,6 +173,8 @@
 
 			<FilterBar />
 
+			<ActiveTasksBanner @finished="onTasksFinished" />
+
 			<NcNoteCard v-if="store.error" type="error">
 				{{ store.error }}
 			</NcNoteCard>
@@ -308,6 +310,7 @@ import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcSelect from '@nextcloud/vue/components/NcSelect'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
+import ActiveTasksBanner from '../components/common/ActiveTasksBanner.vue'
 import BookDetails from '../components/library/BookDetails.vue'
 import BookGrid from '../components/library/BookGrid.vue'
 import BookList from '../components/library/BookList.vue'
@@ -452,6 +455,11 @@ function onDetailsFilter(term: FilterTerm): void {
 	if (window.innerWidth < 1024) {
 		store.setActive(null)
 	}
+}
+
+/** Background tasks finished (edit/convert): the library content changed. */
+async function onTasksFinished(): Promise<void> {
+	await Promise.all([store.reload(), store.loadFacets()])
 }
 
 /**

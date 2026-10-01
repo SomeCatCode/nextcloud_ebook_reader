@@ -10,11 +10,13 @@ declare(strict_types=1);
 namespace OCA\EbookReader\Tests\Unit\Controller;
 
 use OCA\EbookReader\Controller\ItemController;
+use OCA\EbookReader\Service\ArchiveCache;
 use OCA\EbookReader\Service\LibraryService;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\DataDisplayResponse;
 use OCP\Files\File;
 use OCP\Files\Storage\IStorage;
+use OCP\IAppConfig;
 use OCP\IRequest;
 use OCP\ITempManager;
 use OCP\IUser;
@@ -69,7 +71,7 @@ class ItemControllerTest extends TestCase {
 		$user->method('getUID')->willReturn('u');
 		$session = $this->createMock(IUserSession::class);
 		$session->method('getUser')->willReturn($user);
-		return new ItemController($this->createMock(IRequest::class), $session, $this->library, $this->createMock(ITempManager::class), $this->createMock(LoggerInterface::class));
+		return new ItemController($this->createMock(IRequest::class), $session, $this->library, new ArchiveCache($this->createMock(ITempManager::class), $this->createMock(IAppConfig::class), $this->createMock(LoggerInterface::class)), $this->createMock(LoggerInterface::class));
 	}
 
 	private function epub(string $entry, string $content): File&MockObject {

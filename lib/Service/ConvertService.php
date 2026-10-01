@@ -50,6 +50,7 @@ class ConvertService {
 		private BookMapper $bookMapper,
 		private ITempManager $tempManager,
 		private LoggerInterface $logger,
+		private ArchiveCache $archiveCache,
 		private ?ComicWriter $writer = null,
 	) {
 		$this->writer ??= new ComicWriter($tools);
@@ -108,12 +109,23 @@ class ConvertService {
 	}
 
 	/**
-	 * @return array{book: Book, fileId: int, path: string}
+	 * Synchronous part of an asynchronous conversion: throws what convert() would throw before it starts working.
+	 *
 	 * @throws ConvertException
 	 * @throws \OCP\AppFramework\Db\DoesNotExistException
 	 * @throws \OCP\Files\NotFoundException
 	 */
-	public function convert(string $userId, int $fileId, string $target, bool $deleteOriginal): array {
+	public function validate(string $userId, int $fileId, string $target, bool $deleteOriginal): void {
+		$this->check($userId, $fileId, $target, $deleteOriginal);
+	}
+
+	/**
+	 * @return array{0: Book, 1: File, 2: string, 3: string, 4: \OCP\Files\Folder, 5: string} book, file, source format, target format, parent folder, target file name
+	 * @throws ConvertException
+	 * @throws \OCP\AppFramework\Db\DoesNotExistException
+	 * @throws \OCP\Files\NotFoundException
+	 */
+	private function check(string $userId, int $fileId, string $target, bool $deleteOriginal): array {
 		$book = $this->library->getBook($userId, $fileId);
 		$file = $this->library->getFileForUser($userId, $fileId);
 		$source = $book->getFormat();
@@ -147,6 +159,18 @@ class ConvertService {
 		if ($parent->nodeExists($targetName)) {
 			throw new ConvertException(self::REASON_EXISTS, 409);
 		}
+		return [$book, $file, $source, $target, $parent, $targetName];
+	}
+
+	/**
+	 * @param ?callable(float, string): void $progress optional progress callback (fraction 0..1, short English step text)
+	 * @return array{book: Book, fileId: int, path: string}
+	 * @throws ConvertException
+	 * @throws \OCP\AppFramework\Db\DoesNotExistException
+	 * @throws \OCP\Files\NotFoundException
+	 */
+	public function convert(string $userId, int $fileId, string $target, bool $deleteOriginal, ?callable $progress = null): array {
+		[$book, $file, $source, $target, $parent, $targetName] = $this->check($userId, $fileId, $target, $deleteOriginal);
 
 		@set_time_limit(0);
 		$staging = $this->tempManager->getTemporaryFolder('-ebr-convert');
@@ -154,10 +178,29 @@ class ConvertService {
 		if ($staging === false || $dst === false) {
 			throw new ConvertException('Cannot create temporary files', 500);
 		}
-		[$localSource, $tmpSource] = $this->localPath($file, $source);
+		if ($progress !== null) {
+			$progress(0.0, 'Preparing');
+		}
 		try {
-			$prepared = $this->stage($localSource, $source, $staging, $book);
+			$localSource = $this->archiveCache->localPath($file);
+		} catch (\RuntimeException $e) {
+			self::removeDir($staging);
+			@unlink($dst);
+			throw new ConvertException('Cannot read the file', 500, $e);
+		}
+		try {
+			try {
+				$prepared = $this->stage($localSource, $source, $staging, $book, $progress);
+			} finally {
+				$this->archiveCache->release($localSource);
+			}
+			if ($progress !== null) {
+				$progress(0.75, 'Packing the new file');
+			}
 			$this->build($target, $dst, $staging, $prepared, $book);
+			if ($progress !== null) {
+				$progress(0.92, 'Saving the new file');
+			}
 
 			$stream = fopen($dst, 'rb');
 			if ($stream === false) {
@@ -171,13 +214,13 @@ class ConvertService {
 				fclose($stream);
 			}
 		} finally {
-			if ($tmpSource !== null) {
-				@unlink($tmpSource);
-			}
 			@unlink($dst);
 			self::removeDir($staging);
 		}
 
+		if ($progress !== null) {
+			$progress(0.97, 'Indexing the new file');
+		}
 		$newBook = $this->library->indexFile($userId, $newFile);
 		if ($newBook === null) {
 			throw new ConvertException('The converted file could not be indexed', 500);
@@ -199,9 +242,10 @@ class ConvertService {
 	/**
 	 * Extracts the pages into the staging directory under their final names.
 	 *
+	 * @param ?callable(float, string): void $progress
 	 * @return array{pages: list<string>, names: list<string>, comicInfo: ?string, coverIndex: int, hrefs?: list<string>}
 	 */
-	private function stage(string $localSource, string $format, string $staging, Book $book): array {
+	private function stage(string $localSource, string $format, string $staging, Book $book, ?callable $progress = null): array {
 		try {
 			$archive = ComicArchive::open($localSource, $format, $this->tools);
 		} catch (UnsafeArchiveException|\RuntimeException $e) {
@@ -219,7 +263,11 @@ class ConvertService {
 			$width = max(4, strlen((string)count($pages)));
 			$names = [];
 			$writtenBytes = 0;
+			$pageCount = count($pages);
 			foreach ($pages as $i => $page) {
+				if ($progress !== null) {
+					$progress(0.05 + 0.7 * ((float)$i / (float)$pageCount), 'Extracting page ' . ($i + 1) . ' of ' . $pageCount);
+				}
 				$ext = strtolower(pathinfo($page, PATHINFO_EXTENSION));
 				$ext = $ext === 'jpeg' ? 'jpg' : $ext;
 				$name = sprintf('%0' . $width . 'd.%s', $i + 1, $ext);
@@ -412,34 +460,6 @@ class ConvertService {
 			return class_exists(\ZipArchive::class);
 		}
 		return $this->tools->canWrite($format);
-	}
-
-	/**
-	 * Local path of the file: direct for local storages, otherwise a temporary copy.
-	 *
-	 * @return array{0: string, 1: ?string} path and temp file to delete
-	 */
-	private function localPath(File $file, string $format): array {
-		$storage = $file->getStorage();
-		if ($storage->isLocal()) {
-			$local = $storage->getLocalFile($file->getInternalPath());
-			if (is_string($local) && is_file($local)) {
-				return [$local, null];
-			}
-		}
-		$tmp = $this->tempManager->getTemporaryFile('.' . $format);
-		if ($tmp === false) {
-			throw new ConvertException('Cannot create temporary files', 500);
-		}
-		$in = $file->fopen('r');
-		$out = fopen($tmp, 'wb');
-		if ($in === false || $out === false) {
-			throw new ConvertException('Cannot read the file', 500);
-		}
-		stream_copy_to_stream($in, $out);
-		fclose($in);
-		fclose($out);
-		return [$tmp, $tmp];
 	}
 
 	private static function removeDir(string $dir): void {

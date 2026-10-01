@@ -14,6 +14,7 @@ use OCA\EbookReader\Db\BookMapper;
 use OCA\EbookReader\Db\Progress;
 use OCA\EbookReader\Db\Tag;
 use OCA\EbookReader\Metadata\ComicArchive;
+use OCA\EbookReader\Service\ArchiveCache;
 use OCA\EbookReader\Service\ArchiveTools;
 use OCA\EbookReader\Service\ConvertException;
 use OCA\EbookReader\Service\ConvertService;
@@ -23,6 +24,7 @@ use OCA\EbookReader\Tests\Unit\Metadata\Fixtures;
 use OCP\Files\File;
 use OCP\Files\Folder;
 use OCP\Files\Storage\IStorage;
+use OCP\IAppConfig;
 use OCP\ITempManager;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
@@ -50,7 +52,7 @@ class ConvertServiceTest extends TestCase {
 	private ITempManager&MockObject $temp;
 
 	private function serviceWith(ArchiveTools $tools): ConvertService {
-		return new ConvertService($this->library, $tools, $this->progress, $this->books, $this->temp, $this->createMock(LoggerInterface::class));
+		return new ConvertService($this->library, $tools, $this->progress, $this->books, $this->temp, $this->createMock(LoggerInterface::class), new ArchiveCache($this->temp, $this->createMock(IAppConfig::class), $this->createMock(LoggerInterface::class)));
 	}
 	private string $tmpRoot;
 

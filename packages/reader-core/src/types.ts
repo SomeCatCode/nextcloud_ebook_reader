@@ -107,7 +107,18 @@ export interface RemoteComicSource {
 	loadPage: (index: number) => Promise<Blob>
 }
 
-export type ReaderSource = Blob | File | RemoteComicSource
+/**
+ * A ZIP based book (EPUB, FBZ) whose entries are fetched one by one from the server instead of
+ * downloading the whole file.
+ */
+export interface RemoteZipSource {
+	kind: 'remote-zip'
+	name: string
+	entries: { name: string, size: number }[]
+	loadEntry: (name: string) => Promise<Blob>
+}
+
+export type ReaderSource = Blob | File | RemoteComicSource | RemoteZipSource
 
 export interface ReaderHandle {
 	open(file: ReaderSource, format: ReaderFormat, initial?: ReaderLocator | null): Promise<void>

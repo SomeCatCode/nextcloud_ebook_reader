@@ -9,11 +9,13 @@ declare(strict_types=1);
 
 namespace OCA\EbookReader\Controller;
 
+use OCA\EbookReader\Db\Task;
 use OCA\EbookReader\Http\AbstractOCSController;
 use OCA\EbookReader\Http\BookSerializer;
 use OCA\EbookReader\Service\ConvertException;
 use OCA\EbookReader\Service\ConvertService;
 use OCA\EbookReader\Service\LibraryService;
+use OCA\EbookReader\Service\TaskService;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\ApiRoute;
@@ -38,6 +40,7 @@ class ConvertController extends AbstractOCSController {
 		private LibraryService $library,
 		private BookSerializer $serializer,
 		private LoggerInterface $logger,
+		private TaskService $tasks,
 	) {
 		parent::__construct($request, $userId);
 	}
@@ -81,9 +84,11 @@ class ConvertController extends AbstractOCSController {
 	 * @param int $fileId File id
 	 * @param string $target Target format: cbz, cb7, cbt or epub
 	 * @param bool $deleteOriginal Move the original to the trash after a successful conversion
-	 * @return DataResponse<Http::STATUS_OK|Http::STATUS_BAD_REQUEST|Http::STATUS_FORBIDDEN|Http::STATUS_NOT_FOUND|Http::STATUS_CONFLICT|Http::STATUS_REQUEST_ENTITY_TOO_LARGE|Http::STATUS_UNSUPPORTED_MEDIA_TYPE|Http::STATUS_UNPROCESSABLE_ENTITY|Http::STATUS_INTERNAL_SERVER_ERROR, array<string, mixed>, array{}>
+	 * @param bool $async Validate synchronously, then convert in the background and return a task id (poll GET /api/v1/tasks/{taskId})
+	 * @return DataResponse<Http::STATUS_OK|Http::STATUS_ACCEPTED|Http::STATUS_BAD_REQUEST|Http::STATUS_FORBIDDEN|Http::STATUS_NOT_FOUND|Http::STATUS_CONFLICT|Http::STATUS_REQUEST_ENTITY_TOO_LARGE|Http::STATUS_UNSUPPORTED_MEDIA_TYPE|Http::STATUS_UNPROCESSABLE_ENTITY|Http::STATUS_INTERNAL_SERVER_ERROR, array<string, mixed>, array{}>
 	 *
 	 * 200: Converted, the new book is returned
+	 * 202: Accepted, the conversion runs as a task (async = true)
 	 * 400: Invalid target
 	 * 403: No permission to create the file or delete the original
 	 * 404: Book not found
@@ -96,11 +101,18 @@ class ConvertController extends AbstractOCSController {
 	#[NoAdminRequired]
 	#[UserRateLimit(limit: 20, period: 3600)]
 	#[ApiRoute(verb: 'POST', url: '/api/v1/books/{fileId}/convert', requirements: ['fileId' => '\d+'])]
-	public function convertBook(int $fileId, string $target = '', bool $deleteOriginal = false): DataResponse {
+	public function convertBook(int $fileId, string $target = '', bool $deleteOriginal = false, bool $async = false): DataResponse {
 		$userId = $this->uid();
-		return $this->guard(function () use ($userId, $fileId, $target, $deleteOriginal): DataResponse {
+		return $this->guard(function () use ($userId, $fileId, $target, $deleteOriginal, $async): DataResponse {
 			if (!$this->library->canReadContent($this->library->getFileForUser($userId, $fileId))) {
 				return new DataResponse(['message' => 'Download of this file is disabled'], Http::STATUS_FORBIDDEN);
+			}
+			if ($async) {
+				// everything that can fail early (format, tools, size, permissions, name clash) is answered now
+				$this->convert->validate($userId, $fileId, strtolower($target), $deleteOriginal);
+				$task = $this->tasks->create($userId, $fileId, Task::TYPE_CONVERT, ['target' => strtolower($target), 'deleteOriginal' => $deleteOriginal]);
+				$this->tasks->scheduleInline($task);
+				return new DataResponse(['taskId' => $task->getId()], Http::STATUS_ACCEPTED);
 			}
 			$res = $this->convert->convert($userId, $fileId, strtolower($target), $deleteOriginal);
 			return new DataResponse([

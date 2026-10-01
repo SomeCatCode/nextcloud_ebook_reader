@@ -53,6 +53,58 @@ final class EditorUtil {
 		return $zip;
 	}
 
+	/**
+	 * Raw-copy update of a zip: copies $srcPath to $dstPath and replaces (or adds) one entry in the copy with
+	 * addFromString (deflate); libzip copies all other entries raw on close(), so their compressed data, size and CRC
+	 * stay as they are. Entries in $drop are removed.
+	 *
+	 * @param list<string> $drop entry names to delete from the copy
+	 * @throws EditorException
+	 */
+	public static function replaceInCopy(string $srcPath, string $dstPath, string $entry, string $content, array $drop = []): void {
+		if (is_file($dstPath)) {
+			@unlink($dstPath);
+		}
+		if (!@copy($srcPath, $dstPath)) {
+			throw new EditorException('Cannot create the output file.', 500);
+		}
+		$out = new ZipArchive();
+		$res = $out->open($dstPath);
+		if ($res !== true) {
+			@unlink($dstPath);
+			throw new EditorException('The output archive cannot be opened (code ' . (string)$res . ').', 500);
+		}
+		try {
+			foreach ($drop as $name) {
+				$out->deleteName($name);
+			}
+			if (!$out->addFromString($entry, $content, ZipArchive::FL_OVERWRITE)
+				|| !$out->setCompressionName($entry, ZipArchive::CM_DEFLATE)) {
+				throw new EditorException('Cannot replace entry ' . $entry, 500);
+			}
+		} catch (\Throwable $e) {
+			@$out->unchangeAll();
+			@$out->close();
+			@unlink($dstPath);
+			throw $e;
+		}
+		if (!$out->close()) {
+			@unlink($dstPath);
+			throw new EditorException('The output archive could not be written.', 500);
+		}
+	}
+
+	/**
+	 * Reports progress to an optional callback (the task service throttles the writes).
+	 * @param ?callable(float, string): void $progress
+	 */
+	public static function report(?callable $progress, int $done, int $total, string $label): void {
+		if ($progress === null || $total <= 0) {
+			return;
+		}
+		$progress(max(0.0, min(1.0, $done / $total)), $label . ' ' . $done . ' of ' . $total);
+	}
+
 	/** Entry names that must never be copied/served (zip slip, absolute paths). */
 	public static function isSafeName(string $name): bool {
 		if ($name === '' || str_contains($name, "\0") || str_starts_with($name, '/') || preg_match('~^[A-Za-z]:~', $name) === 1) {

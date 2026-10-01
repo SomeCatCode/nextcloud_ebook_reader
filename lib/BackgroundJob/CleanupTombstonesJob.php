@@ -10,6 +10,8 @@ declare(strict_types=1);
 namespace OCA\EbookReader\BackgroundJob;
 
 use OCA\EbookReader\Db\BookMapper;
+use OCA\EbookReader\Service\ArchiveCache;
+use OCA\EbookReader\Service\TaskService;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\IJob;
 use OCP\BackgroundJob\TimedJob;
@@ -19,7 +21,8 @@ use Psr\Log\LoggerInterface;
 
 /**
  * Removes tombstone rows (deleted_at) older than 30 days and comic pages from the page cache
- * (see ComicController) that were not generated within the last 30 days.
+ * (see ComicController) that were not generated within the last 30 days. Also deletes finished tasks older than
+ * 24 hours (and fails dead running ones) and trims the local archive cache to its limit.
  */
 class CleanupTombstonesJob extends TimedJob {
 	public const RETENTION_DAYS = 30;
@@ -29,6 +32,8 @@ class CleanupTombstonesJob extends TimedJob {
 		private BookMapper $bookMapper,
 		private IAppData $appData,
 		private LoggerInterface $logger,
+		private TaskService $tasks,
+		private ArchiveCache $archiveCache,
 	) {
 		parent::__construct($timeFactory);
 		$this->setInterval(24 * 60 * 60);
@@ -40,6 +45,16 @@ class CleanupTombstonesJob extends TimedJob {
 		$cutoff = $this->timeFactory->getTime() - self::RETENTION_DAYS * 86400;
 		$this->bookMapper->deleteTombstonesOlderThan($cutoff * 1000);
 		$this->cleanupComicPages($cutoff);
+		try {
+			$this->tasks->cleanup();
+		} catch (\Throwable $e) {
+			$this->logger->warning('Task cleanup failed: ' . $e->getMessage(), ['app' => 'ebookreader']);
+		}
+		try {
+			$this->archiveCache->cleanup();
+		} catch (\Throwable $e) {
+			$this->logger->warning('Archive cache cleanup failed: ' . $e->getMessage(), ['app' => 'ebookreader']);
+		}
 	}
 
 	private function cleanupComicPages(int $cutoff): void {

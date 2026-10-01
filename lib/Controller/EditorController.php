@@ -9,11 +9,13 @@ declare(strict_types=1);
 
 namespace OCA\EbookReader\Controller;
 
+use OCA\EbookReader\Db\Task;
 use OCA\EbookReader\Editor\EditorException;
 use OCA\EbookReader\Http\AbstractOCSController;
 use OCA\EbookReader\Http\BookSerializer;
 use OCA\EbookReader\Service\EditorService;
 use OCA\EbookReader\Service\LibraryService;
+use OCA\EbookReader\Service\TaskService;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\ApiRoute;
@@ -40,6 +42,7 @@ class EditorController extends AbstractOCSController {
 		private LibraryService $library,
 		private BookSerializer $serializer,
 		private LoggerInterface $logger,
+		private TaskService $tasks,
 	) {
 		parent::__construct($request, $userId);
 	}
@@ -84,9 +87,11 @@ class EditorController extends AbstractOCSController {
 	 * @param list<string>|null $order New item order without removed items
 	 * @param list<string>|null $removed Removed item ids
 	 * @param list<array<string, mixed>>|null $toc Table of contents tree
-	 * @return DataResponse<Http::STATUS_OK|Http::STATUS_BAD_REQUEST|Http::STATUS_FORBIDDEN|Http::STATUS_NOT_FOUND|Http::STATUS_CONFLICT|Http::STATUS_REQUEST_ENTITY_TOO_LARGE|Http::STATUS_UNSUPPORTED_MEDIA_TYPE|Http::STATUS_UNPROCESSABLE_ENTITY|Http::STATUS_LOCKED|Http::STATUS_INTERNAL_SERVER_ERROR, array<string, mixed>, array{}>
+	 * @param bool $async Validate synchronously, then save in the background and return a task id (poll GET /api/v1/tasks/{taskId})
+	 * @return DataResponse<Http::STATUS_OK|Http::STATUS_ACCEPTED|Http::STATUS_BAD_REQUEST|Http::STATUS_FORBIDDEN|Http::STATUS_NOT_FOUND|Http::STATUS_CONFLICT|Http::STATUS_REQUEST_ENTITY_TOO_LARGE|Http::STATUS_UNSUPPORTED_MEDIA_TYPE|Http::STATUS_UNPROCESSABLE_ENTITY|Http::STATUS_LOCKED|Http::STATUS_INTERNAL_SERVER_ERROR, array<string, mixed>, array{}>
 	 *
 	 * 200: Saved
+	 * 202: Accepted, the save runs as a task (async = true)
 	 * 400: Invalid request
 	 * 403: No write permission
 	 * 404: File not found
@@ -100,11 +105,18 @@ class EditorController extends AbstractOCSController {
 	#[NoAdminRequired]
 	#[UserRateLimit(limit: 30, period: 60)]
 	#[ApiRoute(verb: 'PUT', url: '/api/v1/books/{fileId}/structure', requirements: ['fileId' => '\d+'])]
-	public function save(int $fileId, ?string $etag = null, bool $saveAsCopy = false, ?array $metadata = null, ?array $cover = null, ?array $order = null, ?array $removed = null, ?array $toc = null): DataResponse {
+	public function save(int $fileId, ?string $etag = null, bool $saveAsCopy = false, ?array $metadata = null, ?array $cover = null, ?array $order = null, ?array $removed = null, ?array $toc = null, bool $async = false): DataResponse {
 		$userId = $this->uid();
 		$request = ['etag' => $etag ?? '', 'saveAsCopy' => $saveAsCopy, 'metadata' => $metadata, 'cover' => $cover, 'order' => $order, 'removed' => $removed, 'toc' => $toc];
-		return $this->guard(function () use ($userId, $fileId, $request): DataResponse {
+		return $this->guard(function () use ($userId, $fileId, $request, $async): DataResponse {
 			$this->requireContentAccess($userId, $fileId);
+			if ($async) {
+				// permissions, etag, size and the request itself are checked now; the etag is checked again when the task writes
+				$this->editor->validateSave($userId, $fileId, $request);
+				$task = $this->tasks->create($userId, $fileId, Task::TYPE_EDIT, $request);
+				$this->tasks->scheduleInline($task);
+				return new DataResponse(['taskId' => $task->getId()], Http::STATUS_ACCEPTED);
+			}
 			$res = $this->editor->save($userId, $fileId, $request);
 			return new DataResponse(['book' => $this->serializer->serializeWithProgress($userId, $res['book']), 'warnings' => $res['warnings']]);
 		});

@@ -12,18 +12,18 @@ namespace OCA\EbookReader\Controller;
 use OCA\EbookReader\AppInfo\Application;
 use OCA\EbookReader\Editor\EditorUtil;
 use OCA\EbookReader\Editor\EpubEditor;
+use OCA\EbookReader\Service\ArchiveCache;
 use OCA\EbookReader\Service\LibraryService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\FrontpageRoute;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
+use OCP\AppFramework\Http\Attribute\UserRateLimit;
 use OCP\AppFramework\Http\DataDisplayResponse;
 use OCP\AppFramework\Http\DataResponse;
-use OCP\Files\File;
 use OCP\Files\NotFoundException;
 use OCP\IRequest;
-use OCP\ITempManager;
 use OCP\IUserSession;
 use Psr\Log\LoggerInterface;
 
@@ -50,7 +50,7 @@ class ItemController extends Controller {
 		IRequest $request,
 		private IUserSession $userSession,
 		private LibraryService $library,
-		private ITempManager $tempManager,
+		private ArchiveCache $archiveCache,
 		private LoggerInterface $logger,
 	) {
 		parent::__construct(Application::APP_ID, $request);
@@ -62,6 +62,7 @@ class ItemController extends Controller {
 	 */
 	#[NoAdminRequired]
 	#[NoCSRFRequired]
+	#[UserRateLimit(limit: 1200, period: 60)]
 	#[FrontpageRoute(verb: 'GET', url: '/item/{fileId}', requirements: ['fileId' => '\d+'])]
 	public function item(int $fileId, string $id = ''): DataResponse|DataDisplayResponse {
 		$user = $this->userSession->getUser();
@@ -76,14 +77,14 @@ class ItemController extends Controller {
 		if (!$this->library->canReadContent($file)) {
 			return new DataResponse([], Http::STATUS_FORBIDDEN);
 		}
-		$ext = strtolower(pathinfo($file->getName(), PATHINFO_EXTENSION));
-		if ($ext !== 'cbz' && $ext !== 'epub') {
+		$ext = self::archiveType($file->getName());
+		if ($ext === null) {
 			return new DataResponse([], Http::STATUS_NOT_FOUND);
 		}
 
-		$tmp = null;
+		$path = null;
 		try {
-			[$path, $tmp] = $this->localPath($file);
+			$path = $this->archiveCache->localPath($file);
 			$zip = EditorUtil::openZip($path);
 			try {
 				$name = $id;
@@ -120,10 +121,20 @@ class ItemController extends Controller {
 			$this->logger->info('Cannot serve item ' . $id . ' of file ' . $fileId . ': ' . $e->getMessage(), ['app' => Application::APP_ID]);
 			return new DataResponse([], Http::STATUS_NOT_FOUND);
 		} finally {
-			if ($tmp !== null) {
-				@unlink($tmp);
+			if ($path !== null) {
+				$this->archiveCache->release($path);
 			}
 		}
+	}
+
+	/** "cbz", "epub" or "fbz" for the archives this endpoint serves entries of (fb2.zip counts as fbz), else null. */
+	public static function archiveType(string $fileName): ?string {
+		$lower = strtolower($fileName);
+		if (str_ends_with($lower, '.fb2.zip')) {
+			return 'fbz';
+		}
+		$ext = pathinfo($lower, PATHINFO_EXTENSION);
+		return in_array($ext, ['cbz', 'epub', 'fbz'], true) ? $ext : null;
 	}
 
 	public static function mimeFor(string $entryName): string {
@@ -134,32 +145,5 @@ class ItemController extends Controller {
 		$base = basename(str_replace('\\', '/', $entryName));
 		$clean = preg_replace('/[^A-Za-z0-9._ -]/', '_', $base) ?? '';
 		return $clean !== '' ? $clean : 'item';
-	}
-
-	/**
-	 * Local path of the file: direct for local storages, otherwise a temporary copy.
-	 * @return array{0: string, 1: ?string} path and temp file to delete
-	 */
-	private function localPath(File $file): array {
-		$storage = $file->getStorage();
-		if ($storage->isLocal()) {
-			$local = $storage->getLocalFile($file->getInternalPath());
-			if (is_string($local) && is_file($local)) {
-				return [$local, null];
-			}
-		}
-		$tmp = $this->tempManager->getTemporaryFile('.zip');
-		if ($tmp === false) {
-			throw new \RuntimeException('temp file');
-		}
-		$in = $file->fopen('r');
-		$out = fopen($tmp, 'wb');
-		if ($in === false || $out === false) {
-			throw new \RuntimeException('cannot read file');
-		}
-		stream_copy_to_stream($in, $out);
-		fclose($in);
-		fclose($out);
-		return [$tmp, $tmp];
 	}
 }
