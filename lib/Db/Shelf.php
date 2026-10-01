@@ -28,6 +28,8 @@ use OCP\AppFramework\Db\Entity;
  * @method void setUpdatedAt(int $ts)
  */
 class Shelf extends Entity {
+	use MarksFieldsOnCreate;
+
 	public const TYPE_MANUAL = 'manual';
 	public const TYPE_SMART = 'smart';
 
@@ -41,6 +43,7 @@ class Shelf extends Entity {
 	protected int $updatedAt = 0;
 
 	public function __construct() {
+		$this->markAllFieldsUpdated();
 		$this->addType('sortOrder', 'integer');
 		$this->addType('createdAt', 'integer');
 		$this->addType('updatedAt', 'integer');

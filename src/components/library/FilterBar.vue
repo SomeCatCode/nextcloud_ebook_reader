@@ -51,21 +51,23 @@
 		</NcButton>
 
 		<NcButton
+			size="small"
 			v-if="store.smartShelfDirty"
 			variant="secondary"
 			:disabled="updating"
 			@click="updateShelf">
 			<template #icon>
-				<NcIconSvgWrapper :path="mdiContentSaveOutline" />
+				<NcIconSvgWrapper :path="mdiContentSaveOutline" :size="16" />
 			</template>
 			{{ t('ebookreader', 'Update shelf') }}
 		</NcButton>
 		<NcButton
+			size="small"
 			v-if="canSaveShelf"
 			variant="tertiary"
 			@click="showSave = true">
 			<template #icon>
-				<NcIconSvgWrapper :path="mdiFilterPlusOutline" />
+				<NcIconSvgWrapper :path="mdiFilterPlusOutline" :size="16" />
 			</template>
 			{{ t('ebookreader', 'Save as smart shelf…') }}
 		</NcButton>

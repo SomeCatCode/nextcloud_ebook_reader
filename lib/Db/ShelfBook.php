@@ -22,12 +22,15 @@ use OCP\AppFramework\Db\Entity;
  * @method void setAddedAt(int $ts)
  */
 class ShelfBook extends Entity {
+	use MarksFieldsOnCreate;
+
 	protected int $shelfId = 0;
 	protected int $fileId = 0;
 	protected int $position = 0;
 	protected int $addedAt = 0;
 
 	public function __construct() {
+		$this->markAllFieldsUpdated();
 		$this->addType('shelfId', 'integer');
 		$this->addType('fileId', 'integer');
 		$this->addType('position', 'integer');

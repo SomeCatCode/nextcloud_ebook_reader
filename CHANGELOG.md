@@ -5,6 +5,8 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+## 0.5.0 – 2026-10-01
+
 ### Hinzugefügt
 - **Begleitdateien** (wie `.nfo` bei Kodi): Metadaten-Änderungen landen standardmäßig in einer kleinen versteckten Datei `.<Buchdatei>.opf` neben dem Buch (Calibre-kompatibles OPF 2.0 mit Titel, Autoren, Beschreibung, Sprache, Verlag, Datum, ISBN, Genres, Tags, Serie und Band). Das geht schnell, funktioniert für alle Formate inklusive MOBI, AZW3, CBR, CB7 und CBT und lässt die Buchdatei unangetastet.
 - Neue Einstellung „Wo Metadaten-Änderungen gespeichert werden“ (Begleitdatei, in der Datei, beides, nur Bibliothek). „Im Hintergrund/sofort“ gilt nur noch für das Schreiben in die Buchdatei. Die frühere Einstellung „nie“ wird zu „Nur Bibliothek“.
@@ -28,8 +30,6 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 - Ein vollständiges Speichern im Editor aktualisiert bei den Zielen „Begleitdatei“ und „Beides“ auch die Begleitdatei, damit sie die neuen Werte nicht überschreibt.
 - Ist der Ordner oder die Freigabe schreibgeschützt, werden Änderungen nur in der Bibliothek gespeichert und mit einem Hinweis gemeldet.
 - Neue Datenbankspalte `sidecar_etag` (Migration `Version1003Date20261001180000`).
-
-## 0.3.1 – 2026-10-01
 
 ### Behoben
 - Tags ließen sich nicht speichern (MariaDB/MySQL: „Field 'type' doesn't have a default value“). Neue Datensätze schreiben jetzt immer alle Felder. Das betraf auch Hintergrundaufgaben beim Bearbeiten von Seiten.
