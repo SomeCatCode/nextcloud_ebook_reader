@@ -5,6 +5,8 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+## 0.3.0 – 2026-10-01
+
 ### Hinzugefügt
 - Einstellung „Metadaten in Dateien schreiben“: im Hintergrund (Standard), sofort oder nie. Im Hintergrund werden Änderungen sofort in der Bibliothek gespeichert und kurz danach gesammelt in die Datei geschrieben; mehrere schnelle Änderungen ergeben nur einen Schreibvorgang.
 - In der App geänderte Metadaten (Titel, Autoren, Serie, Beschreibung usw.) bleiben erhalten, wenn die Datei sich ändert oder neu eingelesen wird. Das gilt für MOBI, AZW3, CBR, CB7, CBT und für den Modus „nie“. In der Detailansicht steht „in der App geändert“ mit der Aktion „Wert aus Datei übernehmen“.
@@ -29,6 +31,8 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 - Der manuelle Scan indiziert nur Dateien bis 50 MB direkt, größere Dateien laufen immer als Hintergrundjob.
 
 ### Behoben
+- Beim Wechsel zwischen Büchern fuhr die Detailansicht jedes Mal neu herein und flackerte. Jetzt wird nur der Inhalt aktualisiert.
+- Tag-Chips und der „Hinzufügen“-Button in der Detailansicht sind neu gestaltet: einheitliche Höhe, das × steht im Chip. Die Metadaten-Zeilen sind sauber ausgerichtet.
 - Nach dem Löschen oder Umsortieren von Comic-Seiten zeigte der Editor noch die alten Seitenbilder aus dem Browser-Cache. Die Vorschau-URLs sind jetzt an die Dateiversion gebunden.
 - Nach dem Speichern mit Warnungen lud der Editor den neuen Stand erst beim Bestätigen des Dialogs. Wurde der Dialog anders geschlossen, meldete das nächste Speichern fälschlich „Datei wurde geändert“. Der Editor lädt jetzt immer sofort neu.
 
