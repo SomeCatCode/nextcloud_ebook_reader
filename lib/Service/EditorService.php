@@ -553,7 +553,11 @@ class EditorService {
 			try {
 				$file->putContent($stream);
 			} finally {
-				fclose($stream);
+				// putContent() closes the stream itself (View::file_put_contents)
+				/** @psalm-suppress RedundantCondition psalm does not know the stream was closed by Nextcloud */
+				if (is_resource($stream)) {
+					fclose($stream);
+				}
 			}
 			$this->library->reindexFileForAllUsers($fileId);
 			$this->progress->remapAfterEdit($fileId, $result['itemMap']);
@@ -596,7 +600,11 @@ class EditorService {
 		try {
 			$new = $folder->newFile($name, $stream);
 		} finally {
-			fclose($stream);
+			// newFile() closes the stream itself
+			/** @psalm-suppress RedundantCondition psalm does not know the stream was closed by Nextcloud */
+			if (is_resource($stream)) {
+				fclose($stream);
+			}
 		}
 		return $new;
 	}

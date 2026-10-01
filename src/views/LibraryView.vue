@@ -24,6 +24,7 @@
 				:name="group.name"
 				:allowCollapse="true"
 				:open="openGroups[group.key]"
+				@click="openGroups[group.key] = !openGroups[group.key]"
 				@update:open="(v: boolean) => (openGroups[group.key] = v)">
 				<template #icon>
 					<NcIconSvgWrapper :path="group.icon" />
@@ -101,15 +102,25 @@
 					@update:modelValue="(v: string | number) => store.setSearch(String(v))"
 					@trailingButtonClick="store.setSearch('')" />
 
-				<NcSelect
+				<NcActions
 					class="library__sort"
-					:modelValue="currentSort"
-					:options="sortOptions"
-					:inputLabel="t('ebookreader', 'Sort by')"
-					:clearable="false"
-					:searchable="false"
-					label="label"
-					@update:modelValue="(o: { id: SortKey }) => o && store.setSort(o.id)" />
+					:menuName="currentSort ? currentSort.label : t('ebookreader', 'Sort')"
+					:forceName="true"
+					:aria-label="t('ebookreader', 'Sort by')"
+					variant="tertiary">
+					<template #icon>
+						<NcIconSvgWrapper :path="mdiSort" />
+					</template>
+					<NcActionButton
+						v-for="opt in sortOptions"
+						:key="opt.id"
+						type="radio"
+						:modelValue="store.sort === opt.id"
+						closeAfterClick
+						@click="store.setSort(opt.id)">
+						{{ opt.label }}
+					</NcActionButton>
+				</NcActions>
 
 				<NcButton
 					:aria-label="store.order === 'asc' ? t('ebookreader', 'Ascending') : t('ebookreader', 'Descending')"
@@ -285,6 +296,7 @@ import {
 	mdiMinusCircleOutline,
 	mdiPlusCircleOutline,
 	mdiRefresh,
+	mdiSort,
 	mdiSortAscending,
 	mdiSortDescending,
 	mdiTagMultipleOutline,
@@ -298,6 +310,7 @@ import { n, t } from '@nextcloud/l10n'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import NcActionButton from '@nextcloud/vue/components/NcActionButton'
+import NcActions from '@nextcloud/vue/components/NcActions'
 import NcAppContent from '@nextcloud/vue/components/NcAppContent'
 import NcAppNavigation from '@nextcloud/vue/components/NcAppNavigation'
 import NcAppNavigationCaption from '@nextcloud/vue/components/NcAppNavigationCaption'
@@ -308,7 +321,6 @@ import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
-import NcSelect from '@nextcloud/vue/components/NcSelect'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 import ActiveTasksBanner from '../components/common/ActiveTasksBanner.vue'
 import BookDetails from '../components/library/BookDetails.vue'
@@ -585,8 +597,15 @@ onBeforeUnmount(() => {
 	&__toolbar {
 		display: flex;
 		flex-wrap: wrap;
-		align-items: flex-end;
-		gap: 8px;
+		align-items: center;
+		gap: 4px 8px;
+		min-height: var(--default-clickable-area);
+		// keep clear of the app navigation toggle that NcAppContent places in the top-left corner
+		padding-inline-start: calc(var(--default-clickable-area) + var(--app-navigation-padding, 8px));
+
+		:deep(.input-field) {
+			margin-block: 0;
+		}
 	}
 
 	&__search {
@@ -595,8 +614,7 @@ onBeforeUnmount(() => {
 	}
 
 	&__sort {
-		flex: 0 1 200px;
-		min-width: 140px;
+		flex: 0 0 auto;
 	}
 
 	&__selection {

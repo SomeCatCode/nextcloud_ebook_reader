@@ -64,6 +64,8 @@ use OCP\AppFramework\Db\Entity;
  * @method void setOverrides(?string $overrides)
  */
 class Book extends Entity {
+	use MarksFieldsOnCreate;
+
 	public const STATUS_UNREAD = 'unread';
 	public const STATUS_READING = 'reading';
 	public const STATUS_FINISHED = 'finished';
@@ -100,6 +102,7 @@ class Book extends Entity {
 	protected ?string $overrides = null;
 
 	public function __construct() {
+		$this->markAllFieldsUpdated();
 		$this->addType('fileId', 'integer');
 		$this->addType('size', 'integer');
 		$this->addType('seriesIndex', 'float');

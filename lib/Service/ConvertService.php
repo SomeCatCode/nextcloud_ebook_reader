@@ -211,7 +211,11 @@ class ConvertService {
 			} catch (NotPermittedException $e) {
 				throw new ConvertException($parent->nodeExists($targetName) ? self::REASON_EXISTS : 'The converted file cannot be saved', $parent->nodeExists($targetName) ? 409 : 403, $e);
 			} finally {
-				fclose($stream);
+				// newFile() closes the stream itself
+				/** @psalm-suppress RedundantCondition psalm does not know the stream was closed by Nextcloud */
+				if (is_resource($stream)) {
+					fclose($stream);
+				}
 			}
 		} finally {
 			@unlink($dst);

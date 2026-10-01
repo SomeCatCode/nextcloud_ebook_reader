@@ -14,7 +14,7 @@
 				class="filter-bar__toggle"
 				:title="t('ebookreader', 'Click to switch between include and exclude')"
 				@click="store.setTermState(chip.term, chip.state === 'include' ? 'exclude' : 'include')">
-				<NcIconSvgWrapper :path="chip.state === 'include' ? mdiPlusCircleOutline : mdiMinusCircleOutline" :size="16" />
+				<NcIconSvgWrapper :path="chip.state === 'include' ? mdiPlusCircleOutline : mdiMinusCircleOutline" :size="16" inline />
 				<span :class="{ 'filter-bar__name--excluded': chip.state === 'exclude' }">{{ chip.label }}</span>
 			</button>
 			<button
@@ -22,7 +22,7 @@
 				class="filter-bar__remove"
 				:aria-label="t('ebookreader', 'Remove filter')"
 				@click="store.setTermState(chip.term, null)">
-				<NcIconSvgWrapper :path="mdiClose" :size="16" />
+				<NcIconSvgWrapper :path="mdiClose" :size="14" inline />
 			</button>
 		</span>
 
@@ -33,19 +33,20 @@
 				class="filter-bar__remove"
 				:aria-label="t('ebookreader', 'Remove filter')"
 				@click="store.setStatus(null)">
-				<NcIconSvgWrapper :path="mdiClose" :size="16" />
+				<NcIconSvgWrapper :path="mdiClose" :size="14" inline />
 			</button>
 		</span>
 
 		<NcButton
 			v-if="store.filters.include.length >= 2"
+			size="small"
 			variant="tertiary"
 			:title="t('ebookreader', 'Whether books must match all or just one of the included filters')"
 			@click="store.setMatch(store.filters.match === 'all' ? 'any' : 'all')">
 			{{ store.filters.match === 'all' ? t('ebookreader', 'Match all') : t('ebookreader', 'Match any') }}
 		</NcButton>
 
-		<NcButton variant="tertiary" @click="store.resetFilters()">
+		<NcButton size="small" variant="tertiary" @click="store.resetFilters()">
 			{{ t('ebookreader', 'Clear filters') }}
 		</NcButton>
 	</div>
@@ -92,48 +93,85 @@ const termChips = computed(() => {
 </script>
 
 <style scoped lang="scss">
+$chip-height: 28px;
+
 .filter-bar {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
-	gap: 8px;
+	gap: 6px 8px;
 
 	&__chip {
 		display: inline-flex;
 		align-items: center;
+		height: $chip-height;
+		max-width: 100%;
 		border-radius: var(--border-radius-pill);
 
 		&--include {
-			background: color-mix(in srgb, var(--color-success) 25%, transparent);
+			background: color-mix(in srgb, var(--color-success) 22%, transparent);
 		}
 
 		&--exclude {
-			background: color-mix(in srgb, var(--color-error) 25%, transparent);
+			background: color-mix(in srgb, var(--color-error) 22%, transparent);
 		}
 
 		&--neutral {
 			background: var(--color-primary-element-light);
+			color: var(--color-primary-element-light-text);
 		}
 	}
 
+	// Reset Nextcloud's global <button> styles (min-height, margin, bold font, padding, border)
 	&__toggle,
 	&__remove {
 		display: inline-flex;
 		align-items: center;
-		gap: 4px;
-		border: none;
-		background: none;
-		color: inherit;
-		cursor: pointer;
+		margin: 0;
 		min-height: 0;
+		height: $chip-height;
+		border: none;
+		background: transparent;
+		color: inherit;
+		font: inherit;
+		font-weight: normal;
+		line-height: $chip-height;
+		cursor: pointer;
 	}
 
 	&__toggle {
-		padding: 2px 4px 2px 10px;
+		gap: 6px;
+		padding: 0 4px 0 10px;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+		border-radius: var(--border-radius-pill) 0 0 var(--border-radius-pill);
+	}
+
+	span.filter-bar__toggle {
+		cursor: default;
 	}
 
 	&__remove {
-		padding: 2px 8px 2px 2px;
+		justify-content: center;
+		flex: 0 0 auto;
+		width: 22px;
+		height: 22px;
+		margin-inline-end: 3px;
+		padding: 0;
+		border-radius: 50%;
+		opacity: .6;
+
+		&:hover,
+		&:focus-visible {
+			opacity: 1;
+			background: var(--color-background-hover);
+		}
+	}
+
+	&__toggle:focus-visible {
+		outline: 2px solid var(--color-primary-element);
+		outline-offset: 1px;
 	}
 
 	&__name--excluded {
