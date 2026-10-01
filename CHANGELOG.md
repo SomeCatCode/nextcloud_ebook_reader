@@ -18,7 +18,7 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 ### Behoben
 - CBR-Comics bekommen ein Vorschaubild: serverseitig, wenn `7z`, `unrar` oder `bsdtar` installiert ist, sonst erzeugt es der Browser beim ersten Öffnen.
 
-## [0.1.3] - 2026-10-01
+## 0.1.3 – 2026-10-01
 
 ### Hinzugefügt
 - CBZ-Comics werden seitenweise vom Server geladen, auf Bildschirmgröße verkleinert und serverseitig zwischengespeichert. Der Cache wird nach 30 Tagen aufgeräumt.
@@ -31,7 +31,7 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 - Der Reader liegt nicht mehr unter der Nextcloud-Kopfleiste. Werkzeugleiste und Fortschrittsleiste verdecken die Seite nicht mehr.
 - Navigation und Seitenaufbau bei Comics funktionieren in Chrome.
 
-## [0.1.2] - 2026-09-30
+## 0.1.2 – 2026-09-30
 
 ### Behoben
 - Unformatierte Oberfläche: Die CSS-Dateien der App wurden nicht geladen.
@@ -39,13 +39,8 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 - „Bibliothek scannen“ indexiert sofort (bis zu 20 Sekunden pro Klick) statt nur Hintergrundjobs anzulegen. Danach lädt die Liste neu. Speichern der Einstellungen startet einen Scan.
 - Bücher, die aus der Bibliothek verschwunden und wieder aufgetaucht sind, werden wieder aufgenommen.
 
-## [0.1.1] - 2026-09-30
+## 0.1.1 – 2026-09-30
 
 ### Hinzugefügt
 - Erste veröffentlichte Version: Bibliothek mit Genres, Tags, Suche und Filtern, Reader für EPUB, MOBI, AZW3, FB2, CBZ und CBR auf Basis von foliate-js, serverseitig synchronisierter Lesefortschritt, Editor für Metadaten, Cover, Kapitel/Seiten und Inhaltsverzeichnis (EPUB, CBZ, FB2), REST-API mit OpenAPI-Beschreibung, Integration in Files und Viewer.
 - Release-Pipeline über GitHub Actions.
-
-[Unreleased]: https://github.com/SomeCatCode/nextcloud_ebook_reader/compare/v0.1.3...HEAD
-[0.1.3]: https://github.com/SomeCatCode/nextcloud_ebook_reader/compare/v0.1.2...v0.1.3
-[0.1.2]: https://github.com/SomeCatCode/nextcloud_ebook_reader/compare/v0.1.1...v0.1.2
-[0.1.1]: https://github.com/SomeCatCode/nextcloud_ebook_reader/releases/tag/v0.1.1

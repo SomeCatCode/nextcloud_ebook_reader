@@ -79,10 +79,13 @@ jobs:
       # GitHub's generated commit list is appended below it.
       - name: Release notes from CHANGELOG.md
         run: |
-          awk -v v="${{ steps.version.outputs.version }}" '
-            index($0, "## [" v "]") == 1 { found=1; next }
-            found && /^## \[/ { exit }
-            found && /^\[[^]]+\]: / { exit }
+          # Headings follow the App Store parser: "## 1.2.3 ..." for releases, "## [Unreleased]" for pre-releases
+          SECTION="${{ steps.version.outputs.version }}"
+          if [ "${{ steps.version.outputs.prerelease }}" = "true" ]; then SECTION="[Unreleased]"; fi
+          awk -v v="$SECTION" '
+            !found && index($0, "## " v) == 1 { rest = substr($0, length("## " v) + 1); if (rest == "" || rest ~ /^[ \t]/) { found=1; next } }
+            !found && index($0, "## [" v "]") == 1 { found=1; next }
+            found && /^## / { exit }
             found { print }
           ' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
           if [ ! -s "$RUNNER_TEMP/notes.md" ] || ! grep -q '[^[:space:]]' "$RUNNER_TEMP/notes.md"; then
