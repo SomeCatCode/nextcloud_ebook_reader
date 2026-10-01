@@ -91,12 +91,12 @@ final class EpubEditor implements BookEditorInterface {
 	}
 
 	#[\Override]
-	public function write(string $srcPath, string $dstPath, EditRequest $req): array {
+	public function write(string $srcPath, string $dstPath, EditRequest $req, ?callable $progress = null): array {
 		$zip = EditorUtil::openZip($srcPath);
 		$writer = null;
 		try {
 			if ($req->isMetadataOnly()) {
-				return $this->writeMetadataOnly($zip, $dstPath, $req);
+				return $this->writeMetadataOnly($zip, $srcPath, $dstPath, $req, $progress);
 			}
 			$pkg = $this->loadPackage($zip);
 			$warnings = [];
@@ -197,10 +197,13 @@ final class EpubEditor implements BookEditorInterface {
 			}
 
 			// write
+			EditorUtil::report($progress, 0, 1, 'Preparing');
 			$writer = new ZipWriter($dstPath);
 			$mime = EditorUtil::readEntry($zip, 'mimetype', 1024);
 			$writer->addString('mimetype', $mime !== null && trim($mime) !== '' ? trim($mime) : 'application/epub+zip', true);
-			for ($i = 0; $i < $zip->numFiles; $i++) {
+			$numFiles = $zip->numFiles;
+			for ($i = 0; $i < $numFiles; $i++) {
+				EditorUtil::report($progress, $i + 1, $numFiles, 'Writing entry');
 				$name = (string)$zip->getNameIndex($i);
 				if ($name === 'mimetype' || str_ends_with($name, '/') || !EditorUtil::isSafeName($name) || isset($removedAll[$name])) {
 					continue;
@@ -214,6 +217,7 @@ final class EpubEditor implements BookEditorInterface {
 			foreach ($extraFiles as $path => $data) {
 				$writer->addString($path, $data);
 			}
+			EditorUtil::report($progress, 1, 1, 'Finalizing archive');
 			$writer->close();
 			$writer = null;
 
@@ -240,43 +244,40 @@ final class EpubEditor implements BookEditorInterface {
 	}
 
 	/**
-	 * Metadata-only fast path: every entry is copied unchanged, only the package document (OPF) is replaced.
-	 * Spine, manifest, table of contents and resources are not looked at.
+	 * Metadata-only fast path: the source is copied as a file and only the package document (OPF) is replaced in the
+	 * copy (deflate; mimetype and every other entry are copied raw by libzip, without recompression). Spine, manifest,
+	 * table of contents and resources are not looked at.
 	 *
+	 * @param ?callable(float, string): void $progress
 	 * @return array{warnings: list<string>, itemMap: array<string, ?string>}
 	 */
-	private function writeMetadataOnly(ZipArchive $zip, string $dstPath, EditRequest $req): array {
+	private function writeMetadataOnly(ZipArchive $zip, string $srcPath, string $dstPath, EditRequest $req, ?callable $progress = null): array {
 		$pkg = $this->loadPackage($zip);
 		$this->applyMetadata($pkg, $req->metadata ?? []);
 		$opf = (string)$pkg->dom->saveXML();
 		if (!EditorUtil::isWellFormed($opf)) {
 			throw new EditorException('The rewritten package document is not well-formed.', 500);
 		}
-		$writer = new ZipWriter($dstPath);
-		try {
-			$mime = EditorUtil::readEntry($zip, 'mimetype', 1024);
-			$writer->addString('mimetype', $mime !== null && trim($mime) !== '' ? trim($mime) : 'application/epub+zip', true);
-			for ($i = 0; $i < $zip->numFiles; $i++) {
-				$name = (string)$zip->getNameIndex($i);
-				if ($name === 'mimetype' || str_ends_with($name, '/') || !EditorUtil::isSafeName($name)) {
-					continue;
-				}
-				if ($name === $pkg->opfPath) {
-					$writer->addString($name, $opf);
-					continue;
-				}
-				$writer->copyFrom($zip, $name);
+		$unsafe = [];
+		for ($i = 0; $i < $zip->numFiles; $i++) {
+			$name = (string)$zip->getNameIndex($i);
+			if ($name !== '' && !str_ends_with($name, '/') && !EditorUtil::isSafeName($name)) {
+				$unsafe[] = $name;
 			}
-			$writer->close();
-		} catch (\Throwable $e) {
-			$writer->abort();
-			throw $e;
 		}
-		$check = EditorUtil::openZip($dstPath);
+		EditorUtil::report($progress, 0, 1, 'Copying file');
+		EditorUtil::replaceInCopy($srcPath, $dstPath, $pkg->opfPath, $opf, $unsafe);
+		EditorUtil::report($progress, 1, 1, 'Verifying file');
 		try {
-			$this->loadPackage($check);
-		} finally {
-			$check->close();
+			$check = EditorUtil::openZip($dstPath);
+			try {
+				$this->loadPackage($check);
+			} finally {
+				$check->close();
+			}
+		} catch (\Throwable $e) {
+			@unlink($dstPath);
+			throw $e;
 		}
 		return ['warnings' => [], 'itemMap' => []];
 	}

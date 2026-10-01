@@ -1897,6 +1897,11 @@
                                         "type": "boolean",
                                         "default": false,
                                         "description": "Move the original to the trash after a successful conversion"
+                                    },
+                                    "async": {
+                                        "type": "boolean",
+                                        "default": false,
+                                        "description": "Validate synchronously, then convert in the background and return a task id (poll GET /api/v1/tasks/{taskId})"
                                     }
                                 }
                             }
@@ -1928,6 +1933,39 @@
                 "responses": {
                     "200": {
                         "description": "Converted, the new book is returned",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "additionalProperties": {
+                                                        "type": "object"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "202": {
+                        "description": "Accepted, the conversion runs as a task (async = true)",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -2740,6 +2778,11 @@
                                                 "type": "object"
                                             }
                                         }
+                                    },
+                                    "async": {
+                                        "type": "boolean",
+                                        "default": false,
+                                        "description": "Validate synchronously, then save in the background and return a task id (poll GET /api/v1/tasks/{taskId})"
                                     }
                                 }
                             }
@@ -2771,6 +2814,39 @@
                 "responses": {
                     "200": {
                         "description": "Saved",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "additionalProperties": {
+                                                        "type": "object"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "202": {
+                        "description": "Accepted, the save runs as a task (async = true)",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -6615,16 +6691,259 @@
                     }
                 }
             }
+        },
+        "/ocs/v2.php/apps/ebookreader/api/v1/tasks/{taskId}": {
+            "get": {
+                "operationId": "task-show",
+                "summary": "State of one task",
+                "tags": [
+                    "task"
+                ],
+                "security": [
+                    {
+                        "bearer_auth": []
+                    },
+                    {
+                        "basic_auth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "taskId",
+                        "in": "path",
+                        "description": "Task id returned by the save/convert call",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int64"
+                        }
+                    },
+                    {
+                        "name": "OCS-APIRequest",
+                        "in": "header",
+                        "description": "Required to be true for the API request to pass",
+                        "required": true,
+                        "schema": {
+                            "type": "boolean",
+                            "default": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Task returned",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "additionalProperties": {
+                                                        "type": "object"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such task (or not yours)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "additionalProperties": {
+                                                        "type": "object"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Current user is not logged in",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/ocs/v2.php/apps/ebookreader/api/v1/tasks": {
+            "get": {
+                "operationId": "task-index",
+                "summary": "Tasks of the user, e.g. the running and queued ones for a hint after a page reload",
+                "tags": [
+                    "task"
+                ],
+                "security": [
+                    {
+                        "bearer_auth": []
+                    },
+                    {
+                        "basic_auth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "active",
+                        "in": "query",
+                        "description": "Only queued and running tasks (always the case; finished tasks are only available by id)",
+                        "schema": {
+                            "type": "boolean",
+                            "default": true
+                        }
+                    },
+                    {
+                        "name": "OCS-APIRequest",
+                        "in": "header",
+                        "description": "Required to be true for the API request to pass",
+                        "required": true,
+                        "schema": {
+                            "type": "boolean",
+                            "default": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Tasks returned",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "required": [
+                                                        "tasks"
+                                                    ],
+                                                    "properties": {
+                                                        "tasks": {
+                                                            "type": "array",
+                                                            "items": {
+                                                                "type": "object",
+                                                                "additionalProperties": {
+                                                                    "type": "object"
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Current user is not logged in",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "tags": [
         {
-            "name": "convert",
-            "description": "Format conversion of comics (CBZ, CB7, CBT, CBR as source, EPUB as fixed layout target)."
-        },
-        {
-            "name": "editor",
-            "description": "Editor endpoints: structure, save, metadata patch, bulk tagging, rename."
+            "name": "archive",
+            "description": "Entry list (names and sizes) of a ZIP based book (EPUB, CBZ, FBZ). The reader uses it to fetch single entries through /item/{fileId} instead of downloading the whole file."
         },
         {
             "name": "comic",
@@ -6637,6 +6956,18 @@
         {
             "name": "item",
             "description": "Serves a raw zip entry (comic page thumbnails etc.) of a CBZ or EPUB for the editor."
+        },
+        {
+            "name": "convert",
+            "description": "Format conversion of comics (CBZ, CB7, CBT, CBR as source, EPUB as fixed layout target)."
+        },
+        {
+            "name": "editor",
+            "description": "Editor endpoints: structure, save, metadata patch, bulk tagging, rename."
+        },
+        {
+            "name": "task",
+            "description": "Status of asynchronous edit/convert tasks. Only the owner of a task can see it."
         }
     ]
 }

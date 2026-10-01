@@ -51,8 +51,6 @@ class EditorService {
 	/** Capabilities of the formats this app can write (static, so the metadata part needs no file access). */
 	private const WRITABLE_CAPABILITIES = ['metadata' => true, 'cover' => true, 'content' => true, 'toc' => true, 'writesFile' => true];
 	private const DB_ONLY_CAPABILITIES = ['metadata' => true, 'cover' => false, 'content' => false, 'toc' => false, 'writesFile' => false];
-	/** Encrypted storage must always be read through the file API (the local file holds ciphertext). */
-	private const ENCRYPTION_WRAPPER = '\\OC\\Files\\Storage\\Wrapper\\' . 'Encryption';
 	public const PARTS = ['all', 'metadata'];
 	private const METADATA_KEYS = ['title', 'authors', 'series', 'seriesIndex', 'description', 'language', 'publisher', 'isbn', 'publishedAt', 'genres', 'tags'];
 
@@ -72,6 +70,7 @@ class EditorService {
 		private IFilenameValidator $filenameValidator,
 		private LoggerInterface $logger,
 		private IJobList $jobList,
+		private ArchiveCache $archiveCache,
 	) {
 		$this->editors = [new EpubEditor(), new CbzEditor(), new Fb2Editor()];
 	}
@@ -113,13 +112,11 @@ class EditorService {
 		if ($writable) {
 			$this->assertSize($file);
 			$editor = $this->editorFor($format);
-			[$path, $isTemp] = $this->localSource($file);
+			$path = $this->archiveCache->localPath($file);
 			try {
 				$structure = $editor->readStructure($path, $format);
 			} finally {
-				if ($isTemp) {
-					@unlink($path);
-				}
+				$this->archiveCache->release($path);
 			}
 			$editable = $file->isUpdateable();
 		} else {
@@ -150,11 +147,15 @@ class EditorService {
 	}
 
 	/**
+	 * Everything that can be checked without touching the file content: format, etag, permissions, size, request
+	 * shape. Used synchronously before an asynchronous save is queued, and at the start of save().
+	 *
 	 * @param array<string, mixed> $request EditRequest as array
-	 * @return array{book: Book, warnings: list<string>}
-	 * @throws EditConflictException
+	 * @return array{0: File, 1: string, 2: EditRequest, 3: array<string, mixed>} file, format, normalized request, metadata patch
+	 * @throws EditorException
+	 * @throws NotFoundException
 	 */
-	public function save(string $userId, int $fileId, array $request): array {
+	private function checkSave(string $userId, int $fileId, array $request): array {
 		$file = $this->library->getFileForUser($userId, $fileId);
 		$format = $this->formatOf($file);
 		if (!in_array($format, self::WRITABLE, true)) {
@@ -172,6 +173,32 @@ class EditorService {
 			$req = $this->withNormalizedMetadata($req);
 			$patch = $this->normalizePatch($req->metadata);
 		}
+		if (!$req->saveAsCopy && !$file->isUpdateable()) {
+			throw new EditForbiddenException('Die Datei ist schreibgeschützt. Speichere stattdessen eine Kopie.');
+		}
+		$this->assertSize($file);
+		return [$file, $format, $req, $patch];
+	}
+
+	/**
+	 * Synchronous part of an asynchronous save: throws the same errors save() would throw before it starts writing.
+	 *
+	 * @param array<string, mixed> $request EditRequest as array
+	 * @throws EditorException
+	 * @throws NotFoundException
+	 */
+	public function validateSave(string $userId, int $fileId, array $request): void {
+		$this->checkSave($userId, $fileId, $request);
+	}
+
+	/**
+	 * @param array<string, mixed> $request EditRequest as array
+	 * @param ?callable(float, string): void $progress optional progress callback
+	 * @return array{book: Book, warnings: list<string>}
+	 * @throws EditConflictException
+	 */
+	public function save(string $userId, int $fileId, array $request, ?callable $progress = null): array {
+		[$file, $format, $req, $patch] = $this->checkSave($userId, $fileId, $request);
 		$pending = $this->jobList->has(WriteMetadataJob::class, WriteMetadataJob::argument($userId, $fileId));
 		if ($pending) {
 			// edits that are only in the database so far must not get lost: the request patch goes on top of them
@@ -188,7 +215,7 @@ class EditorService {
 				);
 			}
 		}
-		$result = $this->write($userId, $file, $format, $req);
+		$result = $this->write($userId, $file, $format, $req, $progress);
 		if ($pending && !$req->saveAsCopy) {
 			$this->jobList->remove(WriteMetadataJob::class, WriteMetadataJob::argument($userId, $fileId));
 		}
@@ -270,13 +297,11 @@ class EditorService {
 			return false;
 		}
 
-		[$path, $isTemp] = $this->localSource($file);
+		$path = $this->archiveCache->localPath($file);
 		try {
 			$fileMeta = $this->metadata->extractLocal($path, $format, $file->getName());
 		} finally {
-			if ($isTemp) {
-				@unlink($path);
-			}
+			$this->archiveCache->release($path);
 		}
 		$fromFile = [
 			'title' => $fileMeta->title,
@@ -450,9 +475,10 @@ class EditorService {
 	// ------------------------------------------------------------------ internals
 
 	/**
+	 * @param ?callable(float, string): void $progress
 	 * @return array{book: Book, warnings: list<string>}
 	 */
-	private function write(string $userId, File $file, string $format, EditRequest $req): array {
+	private function write(string $userId, File $file, string $format, EditRequest $req, ?callable $progress = null): array {
 		if (!$req->saveAsCopy && !$file->isUpdateable()) {
 			throw new EditForbiddenException('Die Datei ist schreibgeschützt. Speichere stattdessen eine Kopie.');
 		}
@@ -460,7 +486,7 @@ class EditorService {
 		$editor = $this->editorFor($format);
 		$fileId = $file->getId();
 
-		$tmpSrc = null;
+		$src = null;
 		$dst = null;
 		$lock = new \ArrayObject(['held' => 0]);
 		try {
@@ -472,16 +498,26 @@ class EditorService {
 			}
 			$this->assertEtag($userId, $fileId, $req->etag);
 
-			[$src, $srcIsTemp] = $this->localSource($file);
-			$tmpSrc = $srcIsTemp ? $src : null;
+			if ($progress !== null) {
+				$progress(0.0, 'Preparing');
+			}
+			$src = $this->archiveCache->localPath($file);
 			$dst = $this->tempManager->getTemporaryFile('.' . $format);
 			if ($dst === false) {
 				throw new EditorException('Cannot create a temporary file.', 500);
 			}
-			$result = $editor->write($src, $dst, $req);
-			if ($tmpSrc !== null) {
-				@unlink($tmpSrc);
-				$tmpSrc = null;
+			// the editor reports 0..1; the last part of the bar is for verification and saving
+			$editorProgress = $progress === null ? null : static function (float $fraction, string $step) use ($progress): void {
+				$progress($fraction * 0.9, $step);
+			};
+			try {
+				$result = $editor->write($src, $dst, $req, $editorProgress);
+			} finally {
+				$this->archiveCache->release($src);
+				$src = null;
+			}
+			if ($progress !== null) {
+				$progress(0.92, 'Verifying file');
 			}
 
 			// verify with the regular extractor
@@ -507,6 +543,9 @@ class EditorService {
 
 			// last check right before writing; putContent takes the exclusive lock itself
 			$this->assertEtag($userId, $fileId, $req->etag);
+			if ($progress !== null) {
+				$progress(0.96, 'Saving file');
+			}
 			$stream = fopen($dst, 'rb');
 			if ($stream === false) {
 				throw new EditorException('Cannot read the temporary file.', 500);
@@ -532,10 +571,11 @@ class EditorService {
 				} catch (\Throwable) {
 				}
 			}
-			foreach ([$tmpSrc, $dst] as $t) {
-				if (is_string($t) && $t !== '') {
-					@unlink($t);
-				}
+			if ($src !== null) {
+				$this->archiveCache->release($src);
+			}
+			if (is_string($dst) && $dst !== '') {
+				@unlink($dst);
 			}
 		}
 	}
@@ -566,47 +606,6 @@ class EditorService {
 		if ((string)$fresh->getEtag() !== $etag) {
 			throw new EditConflictException('Die Datei wurde zwischenzeitlich geändert.');
 		}
-	}
-
-	/**
-	 * Local path of the file content for reading. On local storage without an encryption wrapper this is the file
-	 * itself (no copy; must not be deleted), otherwise a temporary copy the caller has to delete.
-	 *
-	 * @return array{0: string, 1: bool} path and whether it is a temporary copy
-	 */
-	private function localSource(File $file): array {
-		$storage = $file->getStorage();
-		if ($storage->isLocal() && !$storage->instanceOfStorage(self::ENCRYPTION_WRAPPER)) {
-			$local = $storage->getLocalFile($file->getInternalPath());
-			if (is_string($local) && $local !== '' && is_file($local)) {
-				return [$local, false];
-			}
-		}
-		return [$this->download($file), true];
-	}
-
-	private function download(File $file): string {
-		$tmp = $this->tempManager->getTemporaryFile('.' . $this->safeExt($file->getName()));
-		if ($tmp === false) {
-			throw new EditorException('Cannot create a temporary file.', 500);
-		}
-		$in = $file->fopen('r');
-		$out = fopen($tmp, 'wb');
-		if ($in === false || $out === false) {
-			throw new EditorException('Die Datei kann nicht gelesen werden.', 500);
-		}
-		try {
-			stream_copy_to_stream($in, $out);
-		} finally {
-			fclose($in);
-			fclose($out);
-		}
-		return $tmp;
-	}
-
-	private function safeExt(string $name): string {
-		$e = strtolower(pathinfo($name, PATHINFO_EXTENSION));
-		return preg_match('/^[a-z0-9]{1,5}$/', $e) === 1 ? $e : 'bin';
 	}
 
 	private function maxBytes(): int {

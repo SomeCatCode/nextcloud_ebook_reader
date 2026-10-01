@@ -6,9 +6,10 @@
  * Equivalent of foliate-js view.js `makeBook`, but format driven (no sniffing by file name)
  * and with CBR/CB7/CBT support. foliate-js modules are imported lazily.
  */
-import type { ReaderFormat, ReaderLayout, ReaderOptions, ReaderSource, RemoteComicSource } from './types.ts'
+import type { ReaderFormat, ReaderLayout, ReaderOptions, ReaderSource, RemoteComicSource, RemoteZipSource } from './types.ts'
 
 import { makeArchiveLoader } from './comic-rar.ts'
+import { makeRemoteZipLoader } from './remote-zip.ts'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type FoliateBook = any
@@ -39,6 +40,13 @@ async function makeZipLoader(file: Blob): Promise<ZipLoader> {
 }
 
 const PREFETCH_PAGES = 2
+
+/**
+ * @param source
+ */
+export function isRemoteZip(source: ReaderSource): source is RemoteZipSource {
+	return (source as RemoteZipSource).kind === 'remote-zip'
+}
 
 /**
  * @param source
@@ -100,7 +108,7 @@ const FONT_OBFUSCATION = ['http://www.idpf.org/2008/embedding', 'http://ns.adobe
 /**
  * @param loader
  */
-async function epubHasDrm(loader: ZipLoader): Promise<boolean> {
+async function epubHasDrm(loader: Pick<ZipLoader, 'loadText'>): Promise<boolean> {
 	if (await loader.loadText('META-INF/rights.xml')) {
 		return true
 	}
@@ -166,6 +174,23 @@ async function openBookUnchecked(source: ReaderSource, format: ReaderFormat, opt
 		}
 		book.dir = layout.comicRtl ? 'rtl' : 'ltr'
 		return { book, isComic: true, close: () => book.destroy?.() }
+	}
+	if (isRemoteZip(source)) {
+		const loader = makeRemoteZipLoader(source)
+		if (format === 'epub') {
+			if (await epubHasDrm(loader)) {
+				throw new ReaderError('drm', 'DRM protected EPUB')
+			}
+			const { EPUB } = await import('../vendor/foliate-js/epub.js')
+			return { book: await new EPUB(loader).init(), isComic: false, close: () => {} }
+		}
+		if (format === 'fbz') {
+			const { makeFB2 } = await import('../vendor/foliate-js/fb2.js')
+			const entry = loader.entries.find((e) => e.filename.endsWith('.fb2')) ?? loader.entries[0]
+			const blob = await loader.loadBlob(entry.filename)
+			return { book: await makeFB2(blob), isComic: false, close: () => {} }
+		}
+		throw new ReaderError('unsupported', `Remote ZIP source is not supported for ${format}`)
 	}
 	const file = source
 	const name = (file as File).name ?? `book.${format}`

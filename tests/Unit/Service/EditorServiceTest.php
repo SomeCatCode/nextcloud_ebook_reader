@@ -15,6 +15,7 @@ use OCA\EbookReader\Db\BookMapper;
 use OCA\EbookReader\Db\Tag;
 use OCA\EbookReader\Metadata\BookMetadata;
 use OCA\EbookReader\Metadata\MetadataService;
+use OCA\EbookReader\Service\ArchiveCache;
 use OCA\EbookReader\Service\EditorService;
 use OCA\EbookReader\Service\LibraryService;
 use OCA\EbookReader\Service\ProgressService;
@@ -71,6 +72,7 @@ class EditorServiceTest extends TestCase {
 			$this->createMock(IFilenameValidator::class),
 			$this->createMock(LoggerInterface::class),
 			$this->jobList,
+			new ArchiveCache($this->tempManager, $appConfig, $this->createMock(LoggerInterface::class)),
 		);
 	}
 

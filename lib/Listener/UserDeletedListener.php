@@ -12,6 +12,7 @@ namespace OCA\EbookReader\Listener;
 use OCA\EbookReader\Db\BookMapper;
 use OCA\EbookReader\Db\ProgressMapper;
 use OCA\EbookReader\Db\TagMapper;
+use OCA\EbookReader\Db\TaskMapper;
 use OCA\EbookReader\Service\CoverService;
 use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
@@ -29,6 +30,7 @@ class UserDeletedListener implements IEventListener {
 		private BookMapper $bookMapper,
 		private TagMapper $tagMapper,
 		private ProgressMapper $progressMapper,
+		private TaskMapper $taskMapper,
 		private CoverService $covers,
 		private IAppData $appData,
 		private LoggerInterface $logger,
@@ -52,6 +54,7 @@ class UserDeletedListener implements IEventListener {
 		}
 		$this->step($userId, 'delete books', fn () => $this->bookMapper->deleteByUser($userId));
 		$this->step($userId, 'delete progress', fn () => $this->progressMapper->deleteByUser($userId));
+		$this->step($userId, 'delete tasks', fn () => $this->taskMapper->deleteByUser($userId));
 
 		// Covers and comic page caches are shared between users of the same file: only drop them when nobody else has an active row.
 		$orphans = [];

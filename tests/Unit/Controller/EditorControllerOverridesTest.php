@@ -15,6 +15,7 @@ use OCA\EbookReader\Editor\InvalidEditRequestException;
 use OCA\EbookReader\Http\BookSerializer;
 use OCA\EbookReader\Service\EditorService;
 use OCA\EbookReader\Service\LibraryService;
+use OCA\EbookReader\Service\TaskService;
 use OCP\AppFramework\Http;
 use OCP\IRequest;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -37,6 +38,7 @@ class EditorControllerOverridesTest extends TestCase {
 			$this->createMock(LibraryService::class),
 			$this->serializer,
 			$this->createMock(LoggerInterface::class),
+			$this->createMock(TaskService::class),
 		);
 	}
 

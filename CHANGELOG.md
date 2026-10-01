@@ -10,13 +10,23 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 - In der App geänderte Metadaten (Titel, Autoren, Serie, Beschreibung usw.) bleiben erhalten, wenn die Datei sich ändert oder neu eingelesen wird. Das gilt für MOBI, AZW3, CBR, CB7, CBT und für den Modus „nie“. In der Detailansicht steht „in der App geändert“ mit der Aktion „Wert aus Datei übernehmen“.
 - Bücher löschen, einzeln in der Detailansicht oder für eine Auswahl, mit Bestätigungsdialog. Die Dateien landen im Nextcloud-Papierkorb und lassen sich wiederherstellen.
 - Fortschrittsdialog beim Speichern im Editor: Upload-Fortschritt, Verarbeitung auf dem Server, vergangene Zeit.
+- Speichern im Editor und Konvertierungen auf dem Server laufen als Hintergrundaufgabe mit echtem Fortschritt (Schritt und Fortschrittsbalken). Die Seite darf währenddessen verlassen werden, die Aufgabe läuft auf dem Server weiter.
+- Die Bibliothek zeigt einen Hinweis mit Fortschritt, solange Aufgaben auf dem Server laufen, auch nach einem Neuladen der Seite.
+- Vor Browser-Fallbacks, die eine große Datei (über 50 MB) vollständig herunterladen (Reader für CBR/CB7/CBT ohne Server-Seiten, Konvertierung im Browser, CBR in CBZ im Editor), erscheint eine Bestätigung.
+- Lokaler Archiv-Cache (`archive_cache_mb`, Standard 2048 MB) für Bücher auf WebDAV-, SMB-, S3- oder verschlüsseltem Speicher: jede Dateiversion wird höchstens einmal kopiert und von Reader, Editor, Konvertierung und Einlesen gemeinsam genutzt. Auf lokalem, unverschlüsseltem Speicher wird gar nichts kopiert.
+- Neuer Endpunkt `/apps/ebookreader/archive/{fileId}/entries` mit der Eintragsliste von EPUB, CBZ und FBZ; `/item` liefert jetzt auch FBZ und erlaubt mindestens 1200 Anfragen pro Minute.
+- README-Abschnitt „Große Bibliotheken / große Dateien“: Cron, `occ background-job:worker` mit systemd-Beispiel, `archive_cache_mb`, `async_inline`, `max_edit_size_mb` und die Installation von 7z.
 
 ### Geändert
+- Der Reader lädt EPUB- und FBZ-Dateien nicht mehr vollständig herunter, sondern liest nur die benötigten Einträge vom Server (mit Cache von ca. 50 MB im Browser). Schlägt das fehl, wird wie bisher die ganze Datei geladen. Der DRM-Check und die Absicherung der Kapitel bleiben unverändert.
 - Das Ändern von Metadaten (z. B. ein einzelnes Tag) lädt große CBZ/EPUB/FB2-Dateien nicht mehr vollständig herunter, schreibt sie neu und lädt sie wieder hoch. Ohne tatsächliche Änderung wird gar nichts geschrieben, sonst im Hintergrund oder nach Einstellung.
 - Der Editor öffnet den Metadaten-Tab sofort aus der Bibliothek, ohne die Datei zu kopieren. Seiten, Inhalt und Inhaltsverzeichnis werden erst beim Öffnen des jeweiligen Tabs geladen.
 - Reine Metadaten-Änderungen im Editor behalten die Seitennamen von Comics bei und kopieren alle anderen Einträge unverändert; nur ComicInfo.xml, die OPF-Datei bzw. die FB2-Beschreibung werden ersetzt.
 - Auf lokalem Speicher liest der Server Bücher direkt von der Datei, statt sie vorher in eine temporäre Datei zu kopieren.
 - Das erneute Einlesen einer Datei überschreibt keine Metadaten, die noch auf das Schreiben in die Datei warten.
+- Aufgaben (Speichern, Konvertieren) laufen nach der Antwort im selben PHP-Prozess (bei FPM) und zusätzlich als Hintergrundjob als Ersatz; fertige Aufgaben werden nach 24 Stunden gelöscht. Mit `async_inline=false` läuft nur der Hintergrundjob.
+- Reine Metadaten-Änderungen bei CBZ und EPUB kopieren die Datei und ersetzen nur `ComicInfo.xml` bzw. die OPF-Datei; alle anderen Einträge werden roh übernommen (keine Neukomprimierung, gleiche Größe und Prüfsumme).
+- Der manuelle Scan indiziert nur Dateien bis 50 MB direkt, größere Dateien laufen immer als Hintergrundjob.
 
 ### Behoben
 - Nach dem Löschen oder Umsortieren von Comic-Seiten zeigte der Editor noch die alten Seitenbilder aus dem Browser-Cache. Die Vorschau-URLs sind jetzt an die Dateiversion gebunden.

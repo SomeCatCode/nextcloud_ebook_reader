@@ -125,20 +125,25 @@
 						size="medium" />
 					<NcLoadingIcon v-else :size="28" class="convert__center" />
 				</template>
-				<template v-else>
-					<NcLoadingIcon :size="28" class="convert__center" />
-					<p class="convert__muted">
-						{{ t('ebookreader', 'The server is converting the comic. This can take a while for large files.') }}
-					</p>
-				</template>
+				<TaskProgress
+					v-else
+					:progress="task?.progress ?? 0"
+					:step="task?.step"
+					:status="task?.status"
+					:hint="t('ebookreader', 'The server is converting the comic. You can close this dialog, the conversion keeps running on the server.')" />
 			</template>
 		</div>
 	</NcDialog>
+	<LargeDownloadDialog
+		v-if="largeDownload.pending.value"
+		:sizeBytes="largeDownload.pending.value.size"
+		@confirm="largeDownload.answer(true)"
+		@cancel="largeDownload.answer(false)" />
 </template>
 
 <script setup lang="ts">
 import type { ConvertFormat, ConvertMode, ConvertStep, ConvertTarget } from '../../convert/types.ts'
-import type { Book } from '../../types.ts'
+import type { Book, Task } from '../../types.ts'
 
 import { mdiCheckCircle, mdiCircleOutline } from '@mdi/js'
 import { showError, showSuccess, showWarning } from '@nextcloud/dialogs'
@@ -151,10 +156,16 @@ import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcProgressBar from '@nextcloud/vue/components/NcProgressBar'
+import LargeDownloadDialog from '../common/LargeDownloadDialog.vue'
+import TaskProgress from '../common/TaskProgress.vue'
 import { convertInBrowser } from '../../convert/clientConvert.ts'
-import { ConvertError, convertOnServer, getTargets } from '../../convert/convertApi.ts'
+import { ConvertError, getTargets } from '../../convert/convertApi.ts'
 import { comparisonRows, FORMAT_KEYS, formatInfo, isConvertFormat, translateReason } from '../../convert/formats.ts'
 import { defaultTarget, isRecommended } from '../../convert/targets.ts'
+import { ApiError, ConflictError, convertAsync } from '../../services/api.ts'
+import { DownloadDeclinedError, ensureDownloadConfirmed } from '../../services/largeDownload.ts'
+import { pollTask, TaskFailedError } from '../../services/tasks.ts'
+import { useLargeDownloadConfirm } from '../../services/useLargeDownloadConfirm.ts'
 
 const props = defineProps<{ book: Book }>()
 const emit = defineEmits<{
@@ -172,6 +183,8 @@ const error = ref('')
 const mode = ref<ConvertMode>('server')
 const step = ref<ConvertStep | null>(null)
 const progress = ref({ done: 0, total: 0 })
+const task = ref<Task | null>(null)
+const largeDownload = useLargeDownloadConfirm()
 let abort: AbortController | null = null
 
 const busy = computed(() => phase.value === 'running')
@@ -197,7 +210,6 @@ const buttons = computed(() => [
 	{
 		label: busy.value && mode.value === 'client' ? t('ebookreader', 'Cancel conversion') : t('ebookreader', 'Close'),
 		variant: 'tertiary' as const,
-		disabled: busy.value && mode.value === 'server',
 		callback: (): void => {
 			requestClose()
 		},
@@ -230,12 +242,10 @@ function stepState(key: ConvertStep): 'done' | 'active' | 'todo' {
 	return idx < now ? 'done' : idx === now ? 'active' : 'todo'
 }
 
-/** Closing while a browser conversion runs cancels it; a server conversion cannot be interrupted. */
+/** Closing while a browser conversion runs cancels it; a server conversion keeps running on the server. */
 function requestClose(): void {
-	if (busy.value) {
-		if (mode.value === 'client') {
-			abort?.abort()
-		}
+	if (busy.value && mode.value === 'client') {
+		abort?.abort()
 		return
 	}
 	emit('close')
@@ -245,16 +255,21 @@ function requestClose(): void {
  * @param e
  */
 function describe(e: unknown): string {
-	if (e instanceof ConvertError && e.status === 409) {
+	const status = e instanceof ConvertError || e instanceof ApiError
+		? e.status
+		: e instanceof ConflictError
+			? 409
+			: e instanceof TaskFailedError ? e.code : undefined
+	if (status === 409) {
 		return t('ebookreader', 'A file with the name of the converted comic already exists. Rename or remove it first.')
 	}
-	if (e instanceof ConvertError && e.status === 403) {
+	if (status === 403) {
 		return t('ebookreader', 'You are not allowed to create the converted file in this folder.')
 	}
-	if (e instanceof ConvertError && e.status === 413) {
+	if (status === 413) {
 		return t('ebookreader', 'The file is too large to convert on the server. Try again to use the browser.')
 	}
-	if (e instanceof ConvertError && e.status === 422) {
+	if (status === 422) {
 		return t('ebookreader', 'The comic could not be read. The file may be damaged.')
 	}
 	return e instanceof Error && e.message ? e.message : t('ebookreader', 'The conversion failed.')
@@ -275,8 +290,22 @@ async function run(): Promise<void> {
 	try {
 		let fileId: number
 		if (target.mode === 'server') {
-			fileId = (await convertOnServer(props.book.fileId, target.format, deleteOriginal.value)).fileId
+			task.value = null
+			const started = await convertAsync<{ fileId: number }>(props.book.fileId, { target: target.format, deleteOriginal: deleteOriginal.value })
+			if ('sync' in started) {
+				// older server: converted synchronously
+				fileId = started.sync.fileId
+			} else {
+				const done = await pollTask(started.taskId, {
+					signal: abort.signal,
+					onUpdate: (tk) => {
+						task.value = tk
+					},
+				})
+				fileId = done.result?.fileId ?? done.result?.book?.fileId ?? props.book.fileId
+			}
 		} else {
+			await ensureDownloadConfirmed(props.book, largeDownload.ask)
 			const res = await convertInBrowser(props.book, target.format, {
 				deleteOriginal: deleteOriginal.value,
 				signal: abort.signal,
@@ -297,7 +326,7 @@ async function run(): Promise<void> {
 		showSuccess(t('ebookreader', 'Converted to {format}', { format: selectedName.value }))
 		emit('converted', fileId)
 	} catch (e) {
-		if ((e as Error)?.name === 'AbortError') {
+		if ((e as Error)?.name === 'AbortError' || e instanceof DownloadDeclinedError) {
 			phase.value = 'choose'
 			return
 		}
@@ -323,6 +352,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+	largeDownload.answer(false)
 	abort?.abort()
 })
 </script>

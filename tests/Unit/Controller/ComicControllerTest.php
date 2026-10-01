@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace OCA\EbookReader\Tests\Unit\Controller;
 
 use OCA\EbookReader\Controller\ComicController;
+use OCA\EbookReader\Service\ArchiveCache;
 use OCA\EbookReader\Service\ArchiveTools;
 use OCA\EbookReader\Service\LibraryService;
 use OCP\AppFramework\Http;
@@ -19,6 +20,7 @@ use OCP\Files\IAppData;
 use OCP\Files\NotFoundException;
 use OCP\Files\SimpleFS\ISimpleFolder;
 use OCP\Files\Storage\IStorage;
+use OCP\IAppConfig;
 use OCP\ICache;
 use OCP\ICacheFactory;
 use OCP\IRequest;
@@ -61,7 +63,7 @@ class ComicControllerTest extends TestCase {
 		$appData->method('getFolder')->willReturn($this->cacheFolder);
 		$request = $this->createMock(IRequest::class);
 		$request->method('getHeader')->willReturn('');
-		return new ComicController($request, $session, $this->library, $this->createMock(ITempManager::class),
+		return new ComicController($request, $session, $this->library, new ArchiveCache($this->createMock(ITempManager::class), $this->createMock(IAppConfig::class), $this->createMock(LoggerInterface::class)),
 			$appData, $cacheFactory, $this->createMock(LoggerInterface::class), new ArchiveTools([]));
 	}
 
@@ -159,12 +161,12 @@ class ComicControllerTest extends TestCase {
 		$user = $this->createMock(IUser::class);
 		$session = $this->createMock(IUserSession::class);
 		$session->method('getUser')->willReturn($user);
-		$controller = new class($this->createMock(IRequest::class), $session, $this->library, $this->createMock(ITempManager::class), $this->createMock(IAppData::class), $this->createMock(ICacheFactory::class), $this->createMock(LoggerInterface::class), new ArchiveTools([]), $decodeCalls) extends ComicController {
+		$controller = new class($this->createMock(IRequest::class), $session, $this->library, new ArchiveCache($this->createMock(ITempManager::class), $this->createMock(IAppConfig::class), $this->createMock(LoggerInterface::class)), $this->createMock(IAppData::class), $this->createMock(ICacheFactory::class), $this->createMock(LoggerInterface::class), new ArchiveTools([]), $decodeCalls) extends ComicController {
 			public function __construct(
 				IRequest $r,
 				IUserSession $s,
 				LibraryService $l,
-				ITempManager $t,
+				ArchiveCache $t,
 				IAppData $a,
 				ICacheFactory $c,
 				LoggerInterface $lg,

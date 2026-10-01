@@ -128,6 +128,12 @@
 			<span class="ebr__pct">{{ progressLabel }}</span>
 		</footer>
 
+		<LargeDownloadDialog
+			v-if="largeDownload.pending.value"
+			:sizeBytes="largeDownload.pending.value.size"
+			@confirm="largeDownload.answer(true)"
+			@cancel="largeDownload.answer(false)" />
+
 		<NcDialog
 			v-if="conflict"
 			:name="t('ebookreader', 'Newer reading position')"
@@ -174,6 +180,7 @@ import NcDialog from '@nextcloud/vue/components/NcDialog'
 import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcPopover from '@nextcloud/vue/components/NcPopover'
+import LargeDownloadDialog from '../components/common/LargeDownloadDialog.vue'
 import ReaderIcon from '../components/reader/ReaderIcon.vue'
 import ReaderSettings from '../components/reader/ReaderSettings.vue'
 import ReaderToc from '../components/reader/ReaderToc.vue'
@@ -181,7 +188,9 @@ import { createReader, ReaderError } from '../../packages/reader-core/index.ts'
 import { loadLibarchive } from '../components/reader/libarchive.ts'
 import { getBook, getSettings, putSettings } from '../services/api.ts'
 import { loadBookSource, needsClientCover, uploadClientCover } from '../services/bookSource.ts'
+import { DownloadDeclinedError } from '../services/largeDownload.ts'
 import { createProgressSync } from '../services/progressSync.ts'
+import { useLargeDownloadConfirm } from '../services/useLargeDownloadConfirm.ts'
 
 const props = defineProps<{ fileId: string }>()
 
@@ -196,6 +205,7 @@ const route = useRoute()
 const router = useRouter()
 const embedded = computed(() => route.query.embedded === '1')
 
+const largeDownload = useLargeDownloadConfirm()
 const stage = ref<HTMLElement | null>(null)
 const book = ref<Book | null>(null)
 const state = ref<'loading' | 'ready' | 'error'>('loading')
@@ -566,6 +576,9 @@ function fail(e: unknown): void {
 	if (e instanceof ReaderError && e.code === 'drm') {
 		errorTitle.value = t('ebookreader', 'This book is DRM protected')
 		errorText.value = t('ebookreader', 'Books with DRM can not be opened in the reader.')
+	} else if (e instanceof DownloadDeclinedError) {
+		errorTitle.value = t('ebookreader', 'Download cancelled')
+		errorText.value = t('ebookreader', 'The large file was not downloaded. Installing 7z on the server lets the server read it instead.')
 	} else if (e instanceof ReaderError && e.code === 'unsupported') {
 		errorTitle.value = t('ebookreader', 'Unsupported format')
 		errorText.value = t('ebookreader', 'This file format can not be opened in the reader.')
@@ -598,7 +611,7 @@ onMounted(async () => {
 			},
 		})
 		const [source, remote] = await Promise.all([
-			loadBookSource(b, abort.signal),
+			loadBookSource(b, abort.signal, largeDownload.ask),
 			sync.loadRemote().catch(() => b.progress),
 		])
 		if (!stage.value) {

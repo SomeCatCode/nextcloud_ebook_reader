@@ -129,6 +129,7 @@
 		<NcDialog
 			v-if="saveProgress"
 			:name="saveAsCopy ? t('ebookreader', 'Saving copy…') : t('ebookreader', 'Saving…')"
+			:buttons="progressButtons"
 			noClose
 			:closeOnClickOutside="false">
 			<div class="editor-view__progress" role="status" aria-live="polite">
@@ -136,17 +137,21 @@
 					<p>{{ t('ebookreader', 'Uploading changes… {percent} %', { percent: Math.round(saveProgress.upload * 100) }) }}</p>
 					<NcProgressBar :value="Math.round(saveProgress.upload * 100)" size="medium" />
 				</template>
+				<TaskProgress
+					v-else-if="saveProgress.phase === 'server'"
+					:progress="saveTask?.progress ?? 0"
+					:step="saveTask?.step || t('ebookreader', 'The server is rewriting and checking the book…')"
+					:status="saveTask?.status"
+					:hint="saveTask ? t('ebookreader', 'The task keeps running on the server, even if you leave this page.') : undefined" />
 				<template v-else>
 					<p class="editor-view__progress-row">
 						<NcLoadingIcon :size="20" />
-						{{ saveProgress.phase === 'server'
-							? t('ebookreader', 'The server is rewriting and checking the book…')
-							: t('ebookreader', 'Loading the saved version…') }}
+						{{ t('ebookreader', 'Loading the saved version…') }}
 					</p>
-					<NcProgressBar :value="saveProgress.phase === 'server' ? 66 : 95" size="medium" />
+					<NcProgressBar :value="95" size="medium" />
 				</template>
-				<p class="editor-view__muted">
-					{{ t('ebookreader', '{seconds} s elapsed. Large comics can take a minute; please keep this page open.', { seconds: saveProgress.seconds }) }}
+				<p v-if="saveProgress.phase !== 'server'" class="editor-view__muted">
+					{{ t('ebookreader', '{seconds} s elapsed.', { seconds: saveProgress.seconds }) }}
 				</p>
 			</div>
 		</NcDialog>
@@ -187,6 +192,12 @@
 			]"
 			@update:open="resolveConfirm(false)" />
 
+		<LargeDownloadDialog
+			v-if="largeDownload.pending.value"
+			:sizeBytes="largeDownload.pending.value.size"
+			@confirm="largeDownload.answer(true)"
+			@cancel="largeDownload.answer(false)" />
+
 		<RenameDialog
 			v-model:open="renameOpen"
 			:fileId="fileIdNum"
@@ -196,7 +207,7 @@
 </template>
 
 <script setup lang="ts">
-import type { Book, MetadataPatch, SaveResult, Structure } from '../types.ts'
+import type { Book, MetadataPatch, SaveResult, Structure, Task } from '../types.ts'
 
 import { showError, showSuccess } from '@nextcloud/dialogs'
 import { translate as t } from '@nextcloud/l10n'
@@ -207,6 +218,8 @@ import NcDialog from '@nextcloud/vue/components/NcDialog'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcProgressBar from '@nextcloud/vue/components/NcProgressBar'
+import LargeDownloadDialog from '../components/common/LargeDownloadDialog.vue'
+import TaskProgress from '../components/common/TaskProgress.vue'
 import ContentList from '../components/editor/ContentList.vue'
 import MetadataForm from '../components/editor/MetadataForm.vue'
 import PageGrid from '../components/editor/PageGrid.vue'
@@ -214,7 +227,10 @@ import RenameDialog from '../components/editor/RenameDialog.vue'
 import TocTreeEditor from '../components/editor/TocTreeEditor.vue'
 import { convertCbrToCbz, deleteOriginal, TargetExistsError, uploadCbz } from '../editor/cbrToCbz.ts'
 import { EDITOR_STATE_KEY, isMetadataOnlyRequest, useEditorState } from '../editor/useEditorState.ts'
-import { ConflictError, getBook, getStructure, patchMetadata, putStructure, scan } from '../services/api.ts'
+import { ConflictError, getBook, getStructure, patchMetadata, putStructureAsync, scan } from '../services/api.ts'
+import { DownloadDeclinedError, ensureDownloadConfirmed } from '../services/largeDownload.ts'
+import { pollTask, TaskFailedError } from '../services/tasks.ts'
+import { useLargeDownloadConfirm } from '../services/useLargeDownloadConfirm.ts'
 
 const props = defineProps<{ fileId?: string }>()
 
@@ -230,6 +246,9 @@ const loadError = ref('')
 const busy = ref(false)
 /** Save progress for the progress dialog; null when not saving */
 const saveProgress = ref<{ phase: 'upload' | 'server' | 'reload', upload: number, seconds: number } | null>(null)
+const saveTask = ref<Task | null>(null)
+const largeDownload = useLargeDownloadConfirm()
+let saveAbort: AbortController | null = null
 const activeTab = ref<'metadata' | 'content' | 'toc'>('metadata')
 const isComic = computed(() => structure.value?.format === 'cbz' || structure.value?.format === 'cbr')
 
@@ -371,6 +390,8 @@ onMounted(() => {
 onBeforeUnmount(() => {
 	window.removeEventListener('beforeunload', onBeforeUnload)
 	window.removeEventListener('keydown', onKeydown)
+	saveAbort?.abort()
+	largeDownload.answer(false)
 })
 
 /**
@@ -427,6 +448,8 @@ async function doSave(): Promise<void> {
 		return
 	}
 	busy.value = true
+	saveTask.value = null
+	saveAbort = new AbortController()
 	saveProgress.value = { phase: 'upload', upload: 0, seconds: 0 }
 	const started = Date.now()
 	const timer = window.setInterval(() => {
@@ -435,11 +458,27 @@ async function doSave(): Promise<void> {
 		}
 	}, 1000)
 	try {
-		const result = await putStructure(fileIdNum.value, req, (f) => {
+		const started = await putStructureAsync(fileIdNum.value, req, (f) => {
 			if (saveProgress.value) {
 				saveProgress.value = { ...saveProgress.value, upload: f, phase: f >= 1 ? 'server' : 'upload' }
 			}
 		})
+		let result: SaveResult
+		if ('sync' in started) {
+			// older server: saved synchronously
+			result = started.sync
+		} else {
+			if (saveProgress.value) {
+				saveProgress.value = { ...saveProgress.value, upload: 1, phase: 'server' }
+			}
+			const done = await pollTask(started.taskId, {
+				signal: saveAbort.signal,
+				onUpdate: (tk) => {
+					saveTask.value = tk
+				},
+			})
+			result = { book: done.result?.book as Book, warnings: done.result?.warnings ?? [] }
+		}
 		saveProgress.value = { phase: 'reload', upload: 1, seconds: saveProgress.value?.seconds ?? 0 }
 		// Always reload right away (new etag, renumbered pages); warnings are shown afterwards,
 		// so closing the warnings dialog in any way can not leave a stale state behind.
@@ -448,17 +487,32 @@ async function doSave(): Promise<void> {
 			resultWarnings.value = result
 		}
 	} catch (e) {
-		if (e instanceof ConflictError) {
+		if ((e as Error)?.name === 'AbortError') {
+			// left the page, the task keeps running on the server
+		} else if (e instanceof ConflictError) {
 			conflictOpen.value = true
+		} else if (e instanceof TaskFailedError) {
+			showError(t('ebookreader', 'Saving failed: {message}', { message: e.message }))
 		} else {
 			showError(t('ebookreader', 'Saving failed: {message}', { message: (e as Error).message }))
 		}
 	} finally {
 		window.clearInterval(timer)
 		saveProgress.value = null
+		saveTask.value = null
+		saveAbort = null
 		busy.value = false
 	}
 }
+
+/** While the server works the user may leave: the task keeps running there. */
+const progressButtons = computed(() => saveProgress.value?.phase === 'server' && saveTask.value
+	? [{ label: t('ebookreader', 'Continue in background'), variant: 'tertiary' as const, callback: (): void => {
+			saveAbort?.abort()
+			allowLeave = true
+			goBack()
+		} }]
+	: [])
 
 /**
  * Metadata-only save: PATCH metadata, which honours the user's write mode (the file is usually written later in the
@@ -536,6 +590,14 @@ const convertProgress = ref('')
 async function convertCbr(): Promise<void> {
 	if (!book.value) {
 		return
+	}
+	try {
+		await ensureDownloadConfirmed(book.value, largeDownload.ask)
+	} catch (e) {
+		if (e instanceof DownloadDeclinedError) {
+			return
+		}
+		throw e
 	}
 	converting.value = true
 	try {

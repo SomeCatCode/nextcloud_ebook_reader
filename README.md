@@ -243,10 +243,85 @@ sudo -u www-data php occ maintenance:mimetype:update-db --repair-filecache
 | Schlüssel | Standard | Bedeutung |
 |---|---|---|
 | `max_edit_size_mb` | `500` | Maximale Dateigröße, die der Editor bearbeitet |
+| `archive_cache_mb` | `2048` | Größe des lokalen Archiv-Caches für Dateien auf Fremdspeichern, siehe [Große Bibliotheken](#große-bibliotheken--große-dateien) |
+| `async_inline` | `true` | Aufgaben (Speichern, Konvertieren) direkt nach der Antwort im selben PHP-Prozess ausführen; `false` überlässt alles dem Hintergrundjob |
 
 ```bash
 sudo -u www-data php occ config:app:set ebookreader max_edit_size_mb --value=1000
 ```
+
+---
+
+## Große Bibliotheken / große Dateien
+
+Auch Comics und Bücher mit 300 bis 400 MB sind unterstützt. Dafür läuft nichts Langsames mehr direkt im Web-Request: Speichern im Editor und Konvertierungen laufen als Aufgabe mit Fortschrittsanzeige, der Reader lädt EPUBs nur eintragsweise, und das Schreiben von Metadaten packt ZIP-Dateien nicht neu.
+
+### Cron
+
+Empfohlen ist System-Cron, alle 5 Minuten, als Webserver-Benutzer:
+```cron
+*/5 * * * * php -f /var/www/nextcloud/cron.php
+```
+Unter **Verwaltung → Grundeinstellungen → Hintergrundjobs** „Cron“ auswählen. Der Hintergrundjob liest große Dateien ein (Dateien über 20 MB werden nie im Web-Request indexiert, beim manuellen Scan nur Dateien bis 50 MB direkt) und führt Aufgaben aus, die nicht direkt nach der Antwort laufen konnten.
+
+### Dauerhafter Worker (`background-job:worker`)
+
+Ab Nextcloud 27 kann ein Worker Hintergrundjobs ohne Wartezeit abarbeiten, sinnvoll für große Bibliotheken und für Aufgaben (Speichern, Konvertieren), wenn der Inline-Lauf nicht möglich ist (siehe unten):
+```bash
+sudo -u www-data php occ background-job:worker 'OCA\EbookReader\BackgroundJob\RunTaskJob'
+```
+Beispiel für eine systemd-Unit (`/etc/systemd/system/nextcloud-ebookreader-worker.service`):
+```ini
+[Unit]
+Description=Nextcloud Hintergrundjob-Worker (E-Book Reader)
+After=network.target
+
+[Service]
+User=www-data
+WorkingDirectory=/var/www/nextcloud
+ExecStart=/usr/bin/php occ background-job:worker -t 3600 'OCA\\EbookReader\\BackgroundJob\\RunTaskJob'
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+```
+`sudo systemctl enable --now nextcloud-ebookreader-worker`. Der Worker beendet sich mit `-t 3600` (Sekunden) regelmäßig und wird von systemd neu gestartet, damit PHP-Speicher freigegeben wird. Ohne Klassennamen arbeitet der Worker alle Hintergrundjobs ab.
+
+### Aufgaben: inline oder per Job
+
+Nach dem Speichern bzw. Konvertieren antwortet der Server sofort mit einer Aufgaben-ID. Die Aufgabe läuft dann
+- **direkt nach der Antwort im selben PHP-Prozess**, wenn PHP als FPM/FastCGI läuft (`fastcgi_finish_request()` ist verfügbar), und
+- zusätzlich als **Hintergrundjob** (`RunTaskJob`) als Ersatz. Beide starten die Aufgabe nie doppelt.
+
+Bei `mod_php` (Apache ohne FPM) gibt es keinen Inline-Lauf, weil der Browser sonst auf das Ende warten müsste. Die Aufgabe zeigt dann „Waiting for background job“ und wird vom Cron oder vom Worker ausgeführt. Mit `async_inline=false` lässt sich der Inline-Lauf auch bei FPM abschalten:
+```bash
+sudo -u www-data php occ config:app:set ebookreader async_inline --value=false
+```
+Bei PHP-FPM darf `request_terminate_timeout` den Inline-Lauf nicht vorzeitig beenden (bei sehr großen Dateien auf `0` oder einen hohen Wert setzen). Wird eine Aufgabe doch abgebrochen, markiert der tägliche Aufräum-Job sie nach 6 Stunden ohne Fortschritt als fehlgeschlagen. Fertige Aufgaben werden nach 24 Stunden gelöscht.
+
+### Archiv-Cache und Limits
+
+| Schlüssel | Standard | Bedeutung |
+|---|---|---|
+| `archive_cache_mb` | `2048` | Obergrenze des lokalen Archiv-Caches (`<temp>/ebookreader-cache`) |
+| `async_inline` | `true` | Inline-Lauf von Aufgaben nach der Antwort, siehe oben |
+| `max_edit_size_mb` | `500` | Maximale Dateigröße für den Editor (größere Dateien: 413) |
+
+Liegen Bücher auf lokalem, unverschlüsseltem Speicher, liest die App direkt von der Datei und kopiert nichts. Bei WebDAV-, SMB-, S3-Speichern und serverseitiger Verschlüsselung wird jede Dateiversion höchstens einmal in den Cache kopiert (Reader, Editor, Konvertierung, Einlesen). Ist das Limit überschritten, werden zuerst die am längsten nicht benutzten Einträge gelöscht; ein Eintrag, der gerade benutzt wird, bleibt erhalten. Plane Platz im temporären Verzeichnis ein (`tempdirectory` in `config.php`).
+```bash
+sudo -u www-data php occ config:app:set ebookreader archive_cache_mb --value=4096 --type=integer
+```
+
+### 7z installieren (CB7 und schnelleres CBR)
+
+Für CB7 und zum serverseitigen Lesen von CBR/CB7 braucht der Server `7z` (oder `unrar`/`bsdtar`). Ohne diese Programme übernimmt der Browser das, und fragt bei Dateien über 50 MB vorher nach.
+
+| System | Befehl |
+|---|---|
+| Debian/Ubuntu | `sudo apt install p7zip-full` (oder `7zip` ab Debian 12/Ubuntu 22.10) |
+| Alpine | `apk add 7zip` |
+| Docker (offizielles Image) | `docker exec -u root nextcloud sh -c "apt-get update && apt-get install -y p7zip-full"`, geht beim Neuerstellen des Containers verloren; dauerhaft über ein eigenes `Dockerfile` (`FROM nextcloud:34-apache` + `RUN apt-get update && apt-get install -y p7zip-full && rm -rf /var/lib/apt/lists/*`) |
 
 ---
 

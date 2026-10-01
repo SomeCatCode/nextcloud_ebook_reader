@@ -4,12 +4,18 @@
  */
 import type { ReaderSource } from '../../packages/reader-core/index.ts'
 import type { Book } from '../types.ts'
+import type { ConfirmLargeDownload } from './largeDownload.ts'
 
 import { getRequestToken } from '@nextcloud/auth'
 import { generateUrl } from '@nextcloud/router'
-import { comicPageUrl, fetchBookBlob, getComicPages } from './api.ts'
+import { archiveEntries, comicPageUrl, fetchBookBlob, getComicPages, itemUrl } from './api.ts'
+import { ensureDownloadConfirmed } from './largeDownload.ts'
 
 const SERVER_PAGE_FORMATS: string[] = ['cbz', 'cbt', 'cbr', 'cb7']
+/** ZIP formats read entry by entry from the server (no complete download) */
+const REMOTE_ZIP_FORMATS: string[] = ['epub', 'fbz']
+/** Formats for which a complete download in the browser is a fallback that needs a confirmation when large */
+const CONFIRM_FALLBACK_FORMATS: string[] = ['epub', 'fbz', 'cbz', 'cbr', 'cb7', 'cbt']
 /** Formats whose cover cannot always be extracted on the server */
 const CLIENT_COVER_FORMATS: string[] = ['cbr', 'cb7', 'cbt']
 const COVER_MAX_WIDTH = 600
@@ -29,10 +35,14 @@ function comicPageWidth(): number {
  * archive tool installed; scaled and cached); everything else, and comics when the page list is not
  * available, is downloaded as a whole via WebDAV and unpacked in the browser.
  *
+ * EPUB and FBZ are read entry by entry (archive entry list + /item), falling back to the whole file.
+ * A complete download of a file over 50 MB asks `confirmLarge` first (DownloadDeclinedError if declined).
+ *
  * @param b
  * @param signal
+ * @param confirmLarge
  */
-export async function loadBookSource(b: Book, signal: AbortSignal): Promise<ReaderSource> {
+export async function loadBookSource(b: Book, signal: AbortSignal, confirmLarge?: ConfirmLargeDownload): Promise<ReaderSource> {
 	const name = b.path.split('/').pop() ?? `book.${b.format}`
 	if (SERVER_PAGE_FORMATS.includes(b.format)) {
 		try {
@@ -58,6 +68,33 @@ export async function loadBookSource(b: Book, signal: AbortSignal): Promise<Read
 			}
 			// Server-side pages not available (e.g. unreadable archive): fall back to the whole file
 		}
+	}
+	if (REMOTE_ZIP_FORMATS.includes(b.format)) {
+		try {
+			const { etag, entries } = await archiveEntries(b.fileId, signal)
+			if (entries.length > 0) {
+				return {
+					kind: 'remote-zip',
+					name,
+					entries,
+					loadEntry: async (entry) => {
+						const res = await fetch(itemUrl(b.fileId, entry, etag), { credentials: 'same-origin' })
+						if (!res.ok) {
+							throw new Error(`Could not load ${entry} (${res.status})`)
+						}
+						return await res.blob()
+					},
+				}
+			}
+		} catch (e) {
+			if (signal.aborted) {
+				throw e
+			}
+			// entry list not available: fall back to the whole file
+		}
+	}
+	if (CONFIRM_FALLBACK_FORMATS.includes(b.format)) {
+		await ensureDownloadConfirmed(b, confirmLarge)
 	}
 	const blob = await fetchBookBlob(b, signal)
 	return new File([blob], name, { type: blob.type })

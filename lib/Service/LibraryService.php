@@ -35,6 +35,8 @@ class LibraryService {
 	private const BOOKS = 'ebookreader_books';
 	private const TAGS = 'ebookreader_tags';
 	private const PROGRESS = 'ebookreader_progress';
+	/** Interactive scans index inline only files up to this size; larger ones are queued as jobs */
+	public const INTERACTIVE_MAX_BYTES = 50 * 1024 * 1024;
 
 	public function __construct(
 		private BookMapper $bookMapper,
@@ -417,19 +419,21 @@ class LibraryService {
 
 	/**
 	 * Scan triggered from the UI: indexes inline until the time budget is used up and queues the rest,
-	 * so a click shows results right away even when background jobs run rarely (AJAX cron).
+	 * so a click shows results right away even when background jobs run rarely (AJAX cron). Files over
+	 * INTERACTIVE_MAX_BYTES are always queued: indexing a 400 MB archive must not block the request.
 	 * @return array{found: int, indexed: int, queued: int}
 	 */
 	public function scanUserInteractive(string $userId, float $budgetSeconds = 20.0): array {
-		return $this->scan($userId, $budgetSeconds);
+		return $this->scan($userId, $budgetSeconds, null, self::INTERACTIVE_MAX_BYTES);
 	}
 
 	/**
 	 * @param ?float $inlineSeconds seconds to index inline before queueing (null = all inline, 0 = queue all)
 	 * @param ?callable(File, bool): void $progress
+	 * @param ?int $inlineMaxBytes files larger than this are never indexed inline (null = no limit)
 	 * @return array{found: int, indexed: int, queued: int}
 	 */
-	private function scan(string $userId, ?float $inlineSeconds, ?callable $progress = null): array {
+	private function scan(string $userId, ?float $inlineSeconds, ?callable $progress = null, ?int $inlineMaxBytes = null): array {
 		$existing = [];
 		foreach ($this->bookMapper->findAllByUser($userId) as $b) {
 			$existing[$b->getFileId()] = $b;
@@ -437,7 +441,7 @@ class LibraryService {
 		$deadline = $inlineSeconds === null ? INF : microtime(true) + $inlineSeconds;
 		$found = [];
 		$stats = ['found' => 0, 'indexed' => 0, 'queued' => 0];
-		$complete = $this->walkLibrary($userId, function (File $file, string $format) use ($userId, $existing, &$found, &$stats, $deadline, $progress): void {
+		$complete = $this->walkLibrary($userId, function (File $file, string $format) use ($userId, $existing, &$found, &$stats, $deadline, $progress, $inlineMaxBytes): void {
 			$id = $file->getId();
 			$found[$id] = true;
 			$stats['found']++;
@@ -450,7 +454,7 @@ class LibraryService {
 			if (!$stale) {
 				return;
 			}
-			if (microtime(true) < $deadline) {
+			if (microtime(true) < $deadline && ($inlineMaxBytes === null || (int)$file->getSize() <= $inlineMaxBytes)) {
 				try {
 					$this->indexFile($userId, $file);
 					$stats['indexed']++;

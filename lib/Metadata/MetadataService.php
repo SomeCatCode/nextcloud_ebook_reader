@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace OCA\EbookReader\Metadata;
 
+use OCA\EbookReader\Service\ArchiveCache;
 use OCA\EbookReader\Service\ArchiveTools;
 use OCP\Files\File;
 use OCP\ITempManager;
@@ -52,6 +53,7 @@ class MetadataService {
 		private ?ITempManager $tempManager = null,
 		private ?LoggerInterface $logger = null,
 		?ArchiveTools $archiveTools = null,
+		private ?ArchiveCache $archiveCache = null,
 	) {
 		$this->extractors = [
 			new EpubExtractor(),
@@ -77,6 +79,22 @@ class MetadataService {
 	}
 
 	public function extract(File $file, string $format): BookMetadata {
+		if ($this->archiveCache !== null && ($this->archiveCache->isDirect($file) || $this->archiveCache->fits($file))) {
+			// local storage: read in place; otherwise one cached copy per file version (also used by the reader/editor)
+			try {
+				$path = $this->archiveCache->localPath($file);
+			} catch (\RuntimeException $e) {
+				$this->logger?->info('Archive cache not usable, copying to a temporary file: ' . $e->getMessage(), ['app' => 'ebookreader']);
+				$path = null;
+			}
+			if ($path !== null) {
+				try {
+					return $this->extractLocal($path, $format, $file->getName());
+				} finally {
+					$this->archiveCache->release($path);
+				}
+			}
+		}
 		$tmp = $this->copyToTemp($file);
 		try {
 			return $this->extractLocal($tmp, $format, $file->getName());

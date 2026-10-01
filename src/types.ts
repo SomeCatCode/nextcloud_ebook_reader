@@ -290,3 +290,41 @@ export interface OrganizeResult {
 	moved: number
 	failed: number
 }
+
+// ---- Async tasks (CONTRACTS-v3 section 1) -------------------------------
+
+export type TaskType = 'edit' | 'convert'
+export type TaskStatus = 'queued' | 'running' | 'done' | 'failed'
+
+/** Result of a finished task. `edit`: book + warnings, `convert`: book + fileId + path. On `failed`: `code` = 403/409/413/422. */
+export interface TaskResult {
+	book?: Book
+	warnings?: string[]
+	fileId?: number
+	path?: string
+	code?: number
+}
+
+export interface Task {
+	id: number
+	fileId: number
+	type: TaskType
+	status: TaskStatus
+	/** 0..1 */
+	progress: number
+	/** short English description of the current step */
+	step: string
+	result: TaskResult | null
+	error: string | null
+	createdAt: number
+	updatedAt: number
+}
+
+export interface TaskStarted {
+	taskId: number
+}
+
+export interface ArchiveEntries {
+	etag: string
+	entries: { name: string, size: number }[]
+}

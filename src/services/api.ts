@@ -1,5 +1,6 @@
 import type {
 	AppDataPatch,
+	ArchiveEntries,
 	Book,
 	BookList,
 	BookQuery,
@@ -23,6 +24,8 @@ import type {
 	Settings,
 	Structure,
 	SyncResult,
+	Task,
+	TaskStarted,
 } from '../types.ts'
 
 /**
@@ -332,6 +335,89 @@ export function getStructure(fileId: number, parts: 'all' | 'metadata' = 'all'):
  */
 export function putStructure(fileId: number, req: EditRequest, onUploadProgress?: (fraction: number) => void): Promise<SaveResult> {
 	return request<SaveResult>('put', `/books/${fileId}/structure`, { body: req, onUploadProgress })
+}
+
+/**
+ * Async variant: the server answers 202 `{taskId}` and does the work in the background (poll with getTask).
+ * An older server answers 200 with the SaveResult (synchronous), which is returned as `{ sync: result }`.
+ *
+ * @param fileId
+ * @param req
+ * @param onUploadProgress upload progress 0..1
+ */
+export async function putStructureAsync(fileId: number, req: EditRequest, onUploadProgress?: (fraction: number) => void): Promise<{ taskId: number } | { sync: SaveResult }> {
+	return await startTask<SaveResult>('put', `/books/${fileId}/structure`, req, onUploadProgress)
+}
+
+/**
+ * Async conversion on the server. Returns `{ sync }` if an older server converted synchronously.
+ *
+ * @param fileId
+ * @param body
+ * @param body.target
+ * @param body.deleteOriginal
+ */
+export async function convertAsync<T = unknown>(fileId: number, body: { target: string, deleteOriginal: boolean }): Promise<{ taskId: number } | { sync: T }> {
+	return await startTask<T>('post', `/books/${fileId}/convert`, body)
+}
+
+/**
+ * @param method
+ * @param path
+ * @param body
+ * @param onUploadProgress
+ */
+async function startTask<T>(method: 'put' | 'post', path: string, body: unknown, onUploadProgress?: (fraction: number) => void): Promise<{ taskId: number } | { sync: T }> {
+	try {
+		const res = await axios.request<OcsEnvelope<T | TaskStarted>>({
+			method,
+			url: ocsUrl(path),
+			params: { async: 1 },
+			data: body,
+			headers: { 'OCS-APIRequest': 'true' },
+			onUploadProgress: onUploadProgress ? (ev) => onUploadProgress(ev.total ? ev.loaded / ev.total : 0) : undefined,
+		})
+		const data = res.data.ocs.data
+		if (res.status === 202 || (typeof (data as TaskStarted | null)?.taskId === 'number' && !('book' in (data as object)))) {
+			return { taskId: (data as TaskStarted).taskId }
+		}
+		return { sync: data as T }
+	} catch (e: unknown) {
+		const err = e as { response?: { status: number, data?: { ocs?: { data?: { current?: unknown, message?: string }, meta?: { message?: string } } } }, message?: string }
+		const status = err.response?.status
+		if (status === 409) {
+			const data = err.response?.data?.ocs?.data
+			throw new ConflictError(data?.current ?? data)
+		}
+		if (status !== undefined) {
+			throw new ApiError(status, err.response?.data?.ocs?.data?.message ?? err.response?.data?.ocs?.meta?.message ?? err.message ?? 'Request failed')
+		}
+		throw e
+	}
+}
+
+/**
+ * @param taskId
+ */
+export function getTask(taskId: number): Promise<Task> {
+	return request<Task>('get', `/tasks/${taskId}`)
+}
+
+/** Running and queued tasks of the user. */
+export async function listActiveTasks(): Promise<Task[]> {
+	const data = await request<{ tasks: Task[] } | Task[]>('get', '/tasks', { params: { active: 1 } })
+	return Array.isArray(data) ? data : (data?.tasks ?? [])
+}
+
+/**
+ * Entry list of an EPUB/CBZ/FBZ for reading single entries (server side archive cache).
+ *
+ * @param fileId
+ * @param signal
+ */
+export async function archiveEntries(fileId: number, signal?: AbortSignal): Promise<ArchiveEntries> {
+	const res = await axios.get<ArchiveEntries>(generateUrl('/apps/ebookreader/archive/{fileId}/entries', { fileId }), { signal })
+	return res.data
 }
 
 /**
