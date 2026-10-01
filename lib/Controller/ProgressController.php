@@ -81,20 +81,16 @@ class ProgressController extends AbstractOCSController {
 	 * Get the reading progress of a book
 	 *
 	 * @param int $fileId Nextcloud file id
-	 * @return DataResponse<Http::STATUS_OK, EbookReaderProgress, array{}>
-	 * @throws OCSNotFoundException No progress stored
+	 * @return DataResponse<Http::STATUS_OK, EbookReaderProgress|null, array{}>
 	 * @throws OCSForbiddenException Not logged in
 	 *
-	 * 200: Progress returned
+	 * 200: Progress returned, or null when the book was never opened
 	 */
 	#[NoAdminRequired]
 	#[ApiRoute(verb: 'GET', url: '/api/v1/progress/{fileId}', requirements: ['fileId' => '\d+'])]
 	public function show(int $fileId): DataResponse {
 		$progress = $this->progress->get($this->uid(), $fileId);
-		if ($progress === null) {
-			throw new OCSNotFoundException('No progress');
-		}
-		return new DataResponse($progress->toApi());
+		return new DataResponse($progress?->toApi());
 	}
 
 	/**

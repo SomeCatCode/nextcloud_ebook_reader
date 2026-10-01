@@ -3493,7 +3493,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Progress returned",
+                        "description": "Progress returned, or null when the book was never opened",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -3513,36 +3513,13 @@
                                                     "$ref": "#/components/schemas/OCSMeta"
                                                 },
                                                 "data": {
-                                                    "$ref": "#/components/schemas/Progress"
+                                                    "nullable": true,
+                                                    "allOf": [
+                                                        {
+                                                            "$ref": "#/components/schemas/Progress"
+                                                        }
+                                                    ]
                                                 }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "No progress stored",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "required": [
-                                        "ocs"
-                                    ],
-                                    "properties": {
-                                        "ocs": {
-                                            "type": "object",
-                                            "required": [
-                                                "meta",
-                                                "data"
-                                            ],
-                                            "properties": {
-                                                "meta": {
-                                                    "$ref": "#/components/schemas/OCSMeta"
-                                                },
-                                                "data": {}
                                             }
                                         }
                                     }
@@ -4679,6 +4656,10 @@
         {
             "name": "editor",
             "description": "Editor endpoints: structure, save, metadata patch, bulk tagging, rename."
+        },
+        {
+            "name": "comic",
+            "description": "Serves CBZ comics page by page, so the browser does not have to download and unpack the whole archive. Pages are scaled down to the requested width bucket and cached in app data."
         },
         {
             "name": "cover",

@@ -164,7 +164,8 @@ import ReaderSettings from '../components/reader/ReaderSettings.vue'
 import ReaderToc from '../components/reader/ReaderToc.vue'
 import { createReader, ReaderError } from '../../packages/reader-core/index.ts'
 import { loadLibarchive } from '../components/reader/libarchive.ts'
-import { fetchBookBlob, getBook, getSettings, putSettings } from '../services/api.ts'
+import { getBook, getSettings, putSettings } from '../services/api.ts'
+import { loadBookSource } from '../services/bookSource.ts'
 import { createProgressSync } from '../services/progressSync.ts'
 
 const props = defineProps<{ fileId: string }>()
@@ -542,8 +543,8 @@ onMounted(async () => {
 				conflict.value = c
 			},
 		})
-		const [blob, remote] = await Promise.all([
-			fetchBookBlob(b, abort.signal),
+		const [source, remote] = await Promise.all([
+			loadBookSource(b, abort.signal),
 			sync.loadRemote().catch(() => b.progress),
 		])
 		if (!stage.value) {
@@ -572,8 +573,7 @@ onMounted(async () => {
 			reader.on('tap', ({ zone }) => onTap(zone)),
 			reader.on('key', ({ key }) => handleKey(key)),
 		)
-		const file = new File([blob], b.path.split('/').pop() ?? `book.${b.format}`, { type: blob.type })
-		await reader.open(file, b.format, (remote?.locator ?? null) as ReaderLocator | null)
+		await reader.open(source, b.format, (remote?.locator ?? null) as ReaderLocator | null)
 		const info = reader.getInfo()
 		isComic.value = info?.isComic ?? isComic.value
 		isRtl.value = info?.rtl ?? isRtl.value
@@ -600,22 +600,23 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+/* Below the Nextcloud header; toolbar, page and progress bar stack instead of overlapping */
 .ebr {
-	position: fixed; inset: 0; z-index: 10000; display: flex; flex-direction: column;
+	position: fixed; inset: var(--header-height, 50px) 0 0 0; z-index: 1000; display: flex; flex-direction: column;
 	background: var(--ebr-bg); color: var(--ebr-fg);
 	--ebr-bg: #fff; --ebr-fg: #1a1a1a;
 }
 .ebr[data-theme='sepia'] { --ebr-bg: #f4ecd8; --ebr-fg: #5b4636; }
 .ebr[data-theme='dark'] { --ebr-bg: #1c1c1e; --ebr-fg: #d8d8d8; }
-.ebr--embedded { position: absolute; z-index: 1; }
+/* Inside the Files viewer iframe: cover the embedded page completely, including its header */
+.ebr--embedded { inset: 0; z-index: 10000; }
 .ebr__stage { position: relative; flex: 1 1 auto; min-height: 0; }
 .ebr__bar {
-	position: absolute; left: 0; right: 0; z-index: 2; display: flex; align-items: center; gap: 4px;
-	padding: 4px 8px; background: color-mix(in srgb, var(--ebr-bg) 92%, transparent);
-	backdrop-filter: blur(6px); color: var(--ebr-fg);
+	position: relative; flex: 0 0 auto; z-index: 2; display: flex; align-items: center; gap: 4px;
+	padding: 4px 8px; background: var(--ebr-bg); color: var(--ebr-fg);
 }
-.ebr__bar--top { top: 0; border-bottom: 1px solid color-mix(in srgb, var(--ebr-fg) 15%, transparent); }
-.ebr__bar--bottom { bottom: 0; padding: 8px 16px; border-top: 1px solid color-mix(in srgb, var(--ebr-fg) 15%, transparent); }
+.ebr__bar--top { border-bottom: 1px solid color-mix(in srgb, var(--ebr-fg) 15%, transparent); }
+.ebr__bar--bottom { padding: 8px 16px; border-top: 1px solid color-mix(in srgb, var(--ebr-fg) 15%, transparent); }
 .ebr__title { flex: 1 1 auto; margin: 0; font-size: 1rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
 .ebr__seek { flex: 1 1 auto; }
 .ebr__pct { min-width: 90px; text-align: end; font-variant-numeric: tabular-nums; }
