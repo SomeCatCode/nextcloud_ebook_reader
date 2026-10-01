@@ -60,6 +60,7 @@ class LibraryScanSizeCapTest extends TestCase {
 			$this->jobList,
 			$this->createMock(IDBConnection::class),
 			$this->createMock(LoggerInterface::class),
+			$this->createMock(\OCA\EbookReader\Metadata\SidecarService::class),
 		);
 	}
 

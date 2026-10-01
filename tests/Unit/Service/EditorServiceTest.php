@@ -15,6 +15,7 @@ use OCA\EbookReader\Db\BookMapper;
 use OCA\EbookReader\Db\Tag;
 use OCA\EbookReader\Metadata\BookMetadata;
 use OCA\EbookReader\Metadata\MetadataService;
+use OCA\EbookReader\Metadata\SidecarService;
 use OCA\EbookReader\Service\ArchiveCache;
 use OCA\EbookReader\Service\EditorService;
 use OCA\EbookReader\Service\LibraryService;
@@ -41,6 +42,10 @@ class EditorServiceTest extends TestCase {
 	private ITempManager&MockObject $tempManager;
 	private IJobList&MockObject $jobList;
 	private ProgressService&MockObject $progress;
+	private SidecarService&MockObject $sidecar;
+	private RenameService&MockObject $renamer;
+	private IFilenameValidator&MockObject $validator;
+	private string $target = 'file';
 	private EditorService $service;
 	private string $mode = 'background';
 	/** @var list<string> */
@@ -52,11 +57,14 @@ class EditorServiceTest extends TestCase {
 		$this->metadata = $this->createMock(MetadataService::class);
 		$this->settings = $this->createMock(SettingsService::class);
 		$this->settings->method('get')->willReturnCallback(fn (): array => [
-			'libraryFolders' => ['/Books'], 'reader' => [], 'filenamePattern' => '', 'genreList' => [], 'metadataWriteMode' => $this->mode,
+			'libraryFolders' => ['/Books'], 'reader' => [], 'filenamePattern' => '', 'genreList' => [], 'metadataWriteMode' => $this->mode, 'metadataTarget' => $this->target,
 		]);
 		$this->tempManager = $this->createMock(ITempManager::class);
 		$this->jobList = $this->createMock(IJobList::class);
 		$this->progress = $this->createMock(ProgressService::class);
+		$this->sidecar = $this->createMock(SidecarService::class);
+		$this->renamer = $this->createMock(RenameService::class);
+		$this->validator = $this->createMock(IFilenameValidator::class);
 		$appConfig = $this->createMock(IAppConfig::class);
 		$appConfig->method('getValueInt')->willReturn(500);
 		$this->service = new EditorService(
@@ -65,14 +73,15 @@ class EditorServiceTest extends TestCase {
 			$this->books,
 			$this->metadata,
 			$this->settings,
-			$this->createMock(RenameService::class),
+			$this->renamer,
 			$this->createMock(IRootFolder::class),
 			$this->tempManager,
 			$appConfig,
-			$this->createMock(IFilenameValidator::class),
+			$this->validator,
 			$this->createMock(LoggerInterface::class),
 			$this->jobList,
 			new ArchiveCache($this->tempManager, $appConfig, $this->createMock(LoggerInterface::class)),
+			$this->sidecar,
 		);
 	}
 
@@ -173,7 +182,7 @@ class EditorServiceTest extends TestCase {
 	}
 
 	public function testNeverModeOnlyStoresInDatabaseAndMarksOverride(): void {
-		$this->mode = 'never';
+		$this->target = 'library';
 		$this->untouchableFile();
 		$book = $this->book();
 		$this->withBook($book);
@@ -355,5 +364,214 @@ class EditorServiceTest extends TestCase {
 		$res = $this->service->bulkTags('u', ['fileIds' => [5], 'addTags' => ['b']]);
 		$this->assertSame(1, $res['updated']);
 		$this->assertTrue($res['writeQueued']);
+	}
+
+	// ------------------------------------------------------------------ metadata target (sidecar)
+
+	public function testSidecarTargetWritesTheSidecarAndNeverTouchesTheBookFile(): void {
+		$this->target = 'sidecar';
+		$file = $this->untouchableFile();
+		$book = $this->book();
+		$book->setOverridesArray(['title', 'publisher']);
+		$this->withBook($book, [[Tag::TYPE_TAG, 'a']]);
+		$this->books->expects($this->once())->method('update')->willReturnArgument(0);
+		$written = null;
+		$this->sidecar->expects($this->once())->method('write')->willReturnCallback(function (File $f, array $meta) use ($file, &$written): bool {
+			$this->assertSame($file, $f);
+			$written = $meta;
+			return true;
+		});
+		$this->sidecar->method('etagOf')->willReturn('sc:1');
+		$this->jobList->expects($this->never())->method('add');
+		$file->expects($this->never())->method('putContent');
+		$sources = [];
+		$this->library->method('setTags')->willReturnCallback(function (int $id, string $type, array $names, string $source) use (&$sources): void {
+			if ($names !== []) {
+				$sources[$type . ':' . $source] = $names;
+			}
+		});
+
+		$res = $this->service->saveMetadataOnly('u', 5, ['title' => 'New', 'tags' => ['a', 'b']]);
+		$this->assertFalse($res['writeQueued']);
+		$this->assertSame([], $res['warnings']);
+		$this->assertSame('New', $written['title']);
+		$this->assertSame(['a', 'b'], $written['tags']);
+		$this->assertSame(['publisher'], $res['book']->getOverridesArray(), 'the sidecar holds the title now, no override needed');
+		$this->assertSame('sc:1', $res['book']->getSidecarEtag());
+		$this->assertSame(['a', 'b'], $sources['tag:' . Tag::SOURCE_FILE], 'tags follow the sidecar (source file semantics)');
+	}
+
+	public function testSidecarTargetWorksForFormatsThatCanNotBeWritten(): void {
+		$this->target = 'sidecar';
+		$this->untouchableFile('x.mobi');
+		$this->withBook($this->book());
+		$this->books->method('update')->willReturnArgument(0);
+		$this->sidecar->expects($this->once())->method('write')->willReturn(true);
+		$this->jobList->expects($this->never())->method('add');
+		$res = $this->service->saveMetadataOnly('u', 5, ['title' => 'New', 'series' => 'S']);
+		$this->assertSame([], $res['book']->getOverridesArray());
+		$this->assertSame([], $res['warnings']);
+	}
+
+	public function testSidecarCanNotExpressEmptyValuesSoTheyStayOverrides(): void {
+		$this->target = 'sidecar';
+		$this->untouchableFile();
+		$book = $this->book();
+		$book->setSeries('Old series');
+		$this->withBook($book);
+		$this->books->method('update')->willReturnArgument(0);
+		$this->sidecar->method('write')->willReturn(true);
+		$res = $this->service->saveMetadataOnly('u', 5, ['series' => null, 'title' => 'New']);
+		$this->assertSame(['series'], $res['book']->getOverridesArray());
+	}
+
+	public function testUnwritableSidecarFallsBackToLibraryWithWarning(): void {
+		$this->target = 'sidecar';
+		$this->untouchableFile();
+		$book = $this->book();
+		$this->withBook($book);
+		$this->books->method('update')->willReturnArgument(0);
+		$this->sidecar->expects($this->once())->method('write')->willReturn(false);
+		$sources = [];
+		$this->library->method('setTags')->willReturnCallback(function (int $id, string $type, array $names, string $source) use (&$sources): void {
+			if ($names !== []) {
+				$sources[$type . ':' . $source] = $names;
+			}
+		});
+		$res = $this->service->saveMetadataOnly('u', 5, ['title' => 'New', 'tags' => ['x']]);
+		$this->assertCount(1, $res['warnings']);
+		$this->assertSame(['title'], $res['book']->getOverridesArray());
+		$this->assertSame(['x'], $sources['tag:' . Tag::SOURCE_APP]);
+		$this->assertFalse($res['writeQueued']);
+	}
+
+	public function testBothTargetWritesTheSidecarNowAndTheFileInTheBackground(): void {
+		$this->target = 'both';
+		$this->untouchableFile();
+		$this->withBook($this->book());
+		$this->books->method('update')->willReturnArgument(0);
+		$this->sidecar->expects($this->once())->method('write')->willReturn(true);
+		$this->jobList->expects($this->once())->method('add')->with(WriteMetadataJob::class, ['userId' => 'u', 'fileId' => 5]);
+		$res = $this->service->saveMetadataOnly('u', 5, ['title' => 'New']);
+		$this->assertTrue($res['writeQueued']);
+	}
+
+	public function testFileTargetOnlyRefreshesAnExistingSidecar(): void {
+		$this->target = 'file';
+		$this->untouchableFile();
+		$this->withBook($this->book());
+		$this->books->method('update')->willReturnArgument(0);
+		$this->sidecar->expects($this->once())->method('write')->with($this->anything(), $this->anything(), false)->willReturn(true);
+		$this->jobList->expects($this->once())->method('add');
+		$this->service->saveMetadataOnly('u', 5, ['title' => 'New']);
+	}
+
+	public function testLibraryTargetLeavesTheSidecarAlone(): void {
+		$this->target = 'library';
+		$this->untouchableFile();
+		$this->withBook($this->book());
+		$this->books->method('update')->willReturnArgument(0);
+		$this->sidecar->expects($this->never())->method('write');
+		$this->service->saveMetadataOnly('u', 5, ['title' => 'New']);
+	}
+
+	public function testBulkTagsUseTheSidecarTarget(): void {
+		$this->target = 'sidecar';
+		$this->untouchableFile();
+		$this->withBook($this->book(), [[Tag::TYPE_TAG, 'a']]);
+		$this->books->method('update')->willReturnArgument(0);
+		$this->sidecar->expects($this->once())->method('write')->willReturn(true);
+		$this->jobList->expects($this->never())->method('add');
+		$res = $this->service->bulkTags('u', ['fileIds' => [5], 'addTags' => ['b']]);
+		$this->assertSame(1, $res['updated']);
+		$this->assertFalse($res['writeQueued']);
+	}
+
+	public function testEditorSaveRefreshesTheSidecarBeforeReindexing(): void {
+		$this->target = 'sidecar';
+		$src = $this->tmp[] = Fixtures::cbz(2, true);
+		$dst = $this->tmp[] = Fixtures::tmp('.cbz');
+		$file = $this->localFile($src);
+		$this->withBook($this->book());
+		$this->tempManager->method('getTemporaryFile')->willReturn($dst);
+		$this->metadata->method('extractLocal')->willReturn(new BookMetadata(title: 'X'));
+		$this->books->method('update')->willReturnArgument(0);
+		$order = [];
+		$file->method('putContent')->willReturnCallback(function () use (&$order): void {
+			$order[] = 'putContent';
+		});
+		$this->sidecar->expects($this->once())->method('write')->willReturnCallback(function (File $f, array $meta, bool $create) use (&$order): bool {
+			$order[] = 'sidecar';
+			$this->assertSame('Written', $meta['title']);
+			$this->assertTrue($create);
+			return true;
+		});
+		$this->library->method('reindexFileForAllUsers')->willReturnCallback(function () use (&$order): void {
+			$order[] = 'reindex';
+		});
+
+		$this->service->save('u', 5, ['etag' => 'etag1', 'metadata' => ['title' => 'Written']]);
+		$this->assertSame(['putContent', 'sidecar', 'reindex'], $order);
+	}
+
+	public function testRenameMovesTheSidecarWithTheBook(): void {
+		$parent = $this->createMock(\OCP\Files\Folder::class);
+		$parent->method('getPath')->willReturn('/u/files/Books');
+		$parent->method('nodeExists')->willReturn(false);
+		$file = $this->createMock(File::class);
+		$file->method('getName')->willReturn('old.cbz');
+		$file->method('getParent')->willReturn($parent);
+		$file->method('isUpdateable')->willReturn(true);
+		$file->method('isDeletable')->willReturn(true);
+		$file->expects($this->once())->method('move')->with('/u/files/Books/New Name.cbz');
+		$this->library->method('getFileForUser')->willReturn($file);
+		$this->withBook($this->book());
+		$this->renamer->method('sanitize')->willReturnArgument(0);
+		$this->validator->method('sanitizeFilename')->willReturnArgument(0);
+		$this->sidecar->expects($this->once())->method('moveAlong')->with($parent, 'old.cbz', $parent, 'New Name.cbz');
+		$this->library->expects($this->once())->method('reindexFileForAllUsers')->with(5);
+		$this->service->rename('u', 5, 'New Name', false);
+	}
+
+	// ------------------------------------------------------------------ embed
+
+	public function testEmbedMetadataRejectsFormatsThatCanNotBeWritten(): void {
+		$this->untouchableFile('x.mobi');
+		$this->expectException(\OCA\EbookReader\Editor\EditorException::class);
+		$this->expectExceptionCode(415);
+		$this->service->checkEmbed('u', 5);
+	}
+
+	public function testEmbedMetadataRejectsReadOnlyFiles(): void {
+		$file = $this->createMock(File::class);
+		$file->method('getName')->willReturn('x.epub');
+		$file->method('isUpdateable')->willReturn(false);
+		$this->library->method('getFileForUser')->willReturn($file);
+		$this->expectException(\OCA\EbookReader\Editor\EditForbiddenException::class);
+		$this->service->checkEmbed('u', 5);
+	}
+
+	public function testEmbedMetadataWritesLibraryValuesIntoTheFile(): void {
+		$src = $this->tmp[] = Fixtures::cbz(2, true);
+		$dst = $this->tmp[] = Fixtures::tmp('.cbz');
+		$file = $this->localFile($src);
+		$this->withBook($this->book('From library'));
+		$this->tempManager->method('getTemporaryFile')->willReturn($dst);
+		$this->metadata->method('extractLocal')->willReturnCallback(
+			fn (string $path): BookMetadata => $path === $src ? new BookMetadata(title: 'Old in file', authors: ['A']) : new BookMetadata(title: 'From library'),
+		);
+		$this->books->method('update')->willReturnArgument(0);
+		$file->expects($this->once())->method('putContent');
+		$res = $this->service->embedMetadata('u', 5);
+		$this->assertTrue($res['written']);
+	}
+
+	public function testEmbedMetadataIsANoopWhenTheFileAlreadyHoldsTheValues(): void {
+		$src = $this->tmp[] = Fixtures::cbz(2, true);
+		$file = $this->localFile($src);
+		$this->withBook($this->book('Same'));
+		$this->metadata->method('extractLocal')->willReturn(new BookMetadata(title: 'Same', authors: ['A']));
+		$file->expects($this->never())->method('putContent');
+		$this->assertFalse($this->service->embedMetadata('u', 5)['written']);
 	}
 }

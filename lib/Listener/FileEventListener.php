@@ -11,6 +11,7 @@ namespace OCA\EbookReader\Listener;
 
 use OCA\EbookReader\BackgroundJob\ScanFileJob;
 use OCA\EbookReader\Metadata\MetadataService;
+use OCA\EbookReader\Metadata\SidecarService;
 use OCA\EbookReader\Service\LibraryService;
 use OCP\BackgroundJob\IJobList;
 use OCP\EventDispatcher\Event;
@@ -37,6 +38,7 @@ class FileEventListener implements IEventListener {
 		private MetadataService $metadata,
 		private IJobList $jobList,
 		private LoggerInterface $logger,
+		private SidecarService $sidecar,
 	) {
 	}
 
@@ -68,7 +70,36 @@ class FileEventListener implements IEventListener {
 			return;
 		}
 		if ($node instanceof File) {
+			if (SidecarService::isSidecarName($node->getName())) {
+				$this->onSidecarChanged($uid, $node->getParent(), $node->getName(), $node->getPath());
+				return;
+			}
 			$this->indexNode($uid, $node);
+		}
+	}
+
+	/**
+	 * A sidecar was created, written, deleted or renamed by somebody else (our own changes are guarded): the matching
+	 * book is indexed again, which reads (or no longer finds) the sidecar.
+	 */
+	private function onSidecarChanged(string $uid, Folder $parent, string $sidecarName, string $sidecarPath): void {
+		if (SidecarService::isGuarded($sidecarPath)) {
+			return;
+		}
+		$bookName = SidecarService::bookNameOf($sidecarName);
+		if ($bookName === null) {
+			return;
+		}
+		try {
+			if (!$parent->nodeExists($bookName)) {
+				return;
+			}
+			$book = $parent->get($bookName);
+		} catch (\Throwable) {
+			return;
+		}
+		if ($book instanceof File) {
+			$this->indexNode($uid, $book);
 		}
 	}
 
@@ -100,6 +131,17 @@ class FileEventListener implements IEventListener {
 			}
 			return;
 		}
+		if ($node instanceof File && SidecarService::isSidecarName($node->getName())) {
+			$path = self::pathOf($node);
+			if ($path !== null) {
+				$this->onSidecarChanged($path[0], $node->getParent(), $node->getName(), $node->getPath());
+			}
+			return;
+		}
+		if ($node instanceof File && $this->metadata->detectFormat($node->getName(), $node->getMimeType()) !== null) {
+			// the sidecar is deleted with its book (it goes to the trash bin as well)
+			$this->sidecar->deleteFor($node->getParent(), $node->getName());
+		}
 		$this->library->removeFileForAllUsers($node->getId());
 	}
 
@@ -119,13 +161,36 @@ class FileEventListener implements IEventListener {
 		if (!$target instanceof File) {
 			return;
 		}
+		if (SidecarService::isSidecarName($target->getName()) || ($source instanceof File && SidecarService::isSidecarName($source->getName()))) {
+			$this->onSidecarRenamed($source, $target, $src, $dst);
+			return;
+		}
 		$format = $this->metadata->detectFormat($target->getName(), $target->getMimeType());
+		if ($format !== null) {
+			// the sidecar travels with the book (skipped if the target name is taken); before indexing, which reads it
+			$this->sidecar->moveAlong($source->getParent(), $source->getName(), $target->getParent(), $target->getName());
+		}
 		$stays = $dst !== null && $format !== null && $this->library->isInLibrary($dst[0], $target);
 		if ($stays) {
 			$this->indexNode($dst[0], $target);
 		}
 		if ($src !== null && (!$stays || $dst[0] !== $src[0])) {
 			$this->library->removeFile($src[0], $target->getId());
+		}
+	}
+
+	/**
+	 * A sidecar was renamed or moved by somebody else: the books at the old and the new name are indexed again.
+	 *
+	 * @param ?array{0: string, 1: string} $src
+	 * @param ?array{0: string, 1: string} $dst
+	 */
+	private function onSidecarRenamed(Node $source, Node $target, ?array $src, ?array $dst): void {
+		if ($dst !== null && SidecarService::isSidecarName($target->getName())) {
+			$this->onSidecarChanged($dst[0], $target->getParent(), $target->getName(), $target->getPath());
+		}
+		if ($src !== null && SidecarService::isSidecarName($source->getName())) {
+			$this->onSidecarChanged($src[0], $source->getParent(), $source->getName(), $source->getPath());
 		}
 	}
 

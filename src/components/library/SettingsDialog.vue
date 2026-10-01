@@ -50,9 +50,28 @@
 			</section>
 
 			<section>
-				<h3>{{ t('ebookreader', 'Writing metadata into files') }}</h3>
+				<h3>{{ t('ebookreader', 'Where to store metadata changes') }}</h3>
 				<p class="hint">
-					{{ t('ebookreader', 'Applies when you change e.g. tags or the title of a book. Large files take a while to rewrite.') }}
+					{{ t('ebookreader', 'Applies when you change e.g. tags or the title of a book.') }}
+				</p>
+				<div v-for="option in targets" :key="option.value">
+					<NcCheckboxRadioSwitch
+						v-model="target"
+						type="radio"
+						name="metadata-target"
+						:value="option.value">
+						{{ option.label }}
+					</NcCheckboxRadioSwitch>
+					<p class="hint library-settings__option-help">
+						{{ option.help }}
+					</p>
+				</div>
+			</section>
+
+			<section v-if="usesBookFile">
+				<h3>{{ t('ebookreader', 'Writing metadata into the book file') }}</h3>
+				<p class="hint">
+					{{ t('ebookreader', 'Large files take a while to rewrite.') }}
 				</p>
 				<div v-for="mode in writeModes" :key="mode.value">
 					<NcCheckboxRadioSwitch
@@ -81,7 +100,7 @@
 </template>
 
 <script setup lang="ts">
-import type { MetadataWriteMode } from '../../types.ts'
+import type { MetadataTarget, MetadataWriteMode } from '../../types.ts'
 
 import { mdiClose, mdiFolderPlusOutline } from '@mdi/js'
 import { getFilePickerBuilder, showError, showSuccess } from '@nextcloud/dialogs'
@@ -94,6 +113,7 @@ import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import NcTextArea from '@nextcloud/vue/components/NcTextArea'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 import { useSettingsStore } from '../../stores/settings.ts'
+import { resolveTarget, resolveWriteMode, writesBookFile } from './metadataStorage.ts'
 
 const emit = defineEmits<{ close: [], saved: [] }>()
 
@@ -102,11 +122,18 @@ const initial = settingsStore.settings
 
 const folders = ref<string[]>([...initial.libraryFolders])
 const pattern = ref(initial.filenamePattern)
-const writeMode = ref<MetadataWriteMode>(initial.metadataWriteMode ?? 'background')
+const target = ref<MetadataTarget>(resolveTarget(initial.metadataTarget, initial.metadataWriteMode))
+const writeMode = ref<MetadataWriteMode>(resolveWriteMode(initial.metadataWriteMode))
+const usesBookFile = computed(() => writesBookFile(target.value))
+const targets = computed(() => [
+	{ value: 'sidecar' as const, label: t('ebookreader', 'Sidecar file (recommended)'), help: t('ebookreader', 'A small hidden file ".<book>.opf" next to the book. Fast, works for all formats and travels with the files.') },
+	{ value: 'file' as const, label: t('ebookreader', 'Inside the book'), help: t('ebookreader', 'Other readers see the changes, but the book file is rewritten.') },
+	{ value: 'both' as const, label: t('ebookreader', 'Sidecar file and inside the book'), help: t('ebookreader', 'Both of the above.') },
+	{ value: 'library' as const, label: t('ebookreader', 'Library only'), help: t('ebookreader', 'Only stored in this library, files and folders stay untouched.') },
+])
 const writeModes = computed(() => [
 	{ value: 'background' as const, label: t('ebookreader', 'In the background (recommended)'), help: t('ebookreader', 'Saved instantly in the library and written into the file shortly afterwards in one go.') },
 	{ value: 'immediate' as const, label: t('ebookreader', 'Immediately'), help: t('ebookreader', 'Written into the file right away (slow for large files).') },
-	{ value: 'never' as const, label: t('ebookreader', 'Never'), help: t('ebookreader', 'Only stored in the library, the files stay untouched.') },
 ])
 const genreText = ref((initial.genreList ?? []).join('\n'))
 
@@ -178,6 +205,7 @@ async function save(): Promise<void> {
 			libraryFolders: folders.value,
 			filenamePattern: pattern.value.trim() || '{author} - {title}',
 			genreList: genres.length ? genres : null,
+			metadataTarget: target.value,
 			metadataWriteMode: writeMode.value,
 		})
 		showSuccess(t('ebookreader', 'Settings saved'))

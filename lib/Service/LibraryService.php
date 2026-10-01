@@ -15,7 +15,10 @@ use OCA\EbookReader\Db\Book;
 use OCA\EbookReader\Db\BookMapper;
 use OCA\EbookReader\Db\Tag;
 use OCA\EbookReader\Db\TagMapper;
+use OCA\EbookReader\Metadata\BookMetadata;
 use OCA\EbookReader\Metadata\MetadataService;
+use OCA\EbookReader\Metadata\SidecarData;
+use OCA\EbookReader\Metadata\SidecarService;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\BackgroundJob\IJobList;
 use OCP\DB\Exception as DbException;
@@ -49,6 +52,7 @@ class LibraryService {
 		private IJobList $jobList,
 		private IDBConnection $db,
 		private LoggerInterface $logger,
+		private SidecarService $sidecar,
 	) {
 	}
 
@@ -57,6 +61,9 @@ class LibraryService {
 	}
 
 	public function indexFile(string $userId, File $file, bool $force = false): ?Book {
+		if (SidecarService::isSidecarName($file->getName())) {
+			return null;
+		}
 		$format = $this->metadata->detectFormat($file->getName(), $file->getMimeType());
 		if ($format === null) {
 			return null;
@@ -65,6 +72,7 @@ class LibraryService {
 		$mtime = $file->getMTime();
 		$etag = (string)$file->getEtag();
 		$path = $this->relativePath($userId, $file);
+		$sidecarEtag = $this->sidecar->etagOf($file);
 
 		try {
 			$existing = $this->bookMapper->findByUserAndFile($userId, $fileId, true);
@@ -73,7 +81,7 @@ class LibraryService {
 		}
 
 		if ($existing !== null && !$force && $existing->getDeletedAt() === null
-			&& $existing->getFileMtime() === $mtime && $existing->getFileEtag() === $etag) {
+			&& $existing->getFileMtime() === $mtime && $existing->getFileEtag() === $etag && $existing->getSidecarEtag() === $sidecarEtag) {
 			if ($existing->getPath() !== $path || $existing->getFormat() !== $format) {
 				$existing->setPath($path);
 				$existing->setFormat($format);
@@ -84,6 +92,11 @@ class LibraryService {
 		}
 
 		$meta = $this->metadata->extract($file, $format);
+		// precedence: app overrides (below) > sidecar > embedded metadata > file name
+		$sidecarData = $sidecarEtag !== null ? $this->sidecar->read($file) : null;
+		if ($sidecarData !== null) {
+			$meta = self::applySidecar($meta, $sidecarData);
+		}
 		$now = self::nowMs();
 
 		// metadata edits waiting to be written into the file (WriteMetadataJob) must not be overwritten by the old file content
@@ -132,6 +145,7 @@ class LibraryService {
 		}
 		$book->setFileMtime($mtime);
 		$book->setFileEtag($etag);
+		$book->setSidecarEtag($sidecarEtag);
 		$book->setDeletedAt(null);
 		$book->setUpdatedAt($now);
 
@@ -177,6 +191,7 @@ class LibraryService {
 				$other->setCoverEtag($book->getCoverEtag());
 				$other->setFileMtime($mtime);
 				$other->setFileEtag($etag);
+				$other->setSidecarEtag($sidecarEtag);
 				$other->setDeletedAt(null);
 				$other->setUpdatedAt($now);
 				$book = $this->bookMapper->update($other);
@@ -189,6 +204,28 @@ class LibraryService {
 			$this->replaceFileTags($userId, $book, $meta->genres, $meta->tags, $meta->subjects);
 		}
 		return $book;
+	}
+
+	/**
+	 * Sidecar fields that exist override the embedded ones field by field; its genres/tags replace the embedded ones.
+	 */
+	private static function applySidecar(BookMetadata $meta, SidecarData $sidecar): BookMetadata {
+		$s = $sidecar->metadata;
+		$changes = [];
+		foreach (['title', 'series', 'seriesIndex', 'description', 'language', 'publisher', 'isbn', 'publishedAt'] as $field) {
+			if ($s->{$field} !== null) {
+				$changes[$field] = $s->{$field};
+			}
+		}
+		if ($s->authors !== []) {
+			$changes['authors'] = $s->authors;
+		}
+		if ($sidecar->hasLabels()) {
+			$changes['genres'] = $s->genres;
+			$changes['tags'] = $s->tags;
+			$changes['subjects'] = $s->subjects;
+		}
+		return $changes === [] ? $meta : $meta->with($changes);
 	}
 
 	/**
@@ -348,7 +385,7 @@ class LibraryService {
 
 	/**
 	 * Walks the library folders of a user and calls $onFile(File, format) for each e-book.
-	 * @param callable(File, string): void $onFile
+	 * @param callable(File, string, ?string): void $onFile called with the book, its format and the change marker of its sidecar (null = none)
 	 * @return bool true if all folders could be listed (safe to tombstone missing books)
 	 */
 	public function walkLibrary(string $userId, callable $onFile): bool {
@@ -373,7 +410,7 @@ class LibraryService {
 	}
 
 	/**
-	 * @param callable(File, string): void $onFile
+	 * @param callable(File, string, ?string): void $onFile
 	 * @param array<int, true> $seen
 	 */
 	private function walkFolder(Folder $root, callable $onFile, array &$seen): bool {
@@ -388,10 +425,20 @@ class LibraryService {
 				$complete = false;
 				continue;
 			}
+			/** @var array<string, File> $sidecars sidecar files of this folder by name (taken from the listing, no extra lookups) */
+			$sidecars = [];
+			foreach ($children as $child) {
+				if ($child instanceof File && SidecarService::isSidecarName($child->getName())) {
+					$sidecars[$child->getName()] = $child;
+				}
+			}
 			foreach ($children as $child) {
 				if ($child instanceof Folder) {
 					$stack[] = $child;
 				} elseif ($child instanceof File) {
+					if (SidecarService::isSidecarName($child->getName())) {
+						continue; // sidecars are never books
+					}
 					$id = $child->getId();
 					if (isset($seen[$id])) {
 						continue;
@@ -399,7 +446,7 @@ class LibraryService {
 					$format = $this->metadata->detectFormat($child->getName(), $child->getMimeType());
 					if ($format !== null) {
 						$seen[$id] = true;
-						$onFile($child, $format);
+						$onFile($child, $format, SidecarService::stateOf($sidecars[SidecarService::nameFor($child->getName())] ?? null));
 					}
 				}
 			}
@@ -441,13 +488,14 @@ class LibraryService {
 		$deadline = $inlineSeconds === null ? INF : microtime(true) + $inlineSeconds;
 		$found = [];
 		$stats = ['found' => 0, 'indexed' => 0, 'queued' => 0];
-		$complete = $this->walkLibrary($userId, function (File $file, string $format) use ($userId, $existing, &$found, &$stats, $deadline, $progress, $inlineMaxBytes): void {
+		$complete = $this->walkLibrary($userId, function (File $file, string $format, ?string $sidecarEtag = null) use ($userId, $existing, &$found, &$stats, $deadline, $progress, $inlineMaxBytes): void {
 			$id = $file->getId();
 			$found[$id] = true;
 			$stats['found']++;
 			$b = $existing[$id] ?? null;
 			$stale = $b === null || $b->getDeletedAt() !== null || $b->getFileMtime() !== $file->getMTime()
-				|| $b->getFileEtag() !== (string)$file->getEtag() || $b->getFormat() !== $format;
+				|| $b->getFileEtag() !== (string)$file->getEtag() || $b->getFormat() !== $format
+				|| $b->getSidecarEtag() !== $sidecarEtag;
 			if ($progress !== null) {
 				$progress($file, $stale);
 			}
@@ -760,7 +808,11 @@ class LibraryService {
 		if (!$file->isDeletable()) {
 			throw new NotPermittedException('File can not be deleted');
 		}
+		$parent = $file->getParent();
+		$name = $file->getName();
 		$file->delete();
+		// the sidecar goes along (to the trash bin as well); the delete event usually did that already
+		$this->sidecar->deleteFor($parent, $name);
 		$this->removeFile($userId, $fileId);
 	}
 

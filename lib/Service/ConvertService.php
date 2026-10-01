@@ -14,6 +14,7 @@ use OCA\EbookReader\Db\BookMapper;
 use OCA\EbookReader\Db\Tag;
 use OCA\EbookReader\Metadata\ComicArchive;
 use OCA\EbookReader\Metadata\ComicInfoParser;
+use OCA\EbookReader\Metadata\SidecarService;
 use OCA\EbookReader\Metadata\UnsafeArchiveException;
 use OCP\Files\File;
 use OCP\Files\NotPermittedException;
@@ -51,6 +52,7 @@ class ConvertService {
 		private ITempManager $tempManager,
 		private LoggerInterface $logger,
 		private ArchiveCache $archiveCache,
+		private SidecarService $sidecar,
 		private ?ComicWriter $writer = null,
 	) {
 		$this->writer ??= new ComicWriter($tools);
@@ -218,6 +220,8 @@ class ConvertService {
 			self::removeDir($staging);
 		}
 
+		// the metadata sidecar belongs to the new book too (before indexing, which reads it)
+		$this->sidecar->copyAlong($parent, $file->getName(), $parent, $targetName);
 		if ($progress !== null) {
 			$progress(0.97, 'Indexing the new file');
 		}
@@ -229,7 +233,9 @@ class ConvertService {
 
 		if ($deleteOriginal) {
 			try {
+				$oldName = $file->getName();
 				$file->delete();
+				$this->sidecar->deleteFor($parent, $oldName);
 			} catch (\Throwable $e) {
 				$this->logger->warning('Original comic could not be deleted after conversion: ' . $e->getMessage(), ['app' => 'ebookreader']);
 			}

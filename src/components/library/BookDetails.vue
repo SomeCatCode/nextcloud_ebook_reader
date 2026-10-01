@@ -105,6 +105,23 @@
 					{{ t('ebookreader', 'Saved – will be written into the file in the background') }}
 				</p>
 
+				<p v-if="book.hasSidecar" class="book-details__hint">
+					{{ t('ebookreader', 'Metadata stored in sidecar file') }}
+				</p>
+
+				<div v-if="embeddable" class="book-details__embed">
+					<NcButton :disabled="embedding" @click="embed">
+						<template #icon>
+							<NcLoadingIcon v-if="embedding" :size="20" />
+							<NcIconSvgWrapper v-else :path="mdiFileReplaceOutline" />
+						</template>
+						{{ t('ebookreader', 'Write metadata into the book file') }}
+					</NcButton>
+					<p class="book-details__hint">
+						{{ t('ebookreader', 'Other readers such as Kobo or KOReader only read the metadata inside the book, not the sidecar file.') }}
+					</p>
+				</div>
+
 				<!-- eslint-disable-next-line vue/no-v-html -->
 				<div v-if="description" class="book-details__description" v-html="description" />
 
@@ -148,8 +165,8 @@
 <script setup lang="ts">
 import type { Book, FilterTerm, MetadataOverrideField, ReadStatus } from '../../types.ts'
 
-import { mdiBookOpenPageVariant, mdiBookOpenVariant, mdiDeleteOutline, mdiFolderMoveOutline, mdiFolderOutline, mdiPencil, mdiSwapHorizontal } from '@mdi/js'
-import { showError } from '@nextcloud/dialogs'
+import { mdiBookOpenPageVariant, mdiBookOpenVariant, mdiDeleteOutline, mdiFileReplaceOutline, mdiFolderMoveOutline, mdiFolderOutline, mdiPencil, mdiSwapHorizontal } from '@mdi/js'
+import { showError, showSuccess } from '@nextcloud/dialogs'
 import { t } from '@nextcloud/l10n'
 import { generateUrl } from '@nextcloud/router'
 import { computed, ref, watch } from 'vue'
@@ -158,6 +175,7 @@ import NcAppSidebar from '@nextcloud/vue/components/NcAppSidebar'
 import NcAppSidebarTab from '@nextcloud/vue/components/NcAppSidebarTab'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
+import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcProgressBar from '@nextcloud/vue/components/NcProgressBar'
 import NcSelect from '@nextcloud/vue/components/NcSelect'
 import ConvertDialog from '../convert/ConvertDialog.vue'
@@ -167,6 +185,7 @@ import TagEditor from './TagEditor.vue'
 import { sanitizeDescription } from '../../editor/sanitize.ts'
 import { useLibraryStore } from '../../stores/library.ts'
 import { useSettingsStore } from '../../stores/settings.ts'
+import { canEmbed } from './metadataStorage.ts'
 import { bookAuthors, bookTitle, dirName, formatDate, progressPercent } from './utils.ts'
 
 const props = defineProps<{ book: Book }>()
@@ -186,6 +205,8 @@ const settings = useSettingsStore()
 const showConvert = ref(false)
 const warnings = ref<string[]>([])
 const writeQueued = ref(false)
+const embedding = ref(false)
+const embeddable = computed(() => canEmbed(props.book.format, props.book.editable, props.book.downloadable))
 const convertible = computed(() => ['cbz', 'cbr', 'cb7', 'cbt'].includes(props.book.format))
 const genreOptions = computed(() => [...new Set([
 	...(settings.settings.genreList ?? []),
@@ -235,7 +256,32 @@ watch(() => props.book.fileId, () => {
 	writeQueued.value = false
 	warnings.value = []
 	resettingOverride.value = false
+	embedding.value = false
 })
+
+/**
+ * Writes the library metadata into the book file.
+ */
+async function embed(): Promise<void> {
+	const fileId = props.book.fileId
+	embedding.value = true
+	try {
+		const res = await store.embedMetadata(fileId)
+		if (props.book.fileId !== fileId) {
+			return
+		}
+		warnings.value = res.warnings
+		showSuccess(res.written
+			? t('ebookreader', 'Metadata written into the book file')
+			: t('ebookreader', 'The book file already contains this metadata'))
+	} catch {
+		showError(t('ebookreader', 'Could not write the metadata into the book file'))
+	} finally {
+		if (props.book.fileId === fileId) {
+			embedding.value = false
+		}
+	}
+}
 
 /**
  * @param field
@@ -423,6 +469,13 @@ async function setStatus(option: { id: ReadStatus } | null): Promise<void> {
 			justify-content: space-between;
 			gap: 8px;
 		}
+	}
+
+	&__embed {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 4px;
 	}
 
 	&__warning,

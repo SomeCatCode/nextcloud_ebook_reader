@@ -46,15 +46,19 @@ class SettingsService {
 	];
 	private const MAX_FONT_FAMILY = 200;
 
-	public const METADATA_WRITE_MODES = ['background', 'immediate', 'never'];
+	/** When writes into the book file happen (only relevant for the targets "file" and "both"). "never" is the legacy value of metadataTarget "library". */
+	public const METADATA_WRITE_MODES = ['background', 'immediate'];
 	public const DEFAULT_METADATA_WRITE_MODE = 'background';
+	/** Where metadata changes are stored: sidecar file (".<book>.opf"), inside the book, both, or only in the library database. */
+	public const METADATA_TARGETS = ['sidecar', 'file', 'both', 'library'];
+	public const DEFAULT_METADATA_TARGET = 'sidecar';
 
 	public function __construct(
 		private IConfig $config,
 	) {
 	}
 
-	/** @return array{libraryFolders: list<string>, reader: array<string, mixed>, filenamePattern: string, genreList: list<string>|null, metadataWriteMode: string} */
+	/** @return array{libraryFolders: list<string>, reader: array<string, mixed>, filenamePattern: string, genreList: list<string>|null, metadataWriteMode: string, metadataTarget: string} */
 	public function get(string $userId): array {
 		$raw = $this->config->getUserValue($userId, Application::APP_ID, self::KEY, '');
 		$stored = $raw === '' ? [] : json_decode($raw, true);
@@ -86,6 +90,13 @@ class SettingsService {
 		}
 		if (array_key_exists('metadataWriteMode', $settings)) {
 			$merged['metadataWriteMode'] = $settings['metadataWriteMode'];
+			if ($settings['metadataWriteMode'] === 'never' && !array_key_exists('metadataTarget', $settings)) {
+				// legacy clients: "never" means "library only"
+				$merged['metadataTarget'] = 'library';
+			}
+		}
+		if (array_key_exists('metadataTarget', $settings)) {
+			$merged['metadataTarget'] = $settings['metadataTarget'];
 		}
 		$clean = $this->normalise($merged, false);
 		$this->config->setUserValue($userId, Application::APP_ID, self::KEY, json_encode($clean, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
@@ -95,7 +106,7 @@ class SettingsService {
 	/**
 	 * @param array<string, mixed> $in
 	 * @param bool $resolveGenres if true a missing genreList is replaced by the default list
-	 * @return array{libraryFolders: list<string>, reader: array<string, mixed>, filenamePattern: string, genreList: list<string>|null, metadataWriteMode: string}
+	 * @return array{libraryFolders: list<string>, reader: array<string, mixed>, filenamePattern: string, genreList: list<string>|null, metadataWriteMode: string, metadataTarget: string}
 	 */
 	private function normalise(array $in, bool $resolveGenres): array {
 		$folders = [];
@@ -137,12 +148,21 @@ class SettingsService {
 			? $in['metadataWriteMode']
 			: self::DEFAULT_METADATA_WRITE_MODE;
 
+		$target = isset($in['metadataTarget']) && is_string($in['metadataTarget']) && in_array($in['metadataTarget'], self::METADATA_TARGETS, true)
+			? $in['metadataTarget']
+			: self::DEFAULT_METADATA_TARGET;
+		if (($in['metadataWriteMode'] ?? null) === 'never' && !isset($in['metadataTarget'])) {
+			// migration of the legacy write mode "never"
+			$target = 'library';
+		}
+
 		return [
 			'libraryFolders' => $folders,
 			'reader' => $reader,
 			'filenamePattern' => $pattern,
 			'genreList' => $genres,
 			'metadataWriteMode' => $mode,
+			'metadataTarget' => $target,
 		];
 	}
 

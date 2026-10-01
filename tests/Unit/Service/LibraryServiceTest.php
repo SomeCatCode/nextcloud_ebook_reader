@@ -16,6 +16,7 @@ use OCA\EbookReader\Db\Tag;
 use OCA\EbookReader\Db\TagMapper;
 use OCA\EbookReader\Metadata\BookMetadata;
 use OCA\EbookReader\Metadata\MetadataService;
+use OCA\EbookReader\Metadata\SidecarService;
 use OCA\EbookReader\Service\CoverService;
 use OCA\EbookReader\Service\GenreClassifier;
 use OCA\EbookReader\Service\LibraryService;
@@ -40,6 +41,7 @@ class LibraryServiceTest extends TestCase {
 	private SettingsService&MockObject $settings;
 	private IJobList&MockObject $jobList;
 	private IRootFolder&MockObject $root;
+	private SidecarService&MockObject $sidecar;
 	private LibraryService $service;
 	/** @var list<Tag> */
 	private array $insertedTags = [];
@@ -58,6 +60,7 @@ class LibraryServiceTest extends TestCase {
 		]);
 		$this->root = $this->createMock(IRootFolder::class);
 		$this->jobList = $this->createMock(IJobList::class);
+		$this->sidecar = $this->createMock(SidecarService::class);
 		$this->insertedTags = [];
 		$this->tags->method('insert')->willReturnCallback(function (Tag $t): Tag {
 			$this->insertedTags[] = $t;
@@ -77,6 +80,7 @@ class LibraryServiceTest extends TestCase {
 			$this->jobList,
 			$this->createMock(IDBConnection::class),
 			$this->createMock(LoggerInterface::class),
+			$this->sidecar,
 		);
 	}
 
@@ -292,5 +296,167 @@ class LibraryServiceTest extends TestCase {
 		$this->books->method('findByUserAndFile')->willThrowException(new DoesNotExistException(''));
 		$this->books->expects($this->never())->method('update');
 		$this->service->removeFile('u', 5);
+	}
+
+	// ------------------------------------------------------------------ sidecar files
+
+	public function testPrecedenceOverrideThenSidecarThenEmbedded(): void {
+		$this->metadata->method('detectFormat')->willReturn('epub');
+		$existing = new Book();
+		$existing->setId(3);
+		$existing->setTitle('Override title');
+		$existing->setOverridesArray(['title']);
+		$existing->setFileMtime(1);
+		$existing->setFileEtag('old');
+		$this->books->method('findByUserAndFile')->willReturn($existing);
+		$this->books->method('update')->willReturnArgument(0);
+		$this->sidecar->method('etagOf')->willReturn('s1:5');
+		$this->sidecar->method('read')->willReturn(new \OCA\EbookReader\Metadata\SidecarData(
+			new BookMetadata(title: 'Sidecar title', authors: ['Side A'], publisher: 'Side Pub', genres: ['Krimi'], tags: ['mine']),
+			true,
+		));
+		$this->metadata->method('extract')->willReturn(new BookMetadata(
+			title: 'Embedded title',
+			authors: ['Emb'],
+			publisher: 'Emb Pub',
+			language: 'de',
+			genres: ['Fantasy'],
+			tags: ['embtag'],
+		));
+
+		$book = $this->service->indexFile('u', $this->file(5, 200, 'new'));
+		$this->assertNotNull($book);
+		$this->assertSame('Override title', $book->getTitle(), 'app override wins');
+		$this->assertSame(['Side A'], $book->getAuthorsArray(), 'sidecar beats embedded');
+		$this->assertSame('Side Pub', $book->getPublisher());
+		$this->assertSame('de', $book->getLanguage(), 'fields missing in the sidecar come from the file');
+		$this->assertSame('s1:5', $book->getSidecarEtag());
+		$names = [];
+		foreach ($this->insertedTags as $t) {
+			$names[] = $t->getType() . ':' . $t->getName();
+		}
+		$this->assertSame(['genre:Krimi', 'tag:mine'], $names, 'genres/tags of the sidecar replace the embedded ones');
+	}
+
+	public function testSidecarWithoutLabelsKeepsEmbeddedGenresAndTags(): void {
+		$this->metadata->method('detectFormat')->willReturn('epub');
+		$this->books->method('findByUserAndFile')->willThrowException(new DoesNotExistException(''));
+		$this->books->method('insert')->willReturnCallback(function (Book $b): Book {
+			$b->setId(7);
+			return $b;
+		});
+		$this->sidecar->method('etagOf')->willReturn('s1:5');
+		$this->sidecar->method('read')->willReturn(new \OCA\EbookReader\Metadata\SidecarData(new BookMetadata(title: 'Only a title')));
+		$this->metadata->method('extract')->willReturn(new BookMetadata(title: 'Embedded', genres: ['Fantasy'], tags: ['embtag']));
+
+		$book = $this->service->indexFile('u', $this->file());
+		$this->assertSame('Only a title', $book?->getTitle());
+		$names = [];
+		foreach ($this->insertedTags as $t) {
+			$names[] = $t->getType() . ':' . $t->getName();
+		}
+		$this->assertSame(['genre:Fantasy', 'tag:embtag'], $names);
+	}
+
+	public function testChangedSidecarTriggersReindexOfUnchangedBook(): void {
+		$this->metadata->method('detectFormat')->willReturn('epub');
+		$existing = new Book();
+		$existing->setId(3);
+		$existing->setFileMtime(100);
+		$existing->setFileEtag('e1');
+		$existing->setPath('/Books/x.epub');
+		$existing->setFormat('epub');
+		$existing->setSidecarEtag('s1:5');
+		$this->books->method('findByUserAndFile')->willReturn($existing);
+		$this->books->method('update')->willReturnArgument(0);
+		$this->sidecar->method('etagOf')->willReturn('s2:9');
+		$this->sidecar->method('read')->willReturn(new \OCA\EbookReader\Metadata\SidecarData(new BookMetadata(title: 'Changed in sidecar')));
+		$this->metadata->expects($this->once())->method('extract')->willReturn(new BookMetadata(title: 'Embedded'));
+
+		$book = $this->service->indexFile('u', $this->file());
+		$this->assertSame('Changed in sidecar', $book?->getTitle());
+		$this->assertSame('s2:9', $book->getSidecarEtag());
+	}
+
+	public function testUnchangedSidecarAndBookAreNotReindexed(): void {
+		$this->metadata->method('detectFormat')->willReturn('epub');
+		$existing = new Book();
+		$existing->setFileMtime(100);
+		$existing->setFileEtag('e1');
+		$existing->setPath('/Books/x.epub');
+		$existing->setFormat('epub');
+		$existing->setSidecarEtag('s1:5');
+		$this->books->method('findByUserAndFile')->willReturn($existing);
+		$this->sidecar->method('etagOf')->willReturn('s1:5');
+		$this->metadata->expects($this->never())->method('extract');
+		$this->assertSame($existing, $this->service->indexFile('u', $this->file()));
+	}
+
+	public function testRemovedSidecarTriggersReindex(): void {
+		$this->metadata->method('detectFormat')->willReturn('epub');
+		$existing = new Book();
+		$existing->setId(3);
+		$existing->setFileMtime(100);
+		$existing->setFileEtag('e1');
+		$existing->setSidecarEtag('s1:5');
+		$this->books->method('findByUserAndFile')->willReturn($existing);
+		$this->books->method('update')->willReturnArgument(0);
+		$this->sidecar->method('etagOf')->willReturn(null);
+		$this->metadata->expects($this->once())->method('extract')->willReturn(new BookMetadata(title: 'Embedded'));
+		$book = $this->service->indexFile('u', $this->file());
+		$this->assertNull($book?->getSidecarEtag());
+		$this->assertSame('Embedded', $book->getTitle());
+	}
+
+	public function testSidecarFilesAreNeverIndexedAsBooks(): void {
+		$file = $this->createMock(File::class);
+		$file->method('getName')->willReturn('.x.epub.opf');
+		$file->method('getMimeType')->willReturn('application/epub+zip');
+		$this->metadata->method('detectFormat')->willReturn('epub');
+		$this->metadata->expects($this->never())->method('extract');
+		$this->books->expects($this->never())->method('insert');
+		$this->assertNull($this->service->indexFile('u', $file));
+	}
+
+	public function testDeleteFileForUserDeletesTheSidecarToo(): void {
+		$parent = $this->createMock(Folder::class);
+		$file = $this->file();
+		$file->method('isReadable')->willReturn(true);
+		$file->method('isDeletable')->willReturn(true);
+		$file->method('getParent')->willReturn($parent);
+		$this->root->getUserFolder('u')->method('getFirstNodeById')->willReturn($file);
+		$this->books->method('findByUserAndFile')->willThrowException(new DoesNotExistException(''));
+		$file->expects($this->once())->method('delete');
+		$this->sidecar->expects($this->once())->method('deleteFor')->with($parent, 'x.epub');
+		$this->service->deleteFileForUser('u', 5);
+	}
+
+	public function testWalkSkipsSidecarsAndReportsTheirChangeMarker(): void {
+		$book = $this->createMock(File::class);
+		$book->method('getName')->willReturn('a.epub');
+		$book->method('getMimeType')->willReturn('application/epub+zip');
+		$book->method('getId')->willReturn(1);
+		$sidecar = $this->createMock(File::class);
+		$sidecar->method('getName')->willReturn('.a.epub.opf');
+		$sidecar->method('getMimeType')->willReturn('application/epub+zip');
+		$sidecar->method('getId')->willReturn(2);
+		$sidecar->method('getEtag')->willReturn('x');
+		$sidecar->method('getMTime')->willReturn(7);
+		$lonely = $this->createMock(File::class);
+		$lonely->method('getName')->willReturn('b.epub');
+		$lonely->method('getMimeType')->willReturn('application/epub+zip');
+		$lonely->method('getId')->willReturn(3);
+		$folder = $this->createMock(Folder::class);
+		$folder->method('getDirectoryListing')->willReturn([$book, $sidecar, $lonely]);
+		$userFolder = $this->createMock(Folder::class);
+		$userFolder->method('get')->willReturnCallback(static fn (string $p) => $p === 'Books' ? $folder : throw new \OCP\Files\NotFoundException());
+		$this->root->method('getUserFolder')->willReturn($userFolder);
+		$this->metadata->method('detectFormat')->willReturn('epub');
+
+		$seen = [];
+		$this->service->walkLibrary('u', function (File $f, string $format, ?string $marker) use (&$seen): void {
+			$seen[$f->getId()] = $marker;
+		});
+		$this->assertSame([1 => 'x:7', 3 => null], $seen);
 	}
 }

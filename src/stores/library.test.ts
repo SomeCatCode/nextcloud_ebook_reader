@@ -7,6 +7,7 @@ import type { Book } from '../types.ts'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as api from '../services/api.ts'
+import { pollTask } from '../services/tasks.ts'
 import { PAGE_SIZE, queryToState, SEARCH_DEBOUNCE_MS, stateToQuery, useLibraryStore } from './library.ts'
 
 vi.mock('../services/api.ts', () => ({
@@ -17,7 +18,9 @@ vi.mock('../services/api.ts', () => ({
 	bulkTags: vi.fn(),
 	patchMetadata: vi.fn(),
 	resetOverrides: vi.fn(),
+	embedMetadata: vi.fn(),
 }))
+vi.mock('../services/tasks.ts', () => ({ pollTask: vi.fn() }))
 
 const mocked = vi.mocked(api)
 
@@ -52,6 +55,7 @@ function book(fileId: number, extra: Partial<Book> = {}): Book {
 		editable: true,
 		downloadable: true,
 		overrides: [],
+		hasSidecar: false,
 		progress: null,
 		...extra,
 	}
@@ -235,6 +239,29 @@ describe('library store', () => {
 		await store.resetOverrides(1, 'title')
 		expect(mocked.resetOverrides).toHaveBeenCalledWith(1, 'title')
 		expect(store.books[0].title).toBe('From file')
+	})
+
+	it('embeds metadata into the book file right away for small books', async () => {
+		const store = useLibraryStore()
+		mocked.getFacets.mockResolvedValue({ genres: [], tags: [], authors: [], series: [], formats: [] })
+		await store.reload()
+		mocked.embedMetadata.mockResolvedValueOnce({ sync: { book: book(1, { title: 'Embedded' }), warnings: [], written: true } })
+		expect(await store.embedMetadata(1)).toEqual({ written: true, warnings: [] })
+		expect(mocked.embedMetadata).toHaveBeenCalledWith(1, false)
+		expect(store.books[0].title).toBe('Embedded')
+	})
+
+	it('embeds large books through a server task', async () => {
+		const store = useLibraryStore()
+		mocked.getFacets.mockResolvedValue({ genres: [], tags: [], authors: [], series: [], formats: [] })
+		mocked.listBooks.mockResolvedValue({ books: [book(1, { size: 50 * 1024 * 1024 })], total: 1 })
+		await store.reload()
+		mocked.embedMetadata.mockResolvedValueOnce({ taskId: 9 })
+		vi.mocked(pollTask).mockResolvedValueOnce({ id: 9, status: 'done', result: { book: book(1, { title: 'From task' }), written: false, warnings: ['w'] } } as never)
+		expect(await store.embedMetadata(1)).toEqual({ written: false, warnings: ['w'] })
+		expect(mocked.embedMetadata).toHaveBeenCalledWith(1, true)
+		expect(pollTask).toHaveBeenCalledWith(9)
+		expect(store.books[0].title).toBe('From task')
 	})
 
 	it('shows that saving tags queued a background write', async () => {

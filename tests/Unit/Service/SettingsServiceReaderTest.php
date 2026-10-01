@@ -71,9 +71,44 @@ class SettingsServiceReaderTest extends TestCase {
 		$stored = null;
 		$svc = $this->service($stored);
 		$this->assertSame('background', $svc->get('u')['metadataWriteMode']);
-		$this->assertSame('never', $svc->set('u', ['metadataWriteMode' => 'never'])['metadataWriteMode']);
 		$this->assertSame('immediate', $svc->set('u', ['metadataWriteMode' => 'immediate'])['metadataWriteMode']);
 		// unknown values fall back to the default
 		$this->assertSame('background', $svc->set('u', ['metadataWriteMode' => 'sometimes'])['metadataWriteMode']);
+	}
+
+	public function testMetadataTargetDefaultsToSidecarAndIsValidated(): void {
+		$stored = null;
+		$svc = $this->service($stored);
+		$this->assertSame('sidecar', $svc->get('u')['metadataTarget']);
+		foreach (['file', 'both', 'library', 'sidecar'] as $target) {
+			$this->assertSame($target, $svc->set('u', ['metadataTarget' => $target])['metadataTarget']);
+		}
+		$this->assertSame('sidecar', $svc->set('u', ['metadataTarget' => 'somewhere'])['metadataTarget']);
+	}
+
+	public function testStoredLegacyWriteModeNeverMigratesToTargetLibrary(): void {
+		$stored = json_encode(['metadataWriteMode' => 'never']);
+		$svc = $this->service($stored);
+		$s = $svc->get('u');
+		$this->assertSame('library', $s['metadataTarget']);
+		$this->assertSame('background', $s['metadataWriteMode']);
+		// an explicit target in the stored value wins over the legacy mode
+		$stored = json_encode(['metadataWriteMode' => 'never', 'metadataTarget' => 'both']);
+		$this->assertSame('both', $this->service($stored)->get('u')['metadataTarget']);
+		// the migrated value is persisted by the next save
+		$stored = json_encode(['metadataWriteMode' => 'never']);
+		$svc = $this->service($stored);
+		$svc->set('u', ['filenamePattern' => '{title}']);
+		$this->assertSame('library', json_decode((string)$stored, true)['metadataTarget']);
+	}
+
+	public function testLegacyClientsSendingNeverGetTargetLibrary(): void {
+		$stored = null;
+		$s = $this->service($stored)->set('u', ['metadataWriteMode' => 'never']);
+		$this->assertSame('library', $s['metadataTarget']);
+		$this->assertSame('background', $s['metadataWriteMode']);
+		// a new target sent together with the mode wins
+		$s = $this->service($stored)->set('u', ['metadataWriteMode' => 'never', 'metadataTarget' => 'sidecar']);
+		$this->assertSame('sidecar', $s['metadataTarget']);
 	}
 }

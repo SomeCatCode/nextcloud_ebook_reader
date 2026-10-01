@@ -39,6 +39,22 @@ class OrganizeMoveGuardTest extends TestCase {
 
 	#[DataProvider('permissions')]
 	public function testMoveOnlyWithUpdateAndDeletePermission(bool $updateable, bool $deletable, string $expected): void {
+		$this->runMove($updateable, $deletable, $expected, $this->createMock(\OCA\EbookReader\Metadata\SidecarService::class));
+	}
+
+	public function testSidecarMovesWithTheBook(): void {
+		$sidecar = $this->createMock(\OCA\EbookReader\Metadata\SidecarService::class);
+		$sidecar->expects($this->once())->method('moveAlong')->with($this->isInstanceOf(Folder::class), 'old.epub', $this->isInstanceOf(Folder::class), 'new.epub');
+		$this->runMove(true, true, 'moved', $sidecar);
+	}
+
+	public function testSidecarStaysWhenTheBookIsNotMoved(): void {
+		$sidecar = $this->createMock(\OCA\EbookReader\Metadata\SidecarService::class);
+		$sidecar->expects($this->never())->method('moveAlong');
+		$this->runMove(false, true, 'failed', $sidecar);
+	}
+
+	private function runMove(bool $updateable, bool $deletable, string $expected, \OCA\EbookReader\Metadata\SidecarService $sidecar): void {
 		$book = new Book();
 		$book->setPath('/Books/old.epub');
 		$book->setId(1);
@@ -66,7 +82,7 @@ class OrganizeMoveGuardTest extends TestCase {
 		$validator = $this->createMock(IFilenameValidator::class);
 		$validator->method('sanitizeFilename')->willReturnArgument(0);
 
-		$service = new OrganizeService($mapper, $this->createMock(TagMapper::class), $library, new RenameService(), $settings, $root, $validator, $this->createMock(LoggerInterface::class));
+		$service = new OrganizeService($mapper, $this->createMock(TagMapper::class), $library, new RenameService(), $settings, $root, $validator, $this->createMock(LoggerInterface::class), $sidecar);
 		$result = $service->apply('u', [5], 'new', null);
 		$this->assertSame($expected, $result['items'][0]['status'], json_encode($result['items']));
 	}

@@ -55,7 +55,7 @@ class TaskService {
 	/**
 	 * Creates a queued task and queues the RunTaskJob fallback.
 	 *
-	 * @param 'edit'|'convert' $type
+	 * @param 'edit'|'convert'|'embed' $type
 	 * @param array<string, mixed> $request what the task will execute (edit: EditRequest array, convert: {target, deleteOriginal})
 	 */
 	public function create(string $userId, int $fileId, string $type, array $request): Task {
@@ -142,6 +142,13 @@ class TaskService {
 				$result = [
 					'book' => $this->serializer->serializeWithProgress($userId, $res['book']),
 					'warnings' => $res['warnings'],
+				];
+			} elseif ($task->getType() === Task::TYPE_EMBED) {
+				$res = $this->editor->embedMetadata($userId, $fileId, $progress);
+				$result = [
+					'book' => $this->serializer->serializeWithProgress($userId, $res['book']),
+					'warnings' => $res['warnings'],
+					'written' => $res['written'],
 				];
 			} elseif ($task->getType() === Task::TYPE_CONVERT) {
 				$res = $this->convert->convert(

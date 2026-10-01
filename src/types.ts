@@ -59,6 +59,8 @@ export interface Book {
 	downloadable: boolean
 	/** Metadata fields edited in the app only (they survive re-indexing of the file) */
 	overrides: MetadataOverrideField[]
+	/** A hidden sidecar file ".<book>.opf" next to the book holds (part of) the metadata */
+	hasSidecar: boolean
 	progress: Progress | null
 }
 
@@ -149,6 +151,14 @@ export interface BulkTagResult {
 	writeQueued?: boolean
 }
 
+/** Result of "Write metadata into the book file" */
+export interface EmbedResult {
+	book: Book
+	warnings: string[]
+	/** false if the file already held the metadata */
+	written: boolean
+}
+
 export interface SaveResult {
 	book: Book
 	warnings: string[]
@@ -187,7 +197,11 @@ export interface ReaderSettings {
 	[key: string]: unknown
 }
 
-export type MetadataWriteMode = 'background' | 'immediate' | 'never'
+/** When writes into the book file happen (only for the targets "file" and "both") */
+export type MetadataWriteMode = 'background' | 'immediate'
+
+/** Where metadata changes are stored: sidecar file (default), inside the book, both, or only in the library */
+export type MetadataTarget = 'sidecar' | 'file' | 'both' | 'library'
 
 export interface Settings {
 	libraryFolders: string[]
@@ -195,8 +209,10 @@ export interface Settings {
 	filenamePattern: string
 	/** Server resolves null to the default list from resources/genres.json on GET */
 	genreList: string[] | null
-	/** When metadata edits are written into the file: later in one background job (default), right away, or never */
+	/** When metadata edits are written into the book file (targets file/both): later in one background job (default) or right away */
 	metadataWriteMode: MetadataWriteMode
+	/** Where metadata changes are stored */
+	metadataTarget: MetadataTarget
 }
 
 export interface StructureCapabilities {
@@ -293,13 +309,15 @@ export interface OrganizeResult {
 
 // ---- Async tasks (CONTRACTS-v3 section 1) -------------------------------
 
-export type TaskType = 'edit' | 'convert'
+export type TaskType = 'edit' | 'convert' | 'embed'
 export type TaskStatus = 'queued' | 'running' | 'done' | 'failed'
 
 /** Result of a finished task. `edit`: book + warnings, `convert`: book + fileId + path. On `failed`: `code` = 403/409/413/422. */
 export interface TaskResult {
 	book?: Book
 	warnings?: string[]
+	/** embed: false if the file already held the metadata */
+	written?: boolean
 	fileId?: number
 	path?: string
 	code?: number

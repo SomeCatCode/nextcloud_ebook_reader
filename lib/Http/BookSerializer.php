@@ -81,6 +81,7 @@ class BookSerializer {
 			'editable' => $editable,
 			'downloadable' => $downloadable,
 			'overrides' => $book->getOverridesArray(),
+			'hasSidecar' => $book->getSidecarEtag() !== null,
 			'progress' => $progress?->toApi(),
 		];
 	}

@@ -45,6 +45,7 @@ class OrganizeServiceTest extends TestCase {
 			$this->rootFolder,
 			$validator,
 			$this->createMock(LoggerInterface::class),
+			$this->createMock(\OCA\EbookReader\Metadata\SidecarService::class),
 		);
 	}
 

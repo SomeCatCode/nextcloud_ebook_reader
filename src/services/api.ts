@@ -7,6 +7,7 @@ import type {
 	BulkTagRequest,
 	BulkTagResult,
 	EditRequest,
+	EmbedResult,
 	Facets,
 	FilterTerm,
 	MetadataOverrideField,
@@ -347,6 +348,20 @@ export function putStructure(fileId: number, req: EditRequest, onUploadProgress?
  */
 export async function putStructureAsync(fileId: number, req: EditRequest, onUploadProgress?: (fraction: number) => void): Promise<{ taskId: number } | { sync: SaveResult }> {
 	return await startTask<SaveResult>('put', `/books/${fileId}/structure`, req, onUploadProgress)
+}
+
+/**
+ * Writes the library metadata into the book file ("Write metadata into the book file"). With `async` the server
+ * answers 202 `{taskId}` (poll with getTask), otherwise it writes right away.
+ *
+ * @param fileId
+ * @param async use a background task (large files)
+ */
+export async function embedMetadata(fileId: number, async: boolean): Promise<{ taskId: number } | { sync: EmbedResult }> {
+	if (async) {
+		return await startTask<EmbedResult>('post', `/books/${fileId}/metadata/embed`, {})
+	}
+	return { sync: await request<EmbedResult>('post', `/books/${fileId}/metadata/embed`, { body: {} }) }
 }
 
 /**
