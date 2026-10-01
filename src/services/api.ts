@@ -4,6 +4,8 @@ import type {
 	Book,
 	BookList,
 	BookQuery,
+	BulkMetadataRequest,
+	BulkMetadataResult,
 	BulkTagRequest,
 	BulkTagResult,
 	EditRequest,
@@ -433,6 +435,17 @@ export async function putStructureAsync(fileId: number, req: EditRequest, onUplo
 }
 
 /**
+ * Edits the metadata of several books. The server answers 200 with the result or, for large requests that write into
+ * the files (or with `async`), 202 `{taskId}` (poll with getTask).
+ *
+ * @param req
+ * @param async force a background task
+ */
+export async function bulkMetadata(req: BulkMetadataRequest, async: boolean): Promise<{ taskId: number } | { sync: BulkMetadataResult }> {
+	return await startTask<BulkMetadataResult>('post', '/books/bulk-metadata', req, undefined, async)
+}
+
+/**
  * Writes the library metadata into the book file ("Write metadata into the book file"). With `async` the server
  * answers 202 `{taskId}` (poll with getTask), otherwise it writes right away.
  *
@@ -463,13 +476,14 @@ export async function convertAsync<T = unknown>(fileId: number, body: { target: 
  * @param path
  * @param body
  * @param onUploadProgress
+ * @param forceAsync send `async=1` (otherwise the server decides)
  */
-async function startTask<T>(method: 'put' | 'post', path: string, body: unknown, onUploadProgress?: (fraction: number) => void): Promise<{ taskId: number } | { sync: T }> {
+async function startTask<T>(method: 'put' | 'post', path: string, body: unknown, onUploadProgress?: (fraction: number) => void, forceAsync = true): Promise<{ taskId: number } | { sync: T }> {
 	try {
 		const res = await axios.request<OcsEnvelope<T | TaskStarted>>({
 			method,
 			url: ocsUrl(path),
-			params: { async: 1 },
+			params: forceAsync ? { async: 1 } : undefined,
 			data: body,
 			headers: { 'OCS-APIRequest': 'true' },
 			onUploadProgress: onUploadProgress ? (ev) => onUploadProgress(ev.total ? ev.loaded / ev.total : 0) : undefined,

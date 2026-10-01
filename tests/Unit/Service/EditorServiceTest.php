@@ -13,6 +13,7 @@ use OCA\EbookReader\BackgroundJob\WriteMetadataJob;
 use OCA\EbookReader\Db\Book;
 use OCA\EbookReader\Db\BookMapper;
 use OCA\EbookReader\Db\Tag;
+use OCA\EbookReader\Editor\InvalidEditRequestException;
 use OCA\EbookReader\Metadata\BookMetadata;
 use OCA\EbookReader\Metadata\MetadataService;
 use OCA\EbookReader\Metadata\SidecarService;
@@ -23,6 +24,7 @@ use OCA\EbookReader\Service\ProgressService;
 use OCA\EbookReader\Service\RenameService;
 use OCA\EbookReader\Service\SettingsService;
 use OCA\EbookReader\Tests\Unit\Editor\Fixtures;
+use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\BackgroundJob\IJobList;
 use OCP\Files\File;
 use OCP\Files\IFilenameValidator;
@@ -30,6 +32,7 @@ use OCP\Files\IRootFolder;
 use OCP\Files\Storage\IStorage;
 use OCP\IAppConfig;
 use OCP\ITempManager;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
@@ -573,5 +576,199 @@ class EditorServiceTest extends TestCase {
 		$this->metadata->method('extractLocal')->willReturn(new BookMetadata(title: 'Same', authors: ['A']));
 		$file->expects($this->never())->method('putContent');
 		$this->assertFalse($this->service->embedMetadata('u', 5)['written']);
+	}
+
+	// ------------------------------------------------------------------ bulk metadata
+
+	/**
+	 * Several books by file id; getBook throws for unknown ids. Saves go through the sidecar target.
+	 *
+	 * @param array<int, array<string, mixed>> $specs
+	 * @return array<int, Book>
+	 */
+	private function bulkBooks(array $specs): array {
+		$this->target = 'sidecar';
+		$this->untouchableFile();
+		$books = [];
+		foreach ($specs as $fileId => $spec) {
+			$b = new Book();
+			$b->setId($fileId + 100);
+			$b->setUserId('u');
+			$b->setFileId($fileId);
+			$b->setTitle(array_key_exists('title', $spec) ? $spec['title'] : 'Book ' . $fileId);
+			$b->setAuthorsArray($spec['authors'] ?? ['A']);
+			$b->setSeries($spec['series'] ?? null);
+			$b->setSeriesIndex($spec['seriesIndex'] ?? null);
+			$b->setPublisher($spec['publisher'] ?? null);
+			$b->setLanguage($spec['language'] ?? null);
+			$books[$fileId] = $b;
+		}
+		$this->library->method('getBook')->willReturnCallback(fn (string $u, int $id): Book => $books[$id] ?? throw new DoesNotExistException('x'));
+		$this->library->method('getTags')->willReturn([]);
+		$this->books->method('update')->willReturnArgument(0);
+		$this->sidecar->method('write')->willReturn(true);
+		$this->sidecar->method('etagOf')->willReturn('sc:1');
+		return $books;
+	}
+
+	public function testBulkAuthorsReplaceAddAndRemove(): void {
+		$books = $this->bulkBooks([1 => ['authors' => ['A', 'B']], 2 => ['authors' => ['C']]]);
+
+		$res = $this->service->bulkMetadata('u', ['fileIds' => [1, 2], 'authors' => ['mode' => 'replace', 'values' => ['X', ' Y ']]]);
+		$this->assertSame(2, $res['updated']);
+		$this->assertSame(['X', 'Y'], $books[1]->getAuthorsArray());
+		$this->assertSame(['X', 'Y'], $books[2]->getAuthorsArray());
+
+		$this->service->bulkMetadata('u', ['fileIds' => [1, 2], 'authors' => ['mode' => 'add', 'values' => ['z', 'x']]]);
+		$this->assertSame(['X', 'Y', 'z'], $books[1]->getAuthorsArray(), 'case-insensitive duplicates are not added twice');
+
+		$res = $this->service->bulkMetadata('u', ['fileIds' => [1, 2], 'authors' => ['mode' => 'remove', 'values' => ['x', 'nobody']]]);
+		$this->assertSame(['Y', 'z'], $books[1]->getAuthorsArray());
+		$this->assertSame(2, $res['updated']);
+
+		$res = $this->service->bulkMetadata('u', ['fileIds' => [1], 'authors' => ['mode' => 'remove', 'values' => ['nobody']]]);
+		$this->assertSame(0, $res['updated']);
+		$this->assertSame(1, $res['unchanged']);
+	}
+
+	public function testBulkSeriesSetWithSequenceUsesTheOrderOfFileIdsStartAndStep(): void {
+		$books = $this->bulkBooks([1 => [], 2 => [], 3 => []]);
+		$res = $this->service->bulkMetadata('u', ['fileIds' => [3, 1, 2], 'series' => ['mode' => 'set', 'name' => ' Saga ', 'index' => ['mode' => 'sequence', 'start' => 2, 'step' => 0.5]]]);
+		$this->assertSame(3, $res['updated']);
+		$this->assertSame('Saga', $books[1]->getSeries());
+		$this->assertSame(2.0, $books[3]->getSeriesIndex());
+		$this->assertSame(2.5, $books[1]->getSeriesIndex());
+		$this->assertSame(3.0, $books[2]->getSeriesIndex());
+	}
+
+	public function testBulkSeriesDefaultsToStartOneStepOne(): void {
+		$books = $this->bulkBooks([1 => [], 2 => []]);
+		$this->service->bulkMetadata('u', ['fileIds' => [1, 2], 'series' => ['mode' => 'set', 'name' => 'S', 'index' => ['mode' => 'sequence']]]);
+		$this->assertSame([1.0, 2.0], [$books[1]->getSeriesIndex(), $books[2]->getSeriesIndex()]);
+	}
+
+	public function testBulkSeriesKeepLeavesTheIndexAlone(): void {
+		$books = $this->bulkBooks([1 => ['seriesIndex' => 7.0]]);
+		$this->service->bulkMetadata('u', ['fileIds' => [1], 'series' => ['mode' => 'set', 'name' => 'S']]);
+		$this->assertSame('S', $books[1]->getSeries());
+		$this->assertSame(7.0, $books[1]->getSeriesIndex());
+	}
+
+	public function testBulkSeriesSortTitleNumbersInNaturalTitleOrder(): void {
+		$books = $this->bulkBooks([1 => ['title' => 'Vol 10'], 2 => ['title' => 'Vol 2'], 3 => ['title' => 'vol 1'], 4 => ['title' => null]]);
+		$this->service->bulkMetadata('u', ['fileIds' => [1, 2, 3, 4], 'series' => ['mode' => 'set', 'name' => 'S', 'index' => ['mode' => 'sortTitle']]]);
+		// file 4 has no title, its file name "x" (from the mocked file) sorts after "vol ..."
+		$this->assertSame(1.0, $books[3]->getSeriesIndex());
+		$this->assertSame(2.0, $books[2]->getSeriesIndex());
+		$this->assertSame(3.0, $books[1]->getSeriesIndex());
+		$this->assertSame(4.0, $books[4]->getSeriesIndex());
+	}
+
+	public function testBulkClearSeriesAlsoClearsTheVolume(): void {
+		$books = $this->bulkBooks([1 => ['series' => 'S', 'seriesIndex' => 3.0]]);
+		$res = $this->service->bulkMetadata('u', ['fileIds' => [1], 'series' => ['mode' => 'clear']]);
+		$this->assertSame(1, $res['updated']);
+		$this->assertNull($books[1]->getSeries());
+		$this->assertNull($books[1]->getSeriesIndex());
+	}
+
+	public function testBulkOnlyChangesTheProvidedFields(): void {
+		$books = $this->bulkBooks([1 => ['title' => 'T', 'authors' => ['A'], 'series' => 'S', 'seriesIndex' => 2.0, 'publisher' => 'P', 'language' => 'de']]);
+		$this->service->bulkMetadata('u', ['fileIds' => [1], 'publisher' => ['mode' => 'set', 'value' => 'New pub']]);
+		$b = $books[1];
+		$this->assertSame('New pub', $b->getPublisher());
+		$this->assertSame('T', $b->getTitle());
+		$this->assertSame(['A'], $b->getAuthorsArray());
+		$this->assertSame('S', $b->getSeries());
+		$this->assertSame(2.0, $b->getSeriesIndex());
+		$this->assertSame('de', $b->getLanguage());
+
+		$this->service->bulkMetadata('u', ['fileIds' => [1], 'language' => ['mode' => 'clear'], 'publisher' => ['mode' => 'clear']]);
+		$this->assertNull($b->getLanguage());
+		$this->assertNull($b->getPublisher());
+		$this->assertSame('S', $b->getSeries());
+	}
+
+	public function testBulkGenresAndTagsKeepTheBulkTagsSemantics(): void {
+		$this->bulkBooks([1 => []]);
+		$res = $this->service->bulkMetadata('u', ['fileIds' => [1], 'tags' => ['add' => ['new'], 'remove' => ['old']], 'genres' => ['add' => ['G']]]);
+		$this->assertSame(1, $res['updated']);
+	}
+
+	public function testBulkSidecarTargetNeverTouchesTheBookFile(): void {
+		$this->bulkBooks([1 => [], 2 => []]);
+		$this->jobList->expects($this->never())->method('add');
+		$res = $this->service->bulkMetadata('u', ['fileIds' => [1, 2], 'publisher' => ['mode' => 'set', 'value' => 'P']]);
+		$this->assertFalse($res['writeQueued']);
+		$this->assertSame([], $res['failed']);
+		$this->assertFalse($this->service->metadataTargetWritesFiles('u'));
+	}
+
+	public function testBulkFileTargetQueuesTheWriteJob(): void {
+		$this->bulkBooks([1 => []]);
+		$this->target = 'file';
+		$this->jobList->expects($this->once())->method('add')->with(WriteMetadataJob::class, ['userId' => 'u', 'fileId' => 1]);
+		$res = $this->service->bulkMetadata('u', ['fileIds' => [1], 'publisher' => ['mode' => 'set', 'value' => 'P']]);
+		$this->assertTrue($res['writeQueued']);
+		$this->assertTrue($this->service->metadataTargetWritesFiles('u'));
+	}
+
+	public function testBulkReportsFailuresPerFileAndContinues(): void {
+		$books = $this->bulkBooks([1 => [], 3 => []]);
+		$res = $this->service->bulkMetadata('u', ['fileIds' => [1, 2, 3], 'publisher' => ['mode' => 'set', 'value' => 'P']]);
+		$this->assertSame(2, $res['updated']);
+		$this->assertCount(1, $res['failed']);
+		$this->assertSame(2, $res['failed'][0]['fileId']);
+		$this->assertSame('P', $books[3]->getPublisher());
+	}
+
+	public function testBulkReportsProgress(): void {
+		$this->bulkBooks([1 => [], 2 => []]);
+		$steps = [];
+		$this->service->bulkMetadata('u', ['fileIds' => [1, 2], 'publisher' => ['mode' => 'set', 'value' => 'P']], function (float $f, string $s) use (&$steps): void {
+			$steps[] = $s;
+		});
+		$this->assertSame(['Book 1 of 2', 'Book 2 of 2', 'Done'], $steps);
+	}
+
+	/** @return array<string, array{0: array<string, mixed>}> */
+	public static function invalidBulkRequests(): array {
+		$ok = ['fileIds' => [1], 'publisher' => ['mode' => 'set', 'value' => 'P']];
+		return [
+			'no ids' => [['fileIds' => [], 'publisher' => ['mode' => 'clear']]],
+			'too many ids' => [['fileIds' => range(1, 501), 'publisher' => ['mode' => 'clear']]],
+			'nothing to change' => [['fileIds' => [1]]],
+			'too many authors' => [['fileIds' => [1], 'authors' => ['mode' => 'replace', 'values' => array_map(static fn (int $i): string => 'A' . $i, range(1, 51))]]],
+			'author too long' => [['fileIds' => [1], 'authors' => ['mode' => 'add', 'values' => [str_repeat('a', 513)]]]],
+			'bad authors mode' => [['fileIds' => [1], 'authors' => ['mode' => 'x', 'values' => ['a']]]],
+			'add without values' => [['fileIds' => [1], 'authors' => ['mode' => 'add', 'values' => [' ']]]],
+			'series without name' => [['fileIds' => [1], 'series' => ['mode' => 'set', 'name' => ' ']]],
+			'series name too long' => [['fileIds' => [1], 'series' => ['mode' => 'set', 'name' => str_repeat('s', 513)]]],
+			'bad index mode' => [['fileIds' => [1], 'series' => ['mode' => 'set', 'name' => 'S', 'index' => ['mode' => 'x']]]],
+			'negative start' => [['fileIds' => [1], 'series' => ['mode' => 'set', 'name' => 'S', 'index' => ['mode' => 'sequence', 'start' => -1]]]],
+			'zero step' => [['fileIds' => [1], 'series' => ['mode' => 'set', 'name' => 'S', 'index' => ['mode' => 'sequence', 'step' => 0]]]],
+			'publisher too long' => [['fileIds' => [1], 'publisher' => ['mode' => 'set', 'value' => str_repeat('p', 256)]]],
+			'language too long' => [['fileIds' => [1], 'language' => ['mode' => 'set', 'value' => str_repeat('l', 33)]]],
+			'bad publisher mode' => [array_merge($ok, ['publisher' => ['mode' => 'append', 'value' => 'x']])],
+		];
+	}
+
+	/** @param array<string, mixed> $body */
+	#[DataProvider('invalidBulkRequests')]
+	public function testBulkRejectsInvalidRequests(array $body): void {
+		$this->expectException(InvalidEditRequestException::class);
+		$this->service->normalizeBulkMetadata($body);
+	}
+
+	public function testBulkAcceptsTheLimits(): void {
+		$plan = $this->service->normalizeBulkMetadata([
+			'fileIds' => range(1, 500),
+			'authors' => ['mode' => 'replace', 'values' => array_map(static fn (int $i): string => 'A' . $i, range(1, 50))],
+			'series' => ['mode' => 'set', 'name' => str_repeat('s', 512)],
+			'publisher' => ['mode' => 'set', 'value' => str_repeat('p', 255)],
+			'language' => ['mode' => 'set', 'value' => str_repeat('l', 32)],
+		]);
+		$this->assertCount(500, $plan['fileIds']);
+		$this->assertSame($plan, $this->service->normalizeBulkMetadata($plan), 'the normalized plan is a valid request');
 	}
 }

@@ -16,6 +16,7 @@ vi.mock('../services/api.ts', () => ({
 	recentBooks: vi.fn(),
 	patchAppData: vi.fn(),
 	bulkTags: vi.fn(),
+	bulkMetadata: vi.fn(),
 	patchMetadata: vi.fn(),
 	resetOverrides: vi.fn(),
 	embedMetadata: vi.fn(),
@@ -231,6 +232,43 @@ describe('library store', () => {
 		expect(mocked.bulkTags).toHaveBeenCalledWith(expect.objectContaining({ fileIds: [2], addGenres: ['X'] }))
 		store.setSelectMode(false)
 		expect(store.selectedIds).toEqual([])
+	})
+
+	it('orders the selection like the list and keeps it after a bulk metadata edit', async () => {
+		const store = useLibraryStore()
+		mocked.getFacets.mockResolvedValue({ genres: [], tags: [], authors: [], series: [], formats: [] })
+		await store.reload()
+		const listOrder = store.books.map((b) => b.fileId)
+		store.toggleSelected(listOrder[1])
+		store.toggleSelected(999)
+		store.toggleSelected(listOrder[0])
+		expect(store.orderedSelectedIds).toEqual([listOrder[0], listOrder[1], 999])
+		mocked.bulkMetadata.mockResolvedValueOnce({ sync: { updated: 3, unchanged: 0, failed: [], writeQueued: false } })
+		const res = await store.bulkMetadata({ fileIds: store.orderedSelectedIds, publisher: { mode: 'clear' } })
+		expect(res.updated).toBe(3)
+		expect(mocked.bulkMetadata).toHaveBeenCalledWith(expect.objectContaining({ fileIds: [listOrder[0], listOrder[1], 999] }), false)
+		expect(store.selectedIds).toHaveLength(3)
+	})
+
+	it('polls a bulk metadata task and reports its result', async () => {
+		const store = useLibraryStore()
+		mocked.getFacets.mockResolvedValue({ genres: [], tags: [], authors: [], series: [], formats: [] })
+		await store.reload()
+		mocked.bulkMetadata.mockResolvedValueOnce({ taskId: 7 })
+		vi.mocked(pollTask).mockResolvedValueOnce({
+			id: 7,
+			fileId: 1,
+			type: 'bulk',
+			status: 'done',
+			progress: 1,
+			step: 'Done',
+			result: { updated: 80, unchanged: 1, failed: [{ fileId: 4, error: 'x' }], writeQueued: true },
+			error: null,
+			createdAt: 0,
+			updatedAt: 0,
+		})
+		const res = await store.bulkMetadata({ fileIds: [1], publisher: { mode: 'clear' } })
+		expect(res).toEqual({ updated: 80, unchanged: 1, failed: [{ fileId: 4, error: 'x' }], writeQueued: true })
 	})
 
 	it('resets an override and applies the book re-read from the file', async () => {

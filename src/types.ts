@@ -153,6 +153,29 @@ export interface BulkTagResult {
 	writeQueued?: boolean
 }
 
+export type BulkAuthorsMode = 'replace' | 'add' | 'remove'
+export type BulkIndexMode = 'keep' | 'sequence' | 'sortTitle'
+
+/** POST /books/bulk-metadata: only the provided sections change. */
+export interface BulkMetadataRequest {
+	/** in the order used for volume numbering */
+	fileIds: number[]
+	authors?: { mode: BulkAuthorsMode, values: string[] }
+	series?: { mode: 'clear' } | { mode: 'set', name: string, index?: { mode: BulkIndexMode, start?: number, step?: number } }
+	publisher?: { mode: 'clear' } | { mode: 'set', value: string }
+	language?: { mode: 'clear' } | { mode: 'set', value: string }
+	genres?: { add: string[], remove: string[] }
+	tags?: { add: string[], remove: string[] }
+}
+
+export interface BulkMetadataResult {
+	updated: number
+	unchanged: number
+	failed: { fileId: number, error: string }[]
+	/** True if at least one file will be updated by a background job */
+	writeQueued: boolean
+}
+
 /** Result of "Write metadata into the book file" */
 export interface EmbedResult {
 	book: Book
@@ -311,7 +334,7 @@ export interface OrganizeResult {
 
 // ---- Async tasks (CONTRACTS-v3 section 1) -------------------------------
 
-export type TaskType = 'edit' | 'convert' | 'embed'
+export type TaskType = 'edit' | 'convert' | 'embed' | 'bulk'
 export type TaskStatus = 'queued' | 'running' | 'done' | 'failed'
 
 /** Result of a finished task. `edit`: book + warnings, `convert`: book + fileId + path. On `failed`: `code` = 403/409/413/422. */
@@ -323,6 +346,11 @@ export interface TaskResult {
 	fileId?: number
 	path?: string
 	code?: number
+	/** bulk: counters of the bulk metadata edit */
+	updated?: number
+	unchanged?: number
+	failed?: { fileId: number, error: string }[]
+	writeQueued?: boolean
 }
 
 export interface Task {

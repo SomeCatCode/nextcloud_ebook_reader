@@ -5,6 +5,8 @@
 import type {
 	Book,
 	BookQuery,
+	BulkMetadataRequest,
+	BulkMetadataResult,
 	BulkTagResult,
 	Facets,
 	FilterTerm,
@@ -16,10 +18,12 @@ import type {
 	SeriesQuery,
 	SmartQuery,
 	SortKey,
+	Task,
 } from '../types.ts'
 
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
+import { orderSelection } from '../components/library/bulkEdit.ts'
 import { EMBED_SYNC_MAX_BYTES } from '../components/library/metadataStorage.ts'
 import * as api from '../services/api.ts'
 import { pollTask } from '../services/tasks.ts'
@@ -295,6 +299,8 @@ export const useLibraryStore = defineStore('library', () => {
 	/** nothing to show (no series cards and no books) */
 	const isEmpty = computed(() => books.value.length === 0 && (!seriesMode.value || seriesList.value.length === 0))
 	const selectedIds = computed(() => [...selection.value])
+	/** selected ids in the order of the loaded list (selected books that are not loaded go last) */
+	const orderedSelectedIds = computed(() => orderSelection(books.value.map((b) => b.fileId), selectedIds.value))
 	const activeBook = computed(() => books.value.find((b) => b.fileId === activeFileId.value)
 		?? recent.value.find((b) => b.fileId === activeFileId.value)
 		?? null)
@@ -858,6 +864,31 @@ export const useLibraryStore = defineStore('library', () => {
 	}
 
 	/**
+	 * Edits metadata of several books (see BulkMetadataRequest), then refreshes list and facets. The selection stays.
+	 * Large requests run as a server task; `onProgress` receives its progress (0..1) and step text.
+	 *
+	 * @param req
+	 * @param onProgress
+	 */
+	async function bulkMetadata(req: BulkMetadataRequest, onProgress?: (task: Task) => void): Promise<BulkMetadataResult> {
+		const started = await api.bulkMetadata(req, false)
+		let result: BulkMetadataResult
+		if ('taskId' in started) {
+			const task = await pollTask(started.taskId, { onUpdate: onProgress })
+			result = {
+				updated: task.result?.updated ?? 0,
+				unchanged: task.result?.unchanged ?? 0,
+				failed: task.result?.failed ?? [],
+				writeQueued: task.result?.writeQueued === true,
+			}
+		} else {
+			result = started.sync
+		}
+		await Promise.all([reload(), loadFacets()])
+		return result
+	}
+
+	/**
 	 * Opens the details sidebar for a book (null closes it).
 	 *
 	 * @param fileId
@@ -950,6 +981,8 @@ export const useLibraryStore = defineStore('library', () => {
 		embedMetadata,
 		resetOverrides,
 		bulkTags,
+		bulkMetadata,
+		orderedSelectedIds,
 		setActive,
 	}
 })

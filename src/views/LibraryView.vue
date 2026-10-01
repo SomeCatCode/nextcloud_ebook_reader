@@ -218,7 +218,7 @@
 					<template #icon>
 						<NcIconSvgWrapper :path="mdiTagMultipleOutline" />
 					</template>
-					{{ t('ebookreader', 'Edit genres and tags') }}
+					{{ t('ebookreader', 'Edit selected…') }}
 				</NcButton>
 				<NcButton variant="tertiary" :disabled="store.selectedIds.length === 0" @click="askDelete(store.selectedIds)">
 					<template #icon>
@@ -337,7 +337,7 @@
 		@delete="(id: number) => askDelete([id])"
 		@converted="onConverted" />
 
-	<BulkTagDialog v-if="showBulk" @close="showBulk = false" />
+	<BulkEditDialog v-if="showBulk" @close="showBulk = false" />
 	<AddToShelfDialog
 		v-if="shelfIds.length"
 		:fileIds="shelfIds"
@@ -413,7 +413,7 @@ import AddToShelfDialog from '../components/library/AddToShelfDialog.vue'
 import BookDetails from '../components/library/BookDetails.vue'
 import BookGrid from '../components/library/BookGrid.vue'
 import BookList from '../components/library/BookList.vue'
-import BulkTagDialog from '../components/library/BulkTagDialog.vue'
+import BulkEditDialog from '../components/library/BulkEditDialog.vue'
 import ContinueReading from '../components/library/ContinueReading.vue'
 import DeleteBooksDialog from '../components/library/DeleteBooksDialog.vue'
 import FilterBar from '../components/library/FilterBar.vue'

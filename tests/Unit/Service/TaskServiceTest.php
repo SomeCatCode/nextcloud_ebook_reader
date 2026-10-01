@@ -125,6 +125,22 @@ class TaskServiceTest extends TestCase {
 		$this->service->run(11);
 	}
 
+	public function testRunBulkTaskDoesNotNeedContentAccessAndStoresTheResult(): void {
+		$this->mapper->method('findById')->willReturn($this->task(Task::TYPE_BULK, ['fileIds' => [5, 6], 'publisher' => ['mode' => 'clear']]));
+		$this->mapper->method('claim')->willReturn(true);
+		$this->editor->expects($this->once())->method('bulkMetadata')
+			->with('u', ['fileIds' => [5, 6], 'publisher' => ['mode' => 'clear']], $this->isCallable())
+			->willReturn(['updated' => 2, 'unchanged' => 0, 'failed' => [], 'writeQueued' => false]);
+		$this->mapper->expects($this->once())->method('finish')->with(
+			11,
+			Task::STATUS_DONE,
+			$this->callback(static fn (string $json): bool => (json_decode($json, true)['updated'] ?? null) === 2),
+			null,
+			$this->anything(),
+		);
+		$this->service->run(11);
+	}
+
 	public function testRunConvertLifecycleDone(): void {
 		$this->mapper->method('findById')->willReturn($this->task(Task::TYPE_CONVERT, ['target' => 'CBZ', 'deleteOriginal' => true]));
 		$this->mapper->method('claim')->willReturn(true);

@@ -55,7 +55,7 @@ class TaskService {
 	/**
 	 * Creates a queued task and queues the RunTaskJob fallback.
 	 *
-	 * @param 'edit'|'convert'|'embed' $type
+	 * @param 'edit'|'convert'|'embed'|'bulk' $type
 	 * @param array<string, mixed> $request what the task will execute (edit: EditRequest array, convert: {target, deleteOriginal})
 	 */
 	public function create(string $userId, int $fileId, string $type, array $request): Task {
@@ -133,11 +133,16 @@ class TaskService {
 		$request = $task->getRequestArray();
 		$progress = $this->progressCallback($taskId);
 		try {
-			$file = $this->library->getFileForUser($userId, $fileId);
-			if (!$this->library->canReadContent($file)) {
-				throw new EditorException('Download of this file is disabled', 403);
+			if ($task->getType() !== Task::TYPE_BULK) {
+				$file = $this->library->getFileForUser($userId, $fileId);
+				if (!$this->library->canReadContent($file)) {
+					throw new EditorException('Download of this file is disabled', 403);
+				}
 			}
-			if ($task->getType() === Task::TYPE_EDIT) {
+			if ($task->getType() === Task::TYPE_BULK) {
+				// metadata only, nothing of the content is handed out; each book is checked by saveMetadataOnly
+				$result = $this->editor->bulkMetadata($userId, $request, $progress);
+			} elseif ($task->getType() === Task::TYPE_EDIT) {
 				$res = $this->editor->save($userId, $fileId, $request, $progress);
 				$result = [
 					'book' => $this->serializer->serializeWithProgress($userId, $res['book']),
