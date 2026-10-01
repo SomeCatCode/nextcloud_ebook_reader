@@ -72,7 +72,9 @@ class ConvertController extends AbstractOCSController {
 	}
 
 	/**
-	 * Converts a comic on the server. The new file is created next to the original.
+	 * Converts a comic on the server
+	 *
+	 * The new file is created next to the original.
 	 *
 	 * @param int $fileId File id
 	 * @param string $target Target format: cbz, cb7, cbt or epub

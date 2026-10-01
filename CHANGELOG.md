@@ -11,6 +11,9 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 - Bücher organisieren: Umbenennen und Einsortieren in Ordner nach einem Muster wie `{author}/{series}/{series_index:2} - {title}`, mit Vorschau vor dem Ausführen, für ein Buch oder eine Auswahl.
 - Neue Comic-Formate CB7 (7z) und CBT (tar).
 - Formatkonvertierung zwischen CBZ, CB7, CBT und EPUB (Fixed Layout), mit Erklärung der Vor- und Nachteile jedes Formats. CBR kann als Ziel nicht angeboten werden, weil RAR sich nur mit proprietärer Software schreiben lässt.
+  - Die Konvertierung läuft auf dem Server, wenn er Quelle und Ziel verarbeiten kann. CBZ, CBT und EPUB gehen immer, CBR und CB7 mit installiertem `7z`, `unrar` oder `bsdtar`.
+  - Andernfalls konvertiert der Browser und lädt das Ergebnis hoch.
+- CBR- und CB7-Comics werden ebenfalls seitenweise vom Server ausgeliefert, wenn ein Archiv-Programm installiert ist. CBT braucht dafür kein Zusatzprogramm.
 
 ### Behoben
 - CBR-Comics bekommen ein Vorschaubild: serverseitig, wenn `7z`, `unrar` oder `bsdtar` installiert ist, sonst erzeugt es der Browser beim ersten Öffnen.

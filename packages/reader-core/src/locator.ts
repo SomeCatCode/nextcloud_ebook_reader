@@ -18,8 +18,15 @@ export interface RelocateInfo {
 }
 
 const IMAGE_TYPES: Record<string, string> = {
-	jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', bmp: 'image/bmp',
-	webp: 'image/webp', svg: 'image/svg+xml', jxl: 'image/jxl', avif: 'image/avif',
+	jpg: 'image/jpeg',
+	jpeg: 'image/jpeg',
+	png: 'image/png',
+	gif: 'image/gif',
+	bmp: 'image/bmp',
+	webp: 'image/webp',
+	svg: 'image/svg+xml',
+	jxl: 'image/jxl',
+	avif: 'image/avif',
 }
 
 const clamp01 = (n: number): number => Math.min(1, Math.max(0, Number.isFinite(n) ? n : 0))
@@ -72,10 +79,10 @@ export function toLocator(info: RelocateInfo, isComic: boolean): ReaderLocator {
 	return locator
 }
 
-export type NavStep =
-	| { kind: 'cfi', cfi: string }
-	| { kind: 'section', index: number, progression: number, fragment?: string }
-	| { kind: 'fraction', fraction: number }
+export type NavStep
+	= | { kind: 'cfi', cfi: string }
+		| { kind: 'section', index: number, progression: number, fragment?: string }
+		| { kind: 'fraction', fraction: number }
 
 export interface NavContext {
 	sectionIds: string[]

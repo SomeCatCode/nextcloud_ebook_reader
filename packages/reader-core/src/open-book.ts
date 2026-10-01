@@ -7,6 +7,7 @@
  * and with CBR/CB7/CBT support. foliate-js modules are imported lazily.
  */
 import type { ReaderFormat, ReaderLayout, ReaderOptions, ReaderSource, RemoteComicSource } from './types.ts'
+
 import { makeArchiveLoader } from './comic-rar.ts'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -151,6 +152,7 @@ export async function openBook(file: ReaderSource, format: ReaderFormat, opts: R
 
 /**
  * @param file
+ * @param source
  * @param format
  * @param opts
  * @param layout

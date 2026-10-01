@@ -1,12 +1,4 @@
-/**
- * SPDX-FileCopyrightText: 2026 Felix Kurth
- * SPDX-License-Identifier: AGPL-3.0-or-later
- */
-import { planNavigation, toLocator } from './locator.ts'
 import type { FoliateBook, OpenedBook } from './open-book.ts'
-import { openBook } from './open-book.ts'
-import { hardenBook } from './secure-sections.ts'
-import { buildCss } from './themes.ts'
 import type {
 	BookInfo,
 	ReaderEvents,
@@ -22,6 +14,15 @@ import type {
 	SearchOptions,
 	TocItem,
 } from './types.ts'
+
+/**
+ * SPDX-FileCopyrightText: 2026 Felix Kurth
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+import { planNavigation, toLocator } from './locator.ts'
+import { openBook } from './open-book.ts'
+import { hardenBook } from './secure-sections.ts'
+import { buildCss } from './themes.ts'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any
@@ -151,6 +152,7 @@ export function createReader(container: HTMLElement, options: ReaderOptions = {}
 
 	/**
 	 * @param detail
+	 * @param detail.fraction
 	 */
 	function onRendererRelocate(detail: { fraction?: number }): void {
 		sectionFraction = typeof detail?.fraction === 'number' ? detail.fraction : undefined

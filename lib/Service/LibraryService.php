@@ -122,7 +122,7 @@ class LibraryService {
 				$meta = $meta->with(['coverData' => null]);
 			}
 		}
-		if ($meta->coverData === null && $format !== 'cbr' && $book->getHasCover()) {
+		if ($meta->coverData === null && !in_array($format, ['cbr', 'cb7', 'cbt'], true) && $book->getHasCover()) {
 			$this->covers->deleteCover($fileId);
 			$book->setHasCover(false);
 			$book->setCoverEtag(null);
