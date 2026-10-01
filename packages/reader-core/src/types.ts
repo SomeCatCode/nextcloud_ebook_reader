@@ -91,6 +91,8 @@ export interface ReaderEvents {
 	/** Emitted for a tap/click on the page */
 	tap: { zone: 'left' | 'center' | 'right' }
 	key: { key: string }
+	/** A link in the book points outside of it. foliate's default (window.open) is always cancelled; the UI decides. */
+	'external-link': { url: string }
 }
 
 /**

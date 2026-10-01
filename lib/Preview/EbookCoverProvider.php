@@ -23,6 +23,8 @@ class EbookCoverProvider implements IProviderV2 {
 	/** Includes both the core (application/comicbook+zip) and the contract (vnd.comicbook) comic mime types. */
 	public const MIME_REGEX = '/^application\/(epub\+zip|x-mobipocket-ebook|vnd\.amazon\.mobi8-ebook|x-fictionbook\+xml|x-zip-compressed-fb2|(vnd\.)?comicbook[+-](zip|rar)|x-cb7|x-cbt)$/';
 
+	private const MAX_PIXELS = 40_000_000;
+
 	public function __construct(
 		private MetadataService $metadata,
 		private LoggerInterface $logger,
@@ -51,6 +53,10 @@ class EbookCoverProvider implements IProviderV2 {
 		try {
 			$meta = $this->metadata->extract($file, $format);
 			if ($meta->coverData === null) {
+				return null;
+			}
+			$size = @getimagesizefromstring($meta->coverData);
+			if ($size === false || $size[0] < 1 || $size[1] < 1 || $size[0] * $size[1] > self::MAX_PIXELS) {
 				return null;
 			}
 			$image = new Image();

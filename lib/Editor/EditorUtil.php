@@ -18,6 +18,7 @@ use ZipArchive;
 final class EditorUtil {
 	public const MAX_XML_BYTES = 50 * 1024 * 1024;
 	public const MAX_ENTRIES = 100000;
+	public const MAX_REGEX_INPUT = 2 * 1024 * 1024;
 	public const MAX_TOTAL_BYTES = 4 * 1024 * 1024 * 1024;
 
 	/** @var array<string, string> mime => extension */
@@ -85,10 +86,13 @@ final class EditorUtil {
 			$dom->preserveWhiteSpace = true;
 			$dom->formatOutput = false;
 			// no LIBXML_NOENT / DTDLOAD: no entity expansion, no external resources (XXE)
-			$ok = $dom->loadXML($xml, LIBXML_NONET | LIBXML_COMPACT | LIBXML_PARSEHUGE);
+			$ok = $dom->loadXML($xml, LIBXML_NONET | LIBXML_COMPACT);
 			if ($ok === false || $dom->documentElement === null) {
 				$err = libxml_get_last_error();
 				throw new EditorException($what . ' is not well-formed' . ($err !== false ? ': ' . trim($err->message) : '') . '.', 422);
+			}
+			if (\OCA\EbookReader\Metadata\XmlUtil::hasInternalSubset($dom)) {
+				throw new EditorException($what . ' contains a DTD internal subset or entity declarations, which is not allowed.', 422);
 			}
 			return $dom;
 		} finally {
@@ -232,13 +236,18 @@ final class EditorUtil {
 		$dir = self::dirName($path);
 		$refs = [];
 		$found = [];
-		if (preg_match_all('~\b(?:href|src|xlink:href|poster)\s*=\s*(["\'])(.*?)\1~is', $content, $m) > 0) {
-			array_push($found, ...$m[2]);
+		if (strlen($content) > self::MAX_REGEX_INPUT) {
+			throw new EditorException('Resource scan skipped: ' . $path . ' is too large.', 422);
 		}
-		if (preg_match_all('~url\(\s*(["\']?)(.*?)\1\s*\)~is', $content, $m) > 0) {
-			array_push($found, ...$m[2]);
-		}
-		if (preg_match_all('~@import\s+(["\'])(.*?)\1~is', $content, $m) > 0) {
+		foreach ([
+			'~\b(?:href|src|xlink:href|poster)\s*=\s*(["\'])(.*?)\1~is',
+			'~url\(\s*(["\']?)(.*?)\1\s*\)~is',
+			'~@import\s+(["\'])(.*?)\1~is',
+		] as $re) {
+			$m = [];
+			if (preg_match_all($re, $content, $m) === false || preg_last_error() !== PREG_NO_ERROR) {
+				throw new EditorException('Resource scan failed for ' . $path . '.', 422);
+			}
 			array_push($found, ...$m[2]);
 		}
 		foreach ($found as $url) {

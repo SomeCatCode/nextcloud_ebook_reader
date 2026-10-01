@@ -22,13 +22,19 @@
    `allow-top-navigation`, `allow-forms`.
 2. **EPUB script resources are not loaded** (`book.transformTarget` `load` event: `allow = false` for script items).
 3. **Per-section CSP meta** (`packages/reader-core/src/secure-sections.ts`): every HTML/XHTML section is re-serialised through
-   `DOMParser` and gets `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src blob: data:; media-src blob: data:; style-src blob: 'unsafe-inline'; font-src blob: data:">`
+   `DOMParser` and gets `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src blob: data:; media-src blob: data:; style-src blob: 'unsafe-inline'; font-src blob: data:; script-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'">`
    as first child of `<head>`. This blocks remote resource loading (tracking pixels, remote fonts/images = privacy) and script execution even if
    an iframe were ever granted `allow-scripts`. The parser-based insertion cannot be bypassed by a fake `<head>` in a comment (covered by unit tests).
    Applied by wrapping each `section.load()` (works for EPUB, MOBI, FB2, CBZ/CBR alike). SVG top-level sections cannot carry a CSP meta;
    they are sanitized instead (sanitizeSvg: scripts, foreignObject, on* handlers and javascript:/data:text/html links removed, unit-tested).
-4. **Links**: click handling stays in foliate (`external-link` -> `window.open`, not triggered because reader-core does not forward it; internal links navigate inside the reader).
-5. **Server CSP** (`lib/Listener/CspListener.php`): only on requests under `/apps/ebookreader`, `/apps/files`, `/apps/viewer`, `/f/` it adds `blob:` to
+   The same applies to an XML section whose root is not an XHTML `html` element, e.g. an `<svg>` root served with an XHTML media type:
+   `injectCsp` cleans it like an SVG (type becomes `image/svg+xml`); any other non-XHTML root is replaced by an empty HTML page that carries the CSP.
+4. **Links**: internal links navigate inside the reader (foliate `link` event). For external links (`book.isExternal`: any scheme except `blob:`)
+   reader-core listens for foliate's `external-link` event and **always** calls `preventDefault()`, so foliate's own `window.open` never runs.
+   It re-emits the URL as reader event `external-link`; `ReaderView.vue` shows a confirmation dialog ("Open external link?") with the host and the full URL.
+   Only `http:`, `https:` and `mailto:` are offered; other schemes (`javascript:`, `data:`, `file:`, ...) are ignored silently.
+   On "Open" the URL is opened with `window.open(url, '_blank', 'noopener,noreferrer')`. This applies to EPUB and to FB2/MOBI (all use the same foliate `#handleLinks`).
+5. **Server CSP** (`lib/Listener/CspListener.php`): only on requests under `/apps/ebookreader`, and under `/apps/files` and `/f/` while the Viewer app is enabled (path match with a boundary: equal to the prefix or below `prefix/`, so `/apps/files2` does not match), it adds `blob:` to
    frame-src, worker-src, img/media/font/style-src, `data:` to font-src, `blob:` to connect-src (reader-core `fetch`es the section blob to inject the CSP) and
    `'wasm-unsafe-eval'` (script-src) for libarchive.js. Blob documents inherit the page CSP, hence style/font/img blob: entries are required.
    No `unsafe-eval`, no remote domains.

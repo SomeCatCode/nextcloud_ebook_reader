@@ -132,7 +132,6 @@ import { mdiBookOpenPageVariant, mdiBookOpenVariant, mdiFolderMoveOutline, mdiFo
 import { showError } from '@nextcloud/dialogs'
 import { t } from '@nextcloud/l10n'
 import { generateUrl } from '@nextcloud/router'
-import DOMPurify from 'dompurify'
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import NcAppSidebar from '@nextcloud/vue/components/NcAppSidebar'
@@ -145,6 +144,7 @@ import ConvertDialog from '../convert/ConvertDialog.vue'
 import BookCover from './BookCover.vue'
 import StarRating from './StarRating.vue'
 import TagEditor from './TagEditor.vue'
+import { sanitizeDescription } from '../../editor/sanitize.ts'
 import { useLibraryStore } from '../../stores/library.ts'
 import { useSettingsStore } from '../../stores/settings.ts'
 import { bookAuthors, bookTitle, dirName, formatDate, progressPercent } from './utils.ts'
@@ -175,7 +175,7 @@ const title = computed(() => bookTitle(props.book))
 const authors = computed(() => bookAuthors(props.book))
 const percent = computed(() => progressPercent(props.book))
 const description = computed(() => (props.book.description
-	? DOMPurify.sanitize(props.book.description, { USE_PROFILES: { html: true } })
+	? sanitizeDescription(props.book.description)
 	: ''))
 
 const statusOptions = computed<{ id: ReadStatus, label: string }[]>(() => [

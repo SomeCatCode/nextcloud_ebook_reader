@@ -57,6 +57,7 @@ namespace OCA\EbookReader;
  *     addedAt: int,
  *     updatedAt: int,
  *     editable: bool,
+ *     downloadable: bool,
  *     progress: ?EbookReaderProgress,
  * }
  *

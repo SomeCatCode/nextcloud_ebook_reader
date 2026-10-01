@@ -19,6 +19,7 @@ use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\FrontpageRoute;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
+use OCP\AppFramework\Http\Attribute\UserRateLimit;
 use OCP\AppFramework\Http\DataDisplayResponse;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\AppFramework\Http\Response;
@@ -42,6 +43,8 @@ class ComicController extends Controller {
 	/** Requested widths are rounded up to one of these, so the cache is shared between devices */
 	private const WIDTHS = [800, 1200, 1600, 2000, 2400];
 	private const MAX_PAGE = 60 * 1024 * 1024;
+	/** Pages with more pixels than this are never decoded (decompression bomb), they are served unscaled */
+	private const MAX_PIXELS = 40_000_000;
 	private const CACHE_FOLDER = 'comic-pages';
 
 	public function __construct(
@@ -70,6 +73,9 @@ class ComicController extends Controller {
 		if ($file === null) {
 			return new JSONResponse([], Http::STATUS_NOT_FOUND);
 		}
+		if (!$this->library->canReadContent($file)) {
+			return new JSONResponse([], Http::STATUS_FORBIDDEN);
+		}
 		try {
 			$pages = $this->pageList($file);
 		} catch (\Throwable $e) {
@@ -91,11 +97,15 @@ class ComicController extends Controller {
 	 */
 	#[NoAdminRequired]
 	#[NoCSRFRequired]
+	#[UserRateLimit(limit: 600, period: 60)]
 	#[FrontpageRoute(verb: 'GET', url: '/comic/{fileId}/page/{index}', requirements: ['fileId' => '\d+', 'index' => '\d+'])]
 	public function page(int $fileId, int $index, int $w = 0): DataDisplayResponse|JSONResponse|Response {
 		$file = $this->comicFile($fileId);
 		if ($file === null) {
 			return new JSONResponse([], Http::STATUS_NOT_FOUND);
+		}
+		if (!$this->library->canReadContent($file)) {
+			return new JSONResponse([], Http::STATUS_FORBIDDEN);
 		}
 		$width = $this->bucket($w);
 		$etag = md5((string)$file->getEtag() . '|' . $index . '|' . $width);
@@ -110,16 +120,19 @@ class ComicController extends Controller {
 				return new JSONResponse([], Http::STATUS_NOT_FOUND);
 			}
 			$name = $pages[$index]['name'];
-			$cacheName = $fileId . '-' . substr(md5((string)$file->getEtag()), 0, 12) . '-' . $index . '-' . $width . '.img';
+			$base = $fileId . '-' . substr(md5((string)$file->getEtag()), 0, 12) . '-' . $index . '-' . $width;
 			$folder = $this->cacheFolder();
-			[$data, $mime] = $this->cached($folder, $cacheName) ?? $this->render($file, $name, $width, $folder, $cacheName);
+			// The cache entry carries the extension of what it contains: .jpg when scaled, else the extension of the original page.
+			$origExt = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+			$candidates = array_values(array_unique($width > 0 ? [$base . '.jpg', $base . '.' . $origExt] : [$base . '.' . $origExt]));
+			[$data, $mime] = $this->cached($folder, $candidates) ?? $this->render($file, $name, $width, $folder, $base);
 		} catch (\Throwable $e) {
 			$this->logger->info('Cannot serve comic page ' . $index . ' of ' . $fileId . ': ' . $e->getMessage(), ['app' => Application::APP_ID]);
 			return new JSONResponse([], Http::STATUS_NOT_FOUND);
 		}
 		$response = new DataDisplayResponse($data, Http::STATUS_OK, ['Content-Type' => $mime, 'X-Content-Type-Options' => 'nosniff']);
 		$response->setETag($etag);
-		$response->addHeader('Cache-Control', 'private, max-age=604800, immutable');
+		$response->addHeader('Cache-Control', 'private, max-age=86400');
 		return $response;
 	}
 
@@ -201,18 +214,25 @@ class ComicController extends Controller {
 		return $pages;
 	}
 
-	/** @return array{0: string, 1: string}|null */
-	private function cached(ISimpleFolder $folder, string $name): ?array {
-		try {
-			$f = $folder->getFile($name);
-			return [$f->getContent(), $f->getMimeType() !== '' && $f->getMimeType() !== 'application/octet-stream' ? $f->getMimeType() : 'image/jpeg'];
-		} catch (NotFoundException) {
-			return null;
+	/**
+	 * @param list<string> $names candidate cache file names
+	 * @return array{0: string, 1: string}|null
+	 */
+	private function cached(ISimpleFolder $folder, array $names): ?array {
+		foreach ($names as $name) {
+			try {
+				$f = $folder->getFile($name);
+			} catch (NotFoundException) {
+				continue;
+			}
+			$ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+			return [$f->getContent(), self::IMAGE_EXT[$ext] ?? 'image/jpeg'];
 		}
+		return null;
 	}
 
 	/** @return array{0: string, 1: string} */
-	private function render(File $file, string $name, int $width, ISimpleFolder $folder, string $cacheName): array {
+	private function render(File $file, string $name, int $width, ISimpleFolder $folder, string $cacheBase): array {
 		[$path, $tmp] = $this->localPath($file);
 		try {
 			$format = $this->formatOf($file) ?? 'cbz';
@@ -239,15 +259,16 @@ class ComicController extends Controller {
 		if ($data === null) {
 			throw new NotFoundException('page not readable');
 		}
-		$mime = self::IMAGE_EXT[strtolower(pathinfo($name, PATHINFO_EXTENSION))] ?? 'image/jpeg';
+		$ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+		$mime = self::IMAGE_EXT[$ext] ?? 'image/jpeg';
 		if ($width > 0) {
 			$scaled = $this->scale($data, $width);
 			if ($scaled !== null) {
-				[$data, $mime] = [$scaled, 'image/jpeg'];
+				[$data, $mime, $ext] = [$scaled, 'image/jpeg', 'jpg'];
 			}
 		}
 		try {
-			$folder->newFile($cacheName, $data);
+			$folder->newFile($cacheBase . '.' . $ext, $data);
 		} catch (\Throwable $e) {
 			$this->logger->debug('Cannot cache comic page: ' . $e->getMessage(), ['app' => Application::APP_ID]);
 		}
@@ -260,7 +281,11 @@ class ComicController extends Controller {
 		if ($size === false || $size[0] <= $width || !function_exists('imagecreatefromstring')) {
 			return null;
 		}
-		$src = @imagecreatefromstring($data);
+		// The header is read without decoding; refuse to decode huge images (the page is then served unscaled).
+		if ($size[0] < 1 || $size[1] < 1 || $size[0] * $size[1] > self::MAX_PIXELS) {
+			return null;
+		}
+		$src = $this->decode($data);
 		if ($src === false) {
 			return null;
 		}
@@ -272,6 +297,10 @@ class ComicController extends Controller {
 		imagejpeg($dst, null, 85);
 		$out = (string)ob_get_clean();
 		return $out !== '' ? $out : null;
+	}
+
+	protected function decode(string $data): \GdImage|false {
+		return @imagecreatefromstring($data);
 	}
 
 	private function cacheFolder(): ISimpleFolder {

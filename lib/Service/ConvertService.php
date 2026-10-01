@@ -212,9 +212,13 @@ class ConvertService {
 			if ($pages === []) {
 				throw new ConvertException('The comic contains no pages', 422);
 			}
+			if (count($pages) > ArchiveTools::MAX_ENTRIES) {
+				throw new ConvertException('The comic has too many pages to convert on the server', 413);
+			}
 			$comicInfo = $archive->comicInfo();
 			$width = max(4, strlen((string)count($pages)));
 			$names = [];
+			$writtenBytes = 0;
 			foreach ($pages as $i => $page) {
 				$ext = strtolower(pathinfo($page, PATHINFO_EXTENSION));
 				$ext = $ext === 'jpeg' ? 'jpg' : $ext;
@@ -223,6 +227,10 @@ class ConvertService {
 					$data = $archive->read($page);
 				} catch (UnsafeArchiveException|\RuntimeException $e) {
 					throw new ConvertException('Page ' . ($i + 1) . ' cannot be read', 422, $e);
+				}
+				$writtenBytes += $data === null ? 0 : strlen($data);
+				if ($writtenBytes > ArchiveTools::MAX_TOTAL_BYTES) {
+					throw new ConvertException('The comic is too large to convert on the server', 413);
 				}
 				if ($data === null || file_put_contents($staging . '/' . $name, $data) === false) {
 					throw new ConvertException('Page ' . ($i + 1) . ' cannot be read', 422);

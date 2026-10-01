@@ -49,6 +49,7 @@ function book(fileId: number, extra: Partial<Book> = {}): Book {
 		addedAt: 0,
 		updatedAt: 0,
 		editable: true,
+		downloadable: true,
 		progress: null,
 		...extra,
 	}

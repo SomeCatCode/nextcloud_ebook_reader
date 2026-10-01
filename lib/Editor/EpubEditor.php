@@ -130,7 +130,14 @@ final class EpubEditor implements BookEditorInterface {
 			}
 
 			// orphaned resources
-			$orphans = $removedDocs === [] && $oldCoverPaths === [] ? [] : $this->findOrphans($zip, $pkg, $removedDocs, $oldCoverPaths, $liveExtra);
+			try {
+				$orphans = $removedDocs === [] && $oldCoverPaths === [] ? [] : $this->findOrphans($zip, $pkg, $removedDocs, $oldCoverPaths, $liveExtra);
+			} catch (EditorException) {
+				// A document could not be scanned safely (too large / regex limit): keep every resource
+				// rather than risk deleting one that is still referenced.
+				$orphans = [];
+				$warnings[] = 'Some chapters are too large to check for unused images and styles; all resources were kept.';
+			}
 			$removedAll = $removedDocs;
 			foreach ($orphans as $o) {
 				$removedAll[$o] = true;
@@ -1328,7 +1335,12 @@ final class EpubEditor implements BookEditorInterface {
 				continue;
 			}
 			$n = 0;
-			foreach (EditorUtil::references($item['path'], $content) as $r) {
+			try {
+				$refs = EditorUtil::references($item['path'], $content);
+			} catch (EditorException) {
+				continue; // too large to scan; link warnings are best effort
+			}
+			foreach ($refs as $r) {
 				if (isset($removedDocs[$r])) {
 					$n++;
 				}

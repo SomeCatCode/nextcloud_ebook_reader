@@ -5,7 +5,7 @@
  * Re-vendors foliate-js into packages/reader-core/vendor/foliate-js/ and re-applies the
  * EBOOKREADER PATCHes (see VENDORED.md).
  *
- * Usage: node scripts/update-foliate.mjs [--ref <commit|branch>] [--src <existing checkout>]
+ * Usage: node scripts/update-foliate.mjs --ref <40-hex-commit-sha> [--src <existing checkout>]
  */
 import { execFileSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -22,12 +22,16 @@ const opt = (name) => {
 	return i >= 0 ? args[i + 1] : undefined
 }
 const ref = opt('--ref')
+if (!ref || !/^[0-9a-f]{40}$/i.test(ref)) {
+	console.error('--ref <40-hex-commit-sha> is required (no branches or tags: the vendored code must be reviewable and reproducible).')
+	process.exit(1)
+}
 let src = opt('--src')
 let tmp = null
 if (!src) {
 	tmp = mkdtempSync(join(tmpdir(), 'foliate-'))
 	src = join(tmp, 'foliate-js')
-	execFileSync('git', ['clone', ...(ref ? [] : ['--depth', '1']), REPO, src], { stdio: 'inherit' })
+	execFileSync('git', ['clone', REPO, src], { stdio: 'inherit' })
 	if (ref) {
 		execFileSync('git', ['-C', src, 'checkout', ref], { stdio: 'inherit' })
 	}

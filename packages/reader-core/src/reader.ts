@@ -262,6 +262,15 @@ export function createReader(container: HTMLElement, options: ReaderOptions = {}
 				view = document.createElement('foliate-view')
 				view.style.cssText = 'display:block;width:100%;height:100%;'
 				host.append(view)
+				// Never let foliate open book links itself: always cancel and hand the URL to the UI,
+				// which asks for confirmation (see docs/SECURITY-READER.md).
+				view.addEventListener('external-link', (e: CustomEvent<{ href_?: string, a?: Element }>) => {
+					e.preventDefault()
+					const url = String(e.detail?.href_ ?? e.detail?.a?.getAttribute?.('href') ?? '')
+					if (url) {
+						emit('external-link', { url })
+					}
+				})
 				view.addEventListener('load', (e: CustomEvent<{ doc: Document }>) => {
 					bindDocument(e.detail.doc)
 				})

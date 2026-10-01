@@ -262,6 +262,9 @@ class OrganizeService {
 			}
 
 			try {
+				if (!$node->isUpdateable() || !$node->isDeletable()) {
+					throw new \RuntimeException('The file may not be moved.');
+				}
 				$this->ensureFolders($userFolder, dirname($to));
 				$parent = $node->getParent();
 				$node->move($userFolder->getPath() . $to);

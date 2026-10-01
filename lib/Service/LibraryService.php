@@ -24,6 +24,7 @@ use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
 use OCP\Files\Node;
 use OCP\Files\NotFoundException;
+use OCP\Files\Storage\ISharedStorage;
 use OCP\IDBConnection;
 use Psr\Log\LoggerInterface;
 
@@ -671,6 +672,23 @@ class LibraryService {
 			->set('updated_at', $qb->createNamedParameter(self::nowMs(), IQueryBuilder::PARAM_INT))
 			->where($qb->expr()->eq('id', $qb->createNamedParameter($bookId, IQueryBuilder::PARAM_INT)))
 			->executeStatement();
+	}
+
+	/**
+	 * False for files from a share with "download disabled" or "hide download" (view-only share): the content must not be handed
+	 * out in any form (raw bytes, comic pages, archive entries, editor structure). Covers/thumbnails stay allowed.
+	 */
+	public function canReadContent(File $file): bool {
+		$storage = $file->getStorage();
+		if (!$storage->instanceOfStorage(ISharedStorage::class)) {
+			return true;
+		}
+		/** @var ISharedStorage $storage */
+		$share = $storage->getShare();
+		if ($share->getAttributes()?->getAttribute('permissions', 'download') === false) {
+			return false;
+		}
+		return $share->canSeeContent();
 	}
 
 	/** @throws NotFoundException */

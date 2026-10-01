@@ -18,6 +18,39 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 ### Behoben
 - CBR-Comics bekommen ein Vorschaubild: serverseitig, wenn `7z`, `unrar` oder `bsdtar` installiert ist, sonst erzeugt es der Browser beim ersten Öffnen.
 
+### Sicherheit
+Die Änderungen stammen aus einem Sicherheits-Audit mit vier Schwerpunkten: Zugriffsrechte, Dateiverarbeitung, Browser, Betrieb. Einen Zugriff auf Bücher anderer Nutzer hat das Audit nicht gefunden. Details stehen in `docs/SECURITY-FIXES.md`.
+
+**Zugriffsrechte und Freigaben**
+- Freigaben mit „Download verbieten“ werden respektiert: Comic-Seiten, Buchinhalte, Editor und Konvertierung liefern keine Inhalte mehr aus. Der Reader zeigt einen Hinweis.
+- Cover hochladen setzt Schreibrecht auf die Datei voraus.
+- Verschieben und Umbenennen prüfen vorher Schreib- und Löschrecht.
+
+**Auslieferung von Dateiinhalten**
+- Der Endpunkt für Buchinhalte (`/item`) liefert nur noch Bilder, Fonts und Medien mit eigenem Typ. Alles andere geht als Text raus, mit strenger CSP inklusive Sandbox.
+- Links in Büchern öffnen erst nach Rückfrage, nur für http, https und mailto, und ohne Zugriff des neuen Tabs auf die Nextcloud-Seite.
+- Strengere CSP pro Kapitel (`script-src`, `base-uri`, `form-action`, `frame-src` und `object-src` auf `'none'`). XHTML-Kapitel mit fremdem Wurzelelement werden bereinigt.
+- Buchbeschreibungen werden in der Detailansicht streng bereinigt.
+- Die CSP-Erweiterung gilt nur noch für die eigenen Seiten der App sowie Files und Viewer, mit exaktem Pfadvergleich.
+
+**Schutz vor präparierten Dateien**
+- XML-Bomben (Billion Laughs, auch UTF-16-kodiert) werden abgelehnt.
+- Obergrenzen für CBR/CB7: 2 GB Gesamtgröße und 5000 Seiten. Der Archivtyp wird anhand der Datei-Signatur erzwungen.
+- Größenlimits für FB2, robusteres MOBI-Parsing, Begrenzung der Einträge in ZIP-Archiven.
+- Riesige Bilder (über 40 Megapixel) werden nicht mehr dekodiert.
+- Sehr große Kapitel lassen das Speichern im Editor nicht mehr scheitern: Ungenutzte Ressourcen werden dann behalten statt gelöscht, mit Warnung.
+
+**Rate-Limits und Hintergrundjobs**
+- Rate-Limits für Editor, Massen-Tagging (höchstens 100 Bücher), Comic-Seiten und Cover-Upload.
+- Hintergrund-Scans reihen nur noch Jobs ein, höchstens 50 Nutzer pro Lauf.
+- Beim Löschen eines Nutzers werden auch zwischengespeicherte Comic-Seiten entfernt.
+- Die Reader-Einstellungen akzeptieren nur noch bekannte Schlüssel.
+
+**Release-Pipeline und Abhängigkeiten**
+- GitHub Actions sind auf feste Commit-Hashes gepinnt, der Release-Job läuft im Environment `appstore`, und der Signierschlüssel wird sicher aufgeräumt.
+- Das App-Paket baut aus einer Liste erlaubter Dateien.
+- `vitest` ist auf Version 5 aktualisiert.
+
 ## 0.1.3 – 2026-10-01
 
 ### Hinzugefügt

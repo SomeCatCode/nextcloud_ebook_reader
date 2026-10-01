@@ -55,6 +55,8 @@ export interface Book {
 	addedAt: number
 	updatedAt: number
 	editable: boolean
+	/** false for view-only shares with download disabled: content can not be read in the app */
+	downloadable: boolean
 	progress: Progress | null
 }
 

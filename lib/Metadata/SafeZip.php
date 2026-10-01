@@ -16,6 +16,7 @@ namespace OCA\EbookReader\Metadata;
 final class SafeZip {
 	public const MAX_ENTRY_SIZE = 50 * 1024 * 1024;
 	public const MAX_TOTAL_SIZE = 2 * 1024 * 1024 * 1024;
+	public const MAX_ENTRIES = 100000;
 
 	/** @var array<string, int> entry name => index (files only) */
 	private array $index = [];
@@ -29,7 +30,7 @@ final class SafeZip {
 	}
 
 	/** @throws UnsafeArchiveException */
-	public static function open(string $path): self {
+	public static function open(string $path, int $maxEntries = self::MAX_ENTRIES): self {
 		if (!class_exists(\ZipArchive::class)) {
 			throw new UnsafeArchiveException('PHP zip extension is not available');
 		}
@@ -37,6 +38,10 @@ final class SafeZip {
 		$res = $zip->open($path, \ZipArchive::RDONLY);
 		if ($res !== true) {
 			throw new UnsafeArchiveException('Cannot open archive (code ' . $res . ')');
+		}
+		if ($zip->numFiles > $maxEntries) {
+			@$zip->close();
+			throw new UnsafeArchiveException('Archive has too many entries');
 		}
 		$self = new self($zip);
 		$total = 0;

@@ -13,6 +13,7 @@ use OCA\EbookReader\Http\AbstractOCSController;
 use OCA\EbookReader\Http\BookSerializer;
 use OCA\EbookReader\Service\ConvertException;
 use OCA\EbookReader\Service\ConvertService;
+use OCA\EbookReader\Service\LibraryService;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\ApiRoute;
@@ -34,6 +35,7 @@ class ConvertController extends AbstractOCSController {
 		IRequest $request,
 		?string $userId,
 		private ConvertService $convert,
+		private LibraryService $library,
 		private BookSerializer $serializer,
 		private LoggerInterface $logger,
 	) {
@@ -97,6 +99,9 @@ class ConvertController extends AbstractOCSController {
 	public function convertBook(int $fileId, string $target = '', bool $deleteOriginal = false): DataResponse {
 		$userId = $this->uid();
 		return $this->guard(function () use ($userId, $fileId, $target, $deleteOriginal): DataResponse {
+			if (!$this->library->canReadContent($this->library->getFileForUser($userId, $fileId))) {
+				return new DataResponse(['message' => 'Download of this file is disabled'], Http::STATUS_FORBIDDEN);
+			}
 			$res = $this->convert->convert($userId, $fileId, strtolower($target), $deleteOriginal);
 			return new DataResponse([
 				'book' => $this->serializer->serializeWithProgress($userId, $res['book']),

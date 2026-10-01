@@ -15,7 +15,11 @@
  * inside the section documents; see docs/SECURITY-READER.md.
  */
 
-export const SECTION_CSP = 'default-src \'none\'; img-src blob: data:; media-src blob: data:; style-src blob: \'unsafe-inline\'; font-src blob: data:'
+export const SECTION_CSP = 'default-src \'none\'; img-src blob: data:; media-src blob: data:; style-src blob: \'unsafe-inline\'; font-src blob: data:; script-src \'none\'; base-uri \'none\'; form-action \'none\'; frame-src \'none\'; object-src \'none\''
+
+const XHTML_NS = 'http://www.w3.org/1999/xhtml'
+const SVG_NS = 'http://www.w3.org/2000/svg'
+const ERROR_PAGE = '<!DOCTYPE html>\n<html><head><meta http-equiv="Content-Security-Policy" content="' + SECTION_CSP + '"></head><body></body></html>'
 
 /**
  * Inject the CSP meta into an (X)HTML document string. Uses a real parser, so comments or
@@ -34,6 +38,14 @@ export function injectCsp(text: string, type: string): { text: string, type: str
 	}
 	const root = doc.documentElement
 	const ns = root.namespaceURI
+	if (mime !== 'text/html' && !(root.localName.toLowerCase() === 'html' && ns === XHTML_NS)) {
+		// Not an XHTML document (e.g. an <svg> root served with an XHTML media type): a CSP meta
+		// would not be honoured, so clean it like an SVG or replace it with an empty page.
+		if (root.localName === 'svg' && ns === SVG_NS) {
+			return { text: cleanSvgDocument(doc), type: 'image/svg+xml' }
+		}
+		return { text: ERROR_PAGE, type: 'text/html' }
+	}
 	const create = (name: string): Element => ns ? doc.createElementNS(ns, name) : doc.createElement(name)
 	let head = Array.from(root.children).find((c) => c.localName === 'head') ?? null
 	if (!head) {
@@ -70,6 +82,13 @@ export function sanitizeSvg(text: string): string {
 	if (doc.querySelector('parsererror')) {
 		return '<svg xmlns="http://www.w3.org/2000/svg"/>'
 	}
+	return cleanSvgDocument(doc)
+}
+
+/**
+ * @param doc
+ */
+function cleanSvgDocument(doc: Document): string {
 	for (const el of Array.from(doc.querySelectorAll('*'))) {
 		const name = el.localName.toLowerCase()
 		if (name === 'script' || name === 'foreignobject' || name === 'iframe' || name === 'embed' || name === 'object') {

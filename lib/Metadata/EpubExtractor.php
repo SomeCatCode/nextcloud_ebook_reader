@@ -11,6 +11,8 @@ namespace OCA\EbookReader\Metadata;
 
 /** EPUB 2 and 3: container.xml -> OPF. */
 class EpubExtractor implements ExtractorInterface {
+	private const MAX_REGEX_INPUT = 2 * 1024 * 1024;
+
 	#[\Override]
 	public function supports(string $format): bool {
 		return $format === 'epub';
@@ -253,7 +255,10 @@ class EpubExtractor implements ExtractorInterface {
 			}
 			$page = SafeZip::resolve($dir, $g);
 			$html = $page === null ? null : $zip->read($page);
-			if ($html !== null && preg_match('/<(?:img|image)\b[^>]*?(?:src|href)\s*=\s*["\']([^"\']+)["\']/i', $html, $m) === 1) {
+			if ($html !== null && strlen($html) > self::MAX_REGEX_INPUT) {
+				$html = substr($html, 0, self::MAX_REGEX_INPUT);
+			}
+			if ($html !== null && preg_match('/<(?:img|image)\b[^>]*?(?:src|href)\s*=\s*["\']([^"\']+)["\']/i', $html, $m) === 1 && preg_last_error() === PREG_NO_ERROR) {
 				$pageDir = str_contains((string)$page, '/') ? substr((string)$page, 0, (int)strrpos((string)$page, '/')) : '';
 				$img = $this->readImage($zip, $pageDir, html_entity_decode($m[1]));
 				if ($img !== null) {

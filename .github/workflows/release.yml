@@ -28,10 +28,12 @@ jobs:
   release:
     needs: ci
     runs-on: ubuntu-24.04
+    # Secrets (APP_PRIVATE_KEY, APPSTORE_TOKEN) live in this environment; without them the steps are skipped.
+    environment: appstore
     env:
       APP_ID: ebookreader
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       # The tag is the source of truth: its version is written into info.xml
       # (the only version Nextcloud reads), so a release needs nothing but a tag.
@@ -51,7 +53,7 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           if [[ "$VERSION" == *-* ]]; then echo "prerelease=true" >> "$GITHUB_OUTPUT"; else echo "prerelease=false" >> "$GITHUB_OUTPUT"; fi
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
           cache: npm
@@ -70,18 +72,22 @@ jobs:
         if: env.APP_PRIVATE_KEY != ''
         working-directory: build/artifacts
         run: |
+          umask 077
+          trap 'rm -f "$RUNNER_TEMP/app.key"' EXIT
           printf '%s' "$APP_PRIVATE_KEY" > "$RUNNER_TEMP/app.key"
           openssl dgst -sha512 -sign "$RUNNER_TEMP/app.key" "$APP_ID.tar.gz" | openssl base64 -A > "$APP_ID.tar.gz.sig"
-          rm -f "$RUNNER_TEMP/app.key"
           echo "signed=true" >> "$GITHUB_OUTPUT"
 
       # Release notes = the matching section of CHANGELOG.md (fallback: a pointer to the changelog);
       # GitHub's generated commit list is appended below it.
       - name: Release notes from CHANGELOG.md
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
         run: |
           # Headings follow the App Store parser: "## 1.2.3 ..." for releases, "## [Unreleased]" for pre-releases
-          SECTION="${{ steps.version.outputs.version }}"
-          if [ "${{ steps.version.outputs.prerelease }}" = "true" ]; then SECTION="[Unreleased]"; fi
+          SECTION="$VERSION"
+          if [ "$PRERELEASE" = "true" ]; then SECTION="[Unreleased]"; fi
           awk -v v="$SECTION" '
             !found && index($0, "## " v) == 1 { rest = substr($0, length("## " v) + 1); if (rest == "" || rest ~ /^[ \t]/) { found=1; next } }
             !found && index($0, "## [" v "]") == 1 { found=1; next }
@@ -89,13 +95,13 @@ jobs:
             found { print }
           ' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
           if [ ! -s "$RUNNER_TEMP/notes.md" ] || ! grep -q '[^[:space:]]' "$RUNNER_TEMP/notes.md"; then
-            echo "::warning::No section for ${{ steps.version.outputs.version }} in CHANGELOG.md"
+            echo "::warning::No section for $VERSION in CHANGELOG.md"
             echo "Siehe [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/CHANGELOG.md)." > "$RUNNER_TEMP/notes.md"
           fi
           cat "$RUNNER_TEMP/notes.md"
 
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           name: E-Book Reader ${{ steps.version.outputs.version }}
           prerelease: ${{ steps.version.outputs.prerelease }}

@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace OCA\EbookReader\Service;
 
 use OCA\EbookReader\Metadata\SafeZip;
+use OCA\EbookReader\Metadata\UnsafeArchiveException;
 
 /**
  * Optional external archive tools (7zz/7z/7za, unrar, bsdtar) used to read CBR and CB7 comics and
@@ -23,6 +24,9 @@ class ArchiveTools {
 
 	public const TIMEOUT_SECONDS = 30;
 	public const MAX_OUTPUT_BYTES = 60 * 1024 * 1024;
+	/** Cap on the summed uncompressed size and the entry count of an archive read through a tool */
+	public const MAX_TOTAL_BYTES = 2 * 1024 * 1024 * 1024;
+	public const MAX_ENTRIES = 5000;
 
 	/** @var array<string, list<string>> tool key => executable names (first match wins) */
 	private const NAMES = [
@@ -91,13 +95,17 @@ class ArchiveTools {
 		$last = 'unknown error';
 		foreach ($tools as $tool) {
 			try {
-				[$code, $out] = $this->run(self::commandFor($tool, 'list', $this->binary($tool), $path));
+				$type = $tool === self::TOOL_SEVEN_ZIP ? self::sevenZipType($path) : null;
+				[$code, $out] = $this->run(self::commandFor($tool, 'list', $this->binary($tool), $path, null, $type));
 				if (!self::exitOk($tool, $code)) {
 					throw new \RuntimeException($tool . ' exited with ' . $code);
 				}
-				$names = self::parseList($tool, $out);
+				$entries = self::parseEntries($tool, $out);
+				self::checkLimits($entries);
 				$this->listedWith[$path] = $tool;
-				return $names;
+				return array_map(static fn (array $e): string => $e['name'], $entries);
+			} catch (UnsafeArchiveException $e) {
+				throw $e;
 			} catch (\RuntimeException $e) {
 				$last = $e->getMessage();
 			}
@@ -122,7 +130,8 @@ class ArchiveTools {
 		if ($tool === null) {
 			throw new \RuntimeException('No archive tool available');
 		}
-		[$code, $out] = $this->run(self::commandFor($tool, 'extract', $this->binary($tool), $path, $entry));
+		$type = $tool === self::TOOL_SEVEN_ZIP ? self::sevenZipType($path) : null;
+		[$code, $out] = $this->run(self::commandFor($tool, 'extract', $this->binary($tool), $path, $entry, $type));
 		if (!self::exitOk($tool, $code)) {
 			throw new \RuntimeException('Cannot extract entry (exit ' . $code . ')');
 		}
@@ -153,7 +162,7 @@ class ArchiveTools {
 	 * @param 'list'|'extract' $op
 	 * @return list<string> argv
 	 */
-	public static function commandFor(string $tool, string $op, string $binary, string $archive, ?string $entry = null): array {
+	public static function commandFor(string $tool, string $op, string $binary, string $archive, ?string $entry = null, ?string $type = null): array {
 		if ($op === 'extract' && $entry === null) {
 			throw new \InvalidArgumentException('entry required');
 		}
@@ -169,10 +178,74 @@ class ArchiveTools {
 				: [$binary, '-xOf', $archive, '--'],
 			default => throw new \InvalidArgumentException('Unknown tool ' . $tool),
 		};
+		if ($tool === self::TOOL_SEVEN_ZIP && $type !== null) {
+			// force the container type (no format sniffing by extension/content): goes before `-- <archive>`
+			array_splice($cmd, count($cmd) - 2, 0, ['-t' . $type]);
+		}
 		if ($op === 'extract') {
 			$cmd[] = $entry;
 		}
 		return $cmd;
+	}
+
+	/**
+	 * 7z container type by magic bytes (7z / rar / zip); throws if the file is none of these.
+	 *
+	 * @throws \RuntimeException
+	 */
+	public static function sevenZipType(string $path): string {
+		$fh = @fopen($path, 'rb');
+		$head = $fh === false ? false : fread($fh, 8);
+		if ($fh !== false) {
+			fclose($fh);
+		}
+		if (!is_string($head)) {
+			throw new \RuntimeException('Cannot read archive header');
+		}
+		return self::typeFromMagic($head) ?? throw new \RuntimeException('Unsupported archive type');
+	}
+
+	public static function typeFromMagic(string $head): ?string {
+		if (str_starts_with($head, "7z\xBC\xAF\x27\x1C")) {
+			return '7z';
+		}
+		if (str_starts_with($head, "Rar!\x1A\x07")) {
+			return 'rar';
+		}
+		if (str_starts_with($head, "PK\x03\x04") || str_starts_with($head, "PK\x05\x06")) {
+			return 'zip';
+		}
+		return null;
+	}
+
+	/**
+	 * Refuses archives with too many entries or too much uncompressed data. Entries whose size is
+	 * unknown (unrar/bsdtar listings carry none) only count towards the entry limit; the extraction
+	 * side caps what is actually written.
+	 *
+	 * @param list<array{name: string, size: ?int}> $entries
+	 * @throws UnsafeArchiveException
+	 */
+	public static function checkLimits(array $entries, int $maxEntries = self::MAX_ENTRIES, int $maxTotal = self::MAX_TOTAL_BYTES): void {
+		if (count($entries) > $maxEntries) {
+			throw new UnsafeArchiveException('Archive has too many entries');
+		}
+		$total = 0;
+		foreach ($entries as $e) {
+			$total += max(0, $e['size'] ?? 0);
+			if ($total > $maxTotal) {
+				throw new UnsafeArchiveException('Archive too large when uncompressed');
+			}
+		}
+	}
+
+	/** @return list<array{name: string, size: ?int}> */
+	public static function parseEntries(string $tool, string $output): array {
+		return match ($tool) {
+			self::TOOL_SEVEN_ZIP => self::parseSevenZipEntries($output),
+			self::TOOL_UNRAR, self::TOOL_BSDTAR => array_map(static fn (string $n): array => ['name' => $n, 'size' => null], self::parseLineList($output)),
+			default => [],
+		};
 	}
 
 	/** @return list<string> */
@@ -186,46 +259,55 @@ class ArchiveTools {
 	}
 
 	/**
-	 * Parses `7z l -slt` output (technical listing: "Key = Value" blocks separated by empty lines).
+	 * Names only of a `7z l -slt` listing.
 	 *
 	 * @return list<string> file entries
 	 */
 	public static function parseSevenZipList(string $output): array {
-		$names = [];
+		return array_map(static fn (array $e): string => $e['name'], self::parseSevenZipEntries($output));
+	}
+
+	/**
+	 * Parses `7z l -slt` output (technical listing: "Key = Value" blocks separated by empty lines).
+	 *
+	 * @return list<array{name: string, size: ?int}> file entries with their uncompressed size
+	 */
+	public static function parseSevenZipEntries(string $output): array {
+		$entries = [];
 		/** @var array<string, string> $block */
 		$block = [];
-		foreach (preg_split('/?
-/', $output) ?: [] as $line) {
+		foreach (preg_split('/\r?\n/', $output) ?: [] as $line) {
 			if ($line === '----------') {
 				// everything before is the archive header (without -ba)
 				$block = [];
-				$names = [];
+				$entries = [];
 				continue;
 			}
 			if (trim($line) === '') {
-				$name = self::sevenZipEntry($block);
-				if ($name !== null) {
-					$names[] = $name;
+				$entry = self::sevenZipEntry($block);
+				if ($entry !== null) {
+					$entries[] = $entry;
 				}
 				$block = [];
 				continue;
 			}
 			$pos = strpos($line, ' = ');
 			if ($pos !== false) {
-				$block[substr($line, 0, $pos)] = substr($line, $pos + 3);
+				$block[substr($line, 0, $pos)] = rtrim(substr($line, $pos + 3), "\r");
 			}
 		}
-		$name = self::sevenZipEntry($block);
-		if ($name !== null) {
-			$names[] = $name;
+		$entry = self::sevenZipEntry($block);
+		if ($entry !== null) {
+			$entries[] = $entry;
 		}
-		return $names;
+		return $entries;
 	}
 
 	/**
 	 * @param array<string, string> $block one "Key = Value" block of the technical listing
+	 * @return ?array{name: string, size: ?int}
 	 */
-	private static function sevenZipEntry(array $block): ?string {
+	private static function sevenZipEntry(array $block): ?array {
 		if (!isset($block['Path'])) {
 			return null;
 		}
@@ -234,7 +316,11 @@ class ArchiveTools {
 			return null;
 		}
 		$name = self::normaliseName($block['Path']);
-		return self::isSafeEntryName($name) ? $name : null;
+		if (!self::isSafeEntryName($name)) {
+			return null;
+		}
+		$size = $block['Size'] ?? '';
+		return ['name' => $name, 'size' => preg_match('/^\d{1,15}$/', $size) === 1 ? (int)$size : null];
 	}
 
 	/**
@@ -300,7 +386,7 @@ class ArchiveTools {
 		if ($this->found !== null) {
 			return $this->found;
 		}
-		$dirs = $this->searchDirs ?? self::defaultDirs();
+		$dirs = self::absoluteDirs($this->searchDirs ?? self::defaultDirs());
 		$found = [];
 		foreach (self::NAMES as $tool => $names) {
 			$found[$tool] = null;
@@ -313,6 +399,18 @@ class ArchiveTools {
 			}
 		}
 		return $this->found = $found;
+	}
+
+	/**
+	 * Only absolute directories are searched: an empty or relative PATH entry (".") would pick up a
+	 * planted binary from the current directory.
+	 *
+	 * @param list<string> $dirs
+	 * @return list<string>
+	 */
+	public static function absoluteDirs(array $dirs): array {
+		return array_values(array_filter($dirs, static fn (string $d): bool => $d !== ''
+			&& ($d[0] === '/' || $d[0] === '\\' || preg_match('#^[A-Za-z]:[\\\\/]#', $d) === 1)));
 	}
 
 	/** @return list<string> */

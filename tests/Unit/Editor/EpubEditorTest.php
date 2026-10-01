@@ -88,6 +88,24 @@ class EpubEditorTest extends TestCase {
 		$this->assertSame($this->editor->readStructure($src, 'epub'), $this->editor->readStructure($dst, 'epub'));
 	}
 
+	public function testOversizedChapterKeepsResourcesInsteadOfFailing(): void {
+		$src = $this->src();
+		// Inflate a remaining chapter beyond the 2 MB scan limit of EditorUtil::references()
+		$zip = new \ZipArchive();
+		$zip->open($src);
+		$ch1 = (string)$zip->getFromName('OEBPS/text/ch1.xhtml');
+		$zip->addFromString('OEBPS/text/ch1.xhtml', str_replace('</body>', '<!--' . str_repeat('x', 2_200_000) . '--></body>', $ch1));
+		$zip->close();
+
+		$dst = $this->dst();
+		$res = $this->editor->write($src, $dst, new EditRequest(order: ['ch1', 'ch3'], removed: ['ch2']));
+
+		$entries = $this->entries($dst);
+		$this->assertNotContains('OEBPS/text/ch2.xhtml', $entries);
+		$this->assertContains('OEBPS/images/pic.png', $entries, 'resources must be kept when a chapter can not be scanned');
+		$this->assertNotEmpty(array_filter($res['warnings'], static fn (string $w): bool => str_contains($w, 'too large')));
+	}
+
 	public function testRemoveAndReorder(): void {
 		$src = $this->src();
 		$dst = $this->dst();

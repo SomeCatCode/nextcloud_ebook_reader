@@ -252,6 +252,9 @@ class EditorService {
 		$current = $file->getName();
 		$candidate = $base . $ext;
 		if ($candidate !== $current) {
+			if (!$file->isUpdateable() || !$file->isDeletable()) {
+				throw new EditForbiddenException('Die Datei darf nicht umbenannt werden.');
+			}
 			$n = 1;
 			while ($parent->nodeExists($candidate)) {
 				$n++;

@@ -20,7 +20,6 @@ use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\DataDisplayResponse;
 use OCP\AppFramework\Http\DataResponse;
-use OCP\AppFramework\Http\EmptyContentSecurityPolicy;
 use OCP\Files\File;
 use OCP\Files\NotFoundException;
 use OCP\IRequest;
@@ -34,17 +33,18 @@ use Psr\Log\LoggerInterface;
 class ItemController extends Controller {
 	private const MAX_ENTRY = 40 * 1024 * 1024;
 
-	/** @var array<string, string> */
+	/**
+	 * Allowlist of types that keep their Content-Type. Everything else (xhtml, html, xml, opf, ncx, svg, css, unknown) is text/plain,
+	 * so nothing in a book can run script or style in our origin.
+	 * @var array<string, string>
+	 */
 	private const MIME = [
 		'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'gif' => 'image/gif',
-		'webp' => 'image/webp', 'avif' => 'image/avif', 'bmp' => 'image/bmp', 'svg' => 'image/svg+xml',
-		'css' => 'text/css', 'xhtml' => 'application/xhtml+xml', 'html' => 'text/html', 'htm' => 'text/html',
-		'xml' => 'application/xml', 'ncx' => 'application/x-dtbncx+xml', 'opf' => 'application/oebps-package+xml',
+		'webp' => 'image/webp', 'avif' => 'image/avif', 'bmp' => 'image/bmp',
 		'ttf' => 'font/ttf', 'otf' => 'font/otf', 'woff' => 'font/woff', 'woff2' => 'font/woff2',
 		'mp3' => 'audio/mpeg', 'mp4' => 'video/mp4',
 	];
-	/** Types that could run script in our origin are delivered as plain text. */
-	private const ACTIVE = ['image/svg+xml', 'text/html', 'application/xhtml+xml', 'application/xml'];
+	private const FALLBACK_MIME = 'text/plain';
 
 	public function __construct(
 		IRequest $request,
@@ -73,6 +73,9 @@ class ItemController extends Controller {
 		} catch (NotFoundException) {
 			return new DataResponse([], Http::STATUS_NOT_FOUND);
 		}
+		if (!$this->library->canReadContent($file)) {
+			return new DataResponse([], Http::STATUS_FORBIDDEN);
+		}
 		$ext = strtolower(pathinfo($file->getName(), PATHINFO_EXTENSION));
 		if ($ext !== 'cbz' && $ext !== 'epub') {
 			return new DataResponse([], Http::STATUS_NOT_FOUND);
@@ -98,12 +101,18 @@ class ItemController extends Controller {
 			if ($data === null) {
 				return new DataResponse([], Http::STATUS_NOT_FOUND);
 			}
-			$mime = self::MIME[strtolower(pathinfo($name, PATHINFO_EXTENSION))] ?? 'application/octet-stream';
-			if (in_array($mime, self::ACTIVE, true)) {
-				$mime = 'text/plain';
-			}
-			$response = new DataDisplayResponse($data, Http::STATUS_OK, ['Content-Type' => $mime, 'X-Content-Type-Options' => 'nosniff']);
-			$response->setContentSecurityPolicy(new EmptyContentSecurityPolicy());
+			$mime = self::mimeFor($name);
+			$isImage = str_starts_with($mime, 'image/');
+			$disposition = ($isImage ? 'inline' : 'attachment') . '; filename="' . self::safeFilename($name) . '"';
+			$response = new DataDisplayResponse($data, Http::STATUS_OK, [
+				'Content-Type' => $mime,
+				'X-Content-Type-Options' => 'nosniff',
+			]);
+			// DataDisplayResponse sets 'inline; filename=""' in its constructor, so this has to come after it.
+			$response->addHeader('Content-Disposition', $disposition);
+			// OCP has no sandbox setter and the security middleware rebuilds the policy object (a subclass override of
+			// buildPolicy() would be dropped), but explicitly added headers win over the generated one in Response::getHeaders().
+			$response->addHeader('Content-Security-Policy', "default-src 'none'; sandbox");
 			$response->setETag(md5((string)$file->getEtag() . '|' . $name));
 			$response->addHeader('Cache-Control', 'private, max-age=3600');
 			return $response;
@@ -115,6 +124,16 @@ class ItemController extends Controller {
 				@unlink($tmp);
 			}
 		}
+	}
+
+	public static function mimeFor(string $entryName): string {
+		return self::MIME[strtolower(pathinfo($entryName, PATHINFO_EXTENSION))] ?? self::FALLBACK_MIME;
+	}
+
+	private static function safeFilename(string $entryName): string {
+		$base = basename(str_replace('\\', '/', $entryName));
+		$clean = preg_replace('/[^A-Za-z0-9._ -]/', '_', $base) ?? '';
+		return $clean !== '' ? $clean : 'item';
 	}
 
 	/**

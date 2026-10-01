@@ -13,10 +13,12 @@ use OCA\EbookReader\Editor\EditorException;
 use OCA\EbookReader\Http\AbstractOCSController;
 use OCA\EbookReader\Http\BookSerializer;
 use OCA\EbookReader\Service\EditorService;
+use OCA\EbookReader\Service\LibraryService;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\ApiRoute;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
+use OCP\AppFramework\Http\Attribute\UserRateLimit;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\Files\NotFoundException;
 use OCP\IRequest;
@@ -29,10 +31,13 @@ use Psr\Log\LoggerInterface;
  * @psalm-suppress InvalidReturnStatement
  */
 class EditorController extends AbstractOCSController {
+	private const MAX_BULK_FILES = 100;
+
 	public function __construct(
 		IRequest $request,
 		?string $userId,
 		private EditorService $editor,
+		private LibraryService $library,
 		private BookSerializer $serializer,
 		private LoggerInterface $logger,
 	) {
@@ -57,10 +62,14 @@ class EditorController extends AbstractOCSController {
 	 * 500: Internal error
 	 */
 	#[NoAdminRequired]
+	#[UserRateLimit(limit: 60, period: 60)]
 	#[ApiRoute(verb: 'GET', url: '/api/v1/books/{fileId}/structure', requirements: ['fileId' => '\d+'])]
 	public function structure(int $fileId): DataResponse {
 		$userId = $this->uid();
-		return $this->guard(fn (): DataResponse => new DataResponse($this->editor->getStructure($userId, $fileId)));
+		return $this->guard(function () use ($userId, $fileId): DataResponse {
+			$this->requireContentAccess($userId, $fileId);
+			return new DataResponse($this->editor->getStructure($userId, $fileId));
+		});
 	}
 
 	/**
@@ -88,11 +97,13 @@ class EditorController extends AbstractOCSController {
 	 * 500: Internal error
 	 */
 	#[NoAdminRequired]
+	#[UserRateLimit(limit: 30, period: 60)]
 	#[ApiRoute(verb: 'PUT', url: '/api/v1/books/{fileId}/structure', requirements: ['fileId' => '\d+'])]
 	public function save(int $fileId, ?string $etag = null, bool $saveAsCopy = false, ?array $metadata = null, ?array $cover = null, ?array $order = null, ?array $removed = null, ?array $toc = null): DataResponse {
 		$userId = $this->uid();
 		$request = ['etag' => $etag ?? '', 'saveAsCopy' => $saveAsCopy, 'metadata' => $metadata, 'cover' => $cover, 'order' => $order, 'removed' => $removed, 'toc' => $toc];
 		return $this->guard(function () use ($userId, $fileId, $request): DataResponse {
+			$this->requireContentAccess($userId, $fileId);
 			$res = $this->editor->save($userId, $fileId, $request);
 			return new DataResponse(['book' => $this->serializer->serializeWithProgress($userId, $res['book']), 'warnings' => $res['warnings']]);
 		});
@@ -116,6 +127,7 @@ class EditorController extends AbstractOCSController {
 	 * 500: Internal error
 	 */
 	#[NoAdminRequired]
+	#[UserRateLimit(limit: 30, period: 60)]
 	#[ApiRoute(verb: 'PATCH', url: '/api/v1/books/{fileId}/metadata', requirements: ['fileId' => '\d+'])]
 	public function metadata(int $fileId): DataResponse {
 		$userId = $this->uid();
@@ -153,9 +165,13 @@ class EditorController extends AbstractOCSController {
 	 * 500: Internal error
 	 */
 	#[NoAdminRequired]
+	#[UserRateLimit(limit: 5, period: 60)]
 	#[ApiRoute(verb: 'POST', url: '/api/v1/books/bulk-tags')]
 	public function bulkTags(array $fileIds = [], array $addGenres = [], array $removeGenres = [], array $addTags = [], array $removeTags = []): DataResponse {
 		$userId = $this->uid();
+		if (count($fileIds) > self::MAX_BULK_FILES) {
+			return new DataResponse(['message' => 'Too many files (max ' . self::MAX_BULK_FILES . ')'], Http::STATUS_BAD_REQUEST);
+		}
 		$body = compact('fileIds', 'addGenres', 'removeGenres', 'addTags', 'removeTags');
 		return $this->guard(fn (): DataResponse => new DataResponse($this->editor->bulkTags($userId, $body)));
 	}
@@ -180,6 +196,7 @@ class EditorController extends AbstractOCSController {
 	 * 500: Internal error
 	 */
 	#[NoAdminRequired]
+	#[UserRateLimit(limit: 30, period: 60)]
 	#[ApiRoute(verb: 'POST', url: '/api/v1/books/{fileId}/rename', requirements: ['fileId' => '\d+'])]
 	public function rename(int $fileId, ?string $name = null, bool $usePattern = false): DataResponse {
 		$userId = $this->uid();
@@ -187,6 +204,17 @@ class EditorController extends AbstractOCSController {
 			$book = $this->editor->rename($userId, $fileId, $name, $usePattern);
 			return new DataResponse($this->serializer->serializeWithProgress($userId, $book));
 		});
+	}
+
+	/**
+	 * View-only shares (download disabled / hidden download) must not hand out the book content in any form.
+	 * @throws EditorException
+	 * @throws NotFoundException
+	 */
+	private function requireContentAccess(string $userId, int $fileId): void {
+		if (!$this->library->canReadContent($this->library->getFileForUser($userId, $fileId))) {
+			throw new EditorException('Download of this file is disabled', Http::STATUS_FORBIDDEN);
+		}
 	}
 
 	private function guard(callable $fn): DataResponse {

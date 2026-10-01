@@ -5,7 +5,7 @@
         "version": "0.0.1",
         "description": "Read, organise and edit e-books (EPUB, MOBI, AZW3, FB2, CBZ, CBR) in Nextcloud",
         "license": {
-            "name": "agpl"
+            "name": "AGPL-3.0-or-later"
         }
     },
     "components": {
@@ -46,6 +46,7 @@
                     "addedAt",
                     "updatedAt",
                     "editable",
+                    "downloadable",
                     "progress"
                 ],
                 "properties": {
@@ -147,6 +148,9 @@
                         "format": "int64"
                     },
                     "editable": {
+                        "type": "boolean"
+                    },
+                    "downloadable": {
                         "type": "boolean"
                     },
                     "progress": {
