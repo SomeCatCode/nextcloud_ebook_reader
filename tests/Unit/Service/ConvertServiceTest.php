@@ -385,7 +385,9 @@ class ConvertServiceTest extends TestCase {
 			$byFormat[$x['format']] = $x;
 		}
 		$this->assertSame(['cbz', 'cbr', 'cb7', 'cbt', 'epub'], array_keys($byFormat));
-		$this->assertSame('unavailable', $byFormat['cbz']['mode']);
+		// same format: only possible as "optimize only" (when GD can re-encode the pages)
+		$this->assertSame(ConvertService::REASON_CURRENT, $byFormat['cbz']['reason']);
+		$this->assertSame(\OCA\EbookReader\Service\ImageOptimizer::available() ? 'server' : 'unavailable', $byFormat['cbz']['mode']);
 		$this->assertSame('unavailable', $byFormat['cbr']['mode']);
 		$this->assertSame(ConvertService::REASON_RAR, $byFormat['cbr']['reason']);
 		$this->assertSame('server', $byFormat['cbt']['mode']);
