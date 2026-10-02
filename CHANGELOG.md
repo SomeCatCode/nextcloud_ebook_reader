@@ -7,6 +7,7 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ### Behoben
 - Comic-Archive werden nach ihrem Inhalt statt nach der Dateiendung gelesen: Eine `.cbr`, die eigentlich ein ZIP ist (häufig), wird jetzt ohne Zusatzprogramm direkt in PHP gelesen; ebenso `.cbz`-Dateien, die in Wahrheit RAR oder 7z sind (dann über das Archiv-Programm). Vorher scheiterten Cover und Metadaten mit „sevenZip exited with 2“.
+- Konvertieren im Browser (z. B. CBR → CBZ ohne RAR-fähiges Programm auf dem Server) lädt das Ergebnis jetzt in Teilstücken hoch (Nextcloud-Chunking), wie der normale Upload. Ein großes Ergebnis (200 MB) in einem einzigen Request wurde sonst von Proxy- oder Zeitlimits abgebrochen („Erwartete Dateigröße … aber … gelesen“). Gilt auch für „In CBZ umwandeln“ im Editor.
 - Kann bei einer echten RAR-Datei nur 7-Zip ohne RAR-Unterstützung genutzt werden (z. B. das `7zip`-Paket von Alpine/AIO), nennt die Fehlermeldung jetzt die Lösung: `libarchive-tools` (bsdtar) oder `unrar` installieren.
 
 ## 0.6.0 – 2026-10-02
