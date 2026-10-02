@@ -5,6 +5,9 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+### Geändert
+- Comic-Cover: Ist die erste Seite ein breiter Titel-Banner oder eine Doppelseite, nimmt die App die erste Seite im Hochformat unter den ersten vier Seiten als Cover (statt die Mitte des Banners auszuschneiden). Eine in ComicInfo.xml als `FrontCover` markierte Seite gilt weiterhin immer. Bereits eingelesene Comics bekommen das neue Cover mit `occ ebookreader:scan <user> --force --format=cbz`.
+
 ### Dokumentation
 - README auf Englisch neu strukturiert (Voraussetzungen, Installation, Funktionen, Metadaten, OPDS, Administration, Datenablage, Sicherheitsmodell); die deutsche Fassung liegt unter `docs/translations/README.de.md`. Neu: `CONTRIBUTING.md` und `SECURITY.md`.
 
