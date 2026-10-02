@@ -25,6 +25,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { orderSelection } from '../components/library/bulkEdit.ts'
 import { EMBED_SYNC_MAX_BYTES } from '../components/library/metadataStorage.ts'
+import { emptyMissing, isMissingField } from '../components/library/missing.ts'
 import * as api from '../services/api.ts'
 import { pollTask } from '../services/tasks.ts'
 import { useShelvesStore } from './shelves.ts'
@@ -42,7 +43,7 @@ export interface Filters {
 	status: ReadStatus | null
 }
 
-const FILTER_TYPES: FilterType[] = ['genre', 'tag', 'author', 'series', 'format', 'shelf']
+const FILTER_TYPES: FilterType[] = ['genre', 'tag', 'author', 'series', 'format', 'shelf', 'missing']
 const SORT_KEYS: SortKey[] = ['title', 'author', 'series', 'rating', 'added', 'read', 'shelf']
 const GROUP_SERIES_KEY = 'ebookreader.groupSeries'
 const STATUSES: ReadStatus[] = ['unread', 'reading', 'finished']
@@ -87,6 +88,9 @@ export function parseTerm(raw: string): FilterTerm | null {
 	const type = raw.slice(0, i) as FilterType
 	const name = raw.slice(i + 1)
 	if (!FILTER_TYPES.includes(type) || name === '') {
+		return null
+	}
+	if (type === 'missing' && !isMissingField(name)) {
 		return null
 	}
 	return { type, name }
@@ -244,7 +248,7 @@ function readGroupSeries(): boolean {
 	}
 }
 
-const emptyFacets = (): Facets => ({ genres: [], tags: [], authors: [], series: [], formats: [] })
+const emptyFacets = (): Facets => ({ genres: [], tags: [], authors: [], series: [], formats: [], missing: emptyMissing() })
 
 export const useLibraryStore = defineStore('library', () => {
 	const books = ref<Book[]>([])

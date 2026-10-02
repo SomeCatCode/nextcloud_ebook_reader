@@ -251,7 +251,8 @@
                     "tags",
                     "authors",
                     "series",
-                    "formats"
+                    "formats",
+                    "missing"
                 ],
                 "properties": {
                     "genres": {
@@ -282,6 +283,48 @@
                         "type": "array",
                         "items": {
                             "$ref": "#/components/schemas/FacetEntry"
+                        }
+                    },
+                    "missing": {
+                        "type": "object",
+                        "required": [
+                            "genre",
+                            "tag",
+                            "author",
+                            "series",
+                            "description",
+                            "cover",
+                            "language"
+                        ],
+                        "properties": {
+                            "genre": {
+                                "type": "integer",
+                                "format": "int64"
+                            },
+                            "tag": {
+                                "type": "integer",
+                                "format": "int64"
+                            },
+                            "author": {
+                                "type": "integer",
+                                "format": "int64"
+                            },
+                            "series": {
+                                "type": "integer",
+                                "format": "int64"
+                            },
+                            "description": {
+                                "type": "integer",
+                                "format": "int64"
+                            },
+                            "cover": {
+                                "type": "integer",
+                                "format": "int64"
+                            },
+                            "language": {
+                                "type": "integer",
+                                "format": "int64"
+                            }
                         }
                     }
                 }

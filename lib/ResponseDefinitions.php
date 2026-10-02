@@ -71,6 +71,7 @@ namespace OCA\EbookReader;
  *     authors: list<EbookReaderFacetEntry>,
  *     series: list<EbookReaderFacetEntry>,
  *     formats: list<EbookReaderFacetEntry>,
+ *     missing: array{genre: int, tag: int, author: int, series: int, description: int, cover: int, language: int},
  * }
  *
  * @psalm-type EbookReaderSettings = array{

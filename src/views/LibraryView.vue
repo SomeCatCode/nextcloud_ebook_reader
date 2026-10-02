@@ -74,6 +74,31 @@
 					:name="t('ebookreader', 'Nothing here yet')"
 					class="library-nav__empty" />
 			</NcAppNavigationItem>
+			<NcAppNavigationItem
+				v-if="attentionEntries.length > 0"
+				:name="t('ebookreader', 'Needs attention')"
+				:allowCollapse="true"
+				:open="openGroups.attention"
+				@click="openGroups.attention = !openGroups.attention"
+				@update:open="(v: boolean) => (openGroups.attention = v)">
+				<template #icon>
+					<NcIconSvgWrapper :path="mdiAlertCircleOutline" />
+				</template>
+				<NcAppNavigationItem
+					v-for="entry in attentionEntries"
+					:key="entry.field"
+					:name="missingLabel(entry.field)"
+					:active="store.termState({ type: 'missing', name: entry.field }) === 'include'"
+					:class="{ 'library-nav__excluded': store.termState({ type: 'missing', name: entry.field }) === 'exclude' }"
+					@click="store.cycleTerm({ type: 'missing', name: entry.field })">
+					<template v-if="store.termState({ type: 'missing', name: entry.field }) === 'exclude'" #icon>
+						<NcIconSvgWrapper :path="mdiMinusCircleOutline" />
+					</template>
+					<template #counter>
+						<NcCounterBubble :count="entry.count" />
+					</template>
+				</NcAppNavigationItem>
+			</NcAppNavigationItem>
 		</template>
 
 		<template #footer>
@@ -372,6 +397,7 @@ import type { Book, FacetEntry, FilterTerm, SeriesEntry, SortKey } from '../type
 
 import {
 	mdiAccountOutline,
+	mdiAlertCircleOutline,
 	mdiArrowLeft,
 	mdiBookCheckOutline,
 	mdiBookClockOutline,
@@ -435,6 +461,7 @@ import ShelvesNav from '../components/library/ShelvesNav.vue'
 import TagTreeNav from '../components/library/TagTreeNav.vue'
 import UploadPanel from '../components/library/UploadPanel.vue'
 import OrganizeDialog from '../components/organize/OrganizeDialog.vue'
+import { MISSING_FIELDS, missingEntries, missingLabel } from '../components/library/missing.ts'
 import { scan } from '../services/api.ts'
 import { buildTree } from '../services/hierarchy.ts'
 import { ALLOWED_EXTENSIONS } from '../services/upload.ts'
@@ -539,7 +566,13 @@ const openGroups = reactive<Record<string, boolean>>({
 	authors: false,
 	series: false,
 	formats: false,
+	attention: false,
 })
+
+/** "Needs attention": fields lacking in at least one book (an active term stays visible even at 0) */
+const attentionEntries = computed(() => missingEntries(store.facets.missing).concat(MISSING_FIELDS
+	.filter((field) => store.facets.missing[field] === 0 && store.termState({ type: 'missing', name: field }) !== null)
+	.map((field) => ({ field, count: 0 }))))
 
 const facetGroups = computed(() => {
 	const group = (key: string, filter: 'genre' | 'tag' | 'author' | 'series' | 'format', name: string, icon: string, entries: FacetEntry[], tree = false) => ({

@@ -68,7 +68,7 @@ export type MetadataOverrideField = 'title' | 'authors' | 'series' | 'seriesInde
 
 export type SortKey = 'title' | 'author' | 'series' | 'rating' | 'added' | 'read' | 'shelf'
 
-export type FilterType = 'genre' | 'tag' | 'author' | 'series' | 'format' | 'shelf'
+export type FilterType = 'genre' | 'tag' | 'author' | 'series' | 'format' | 'shelf' | 'missing'
 
 export interface FilterTerm {
 	type: FilterType
@@ -107,7 +107,13 @@ export interface Facets {
 	authors: FacetEntry[]
 	series: FacetEntry[]
 	formats: FacetEntry[]
+	/** number of books lacking each maintainable field */
+	missing: MissingCounts
 }
+
+export type MissingField = 'genre' | 'tag' | 'author' | 'series' | 'description' | 'cover' | 'language'
+
+export type MissingCounts = Record<MissingField, number>
 
 export interface SyncResult {
 	books: Book[]

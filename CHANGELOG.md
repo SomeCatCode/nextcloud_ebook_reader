@@ -5,6 +5,14 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+### Hinzugefügt
+- Bücher mit fehlenden Metadaten finden: neuer Filter `missing:<Feld>` (Genre, Tags, Autor, Serie, Beschreibung, Cover, Sprache). In der Navigation zeigt die Gruppe „Nachpflegen“ („Needs attention“) die Felder mit Anzahl der betroffenen Bücher (Einträge mit 0 werden ausgeblendet). Ein Klick schaltet wie bei anderen Filtern zwischen enthalten, ausgeschlossen und aus um; Chips heißen z. B. „Ohne Genre“ bzw. „Hat Genre“. Funktioniert in Bibliothek, Serien und Smart-Regalen, mit „alle/beliebige“ und in der URL. `GET /facets` liefert dazu `missing` mit den Zählern.
+
+### Dokumentation
+- README für das öffentliche Repository überarbeitet: interne Planungsdetails entfernt, Funktionen und Einstellungen aktualisiert, Beta-Hinweis statt Alpha-Warnung (im Produktiveinsatz erprobt).
+- Neue Anleitung „Archiv-Programme installieren (7-Zip)“: eigenes Image auf Basis des offiziellen Docker-Images und Nextcloud All-in-One über `NEXTCLOUD_ADDITIONAL_APKS`.
+- Neu: `docs/RELEASING.md` (Ablauf für Releases und den App Store).
+
 ## 0.5.1 – 2026-10-01
 
 ### Behoben

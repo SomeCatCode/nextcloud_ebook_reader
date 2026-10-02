@@ -17,7 +17,9 @@ final class BookQuery {
 	public const STATUSES = ['unread', 'reading', 'finished'];
 	public const DEFAULT_LIMIT = 50;
 	public const MAX_LIMIT = 200;
-	public const FILTER_TYPES = ['genre', 'tag', 'author', 'series', 'format', 'shelf'];
+	public const FILTER_TYPES = ['genre', 'tag', 'author', 'series', 'format', 'shelf', 'missing'];
+	/** fields a `missing:<field>` term can ask for */
+	public const MISSING_FIELDS = ['genre', 'tag', 'author', 'series', 'description', 'cover', 'language'];
 	public const MATCH_ALL = 'all';
 	public const MATCH_ANY = 'any';
 	public const MAX_FILTER_ENTRIES = 50;
@@ -84,6 +86,12 @@ final class BookQuery {
 			$name = trim(substr($entry, $pos + 1));
 			if ($name === '' || !in_array($type, self::FILTER_TYPES, true)) {
 				continue;
+			}
+			if ($type === 'missing') {
+				$name = strtolower($name);
+				if (!in_array($name, self::MISSING_FIELDS, true)) {
+					continue;
+				}
 			}
 			$key = $type . '|' . mb_strtolower($name);
 			if (isset($seen[$key])) {

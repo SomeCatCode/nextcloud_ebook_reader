@@ -183,4 +183,46 @@ class LibraryFilterSqlTest extends TestCase {
 		$this->assertStringContainsString(' OR ', $zero[0]);
 		$this->assertSame([], $this->conditions(BookQuery::fromRequestParams([])));
 	}
+
+	/** @return array<string, array{string, string, string}> */
+	public static function missingProvider(): array {
+		return [
+			'genre' => ['genre', "notIn(b.id,(SELECT ... WHERE eq(t.type,'genre')))", "in(b.id,(SELECT ... WHERE eq(t.type,'genre')))"],
+			'tag' => ['tag', "notIn(b.id,(SELECT ... WHERE eq(t.type,'tag')))", "in(b.id,(SELECT ... WHERE eq(t.type,'tag')))"],
+			'author' => ['author', "(isNull(b.authors) OR eq(b.authors,'') OR eq(b.authors,'[]'))", "NOT (isNull(b.authors) OR eq(b.authors,'') OR eq(b.authors,'[]'))"],
+			'series' => ['series', "(isNull(b.series) OR eq(b.series,''))", "NOT (isNull(b.series) OR eq(b.series,''))"],
+			'description' => ['description', "(isNull(b.description) OR eq(b.description,''))", "NOT (isNull(b.description) OR eq(b.description,''))"],
+			'language' => ['language', "(isNull(b.language) OR eq(b.language,''))", "NOT (isNull(b.language) OR eq(b.language,''))"],
+			'cover' => ['cover', "(isNull(b.has_cover) OR NOT (eq(b.has_cover,'1')))", "eq(b.has_cover,'1')"],
+		];
+	}
+
+	#[\PHPUnit\Framework\Attributes\DataProvider('missingProvider')]
+	public function testMissingConditions(string $field, string $include, string $exclude): void {
+		$c = $this->conditions(BookQuery::fromRequestParams(['include' => ['missing:' . $field]]));
+		// a lone include term is wrapped by the AND/OR composite
+		$this->assertSame(['(' . $include . ')'], $c);
+		$c = $this->conditions(BookQuery::fromRequestParams(['exclude' => ['missing:' . $field]]));
+		$this->assertSame([$exclude], $c);
+	}
+
+	public function testMissingCombinesWithOtherTermsAndMatchAny(): void {
+		$q = BookQuery::fromRequestParams(['include' => ['missing:series', 'tag:Fantasy'], 'match' => 'any', 'exclude' => ['missing:cover']]);
+		$c = $this->conditions($q);
+		$this->assertCount(2, $c);
+		$this->assertStringContainsString(' OR ', $c[0]);
+		$this->assertStringContainsString('isNull(b.series)', $c[0]);
+		$this->assertStringContainsString("iLike(t.name,'Fantasy')", $c[0]);
+		$this->assertSame("eq(b.has_cover,'1')", $c[1]);
+	}
+
+	public function testMissingCountsHelper(): void {
+		$counts = LibraryService::buildMissingCounts(
+			['total' => '10', 'author' => '1', 'series' => '7', 'description' => '3', 'language' => '4', 'cover' => '2'],
+			['genre' => 6, 'tag' => 10],
+		);
+		$this->assertSame(['genre' => 4, 'tag' => 0, 'author' => 1, 'series' => 7, 'description' => 3, 'cover' => 2, 'language' => 4], $counts);
+		$empty = LibraryService::buildMissingCounts([], []);
+		$this->assertSame(0, array_sum($empty));
+	}
 }
