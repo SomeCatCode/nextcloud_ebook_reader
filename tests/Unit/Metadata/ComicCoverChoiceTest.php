@@ -47,7 +47,7 @@ class ComicCoverChoiceTest extends TestCase {
 		$xml = '<ComicInfo><Pages><Page Image="2" Type="FrontCover"/></Pages></ComicInfo>';
 		$parsed = ComicInfoParser::parse($xml);
 		$this->assertSame(2, $parsed['coverIndex']);
-		$this->assertTrue($parsed['coverExplicit'] ?? false);
-		$this->assertFalse(ComicInfoParser::parse('<ComicInfo/>')['coverExplicit'] ?? true);
+		$this->assertTrue($parsed['coverExplicit']);
+		$this->assertFalse(ComicInfoParser::parse('<ComicInfo/>')['coverExplicit']);
 	}
 }

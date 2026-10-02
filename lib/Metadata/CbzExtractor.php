@@ -46,7 +46,7 @@ class CbzExtractor implements ExtractorInterface {
 		[$coverData, $coverMime] = ComicInfoParser::chooseCover(
 			static fn (int $i): ?string => isset($images[$i]) ? $zip->read($images[$i]) : null,
 			$parsed['coverIndex'],
-			$parsed['coverExplicit'] ?? false,
+			$parsed['coverExplicit'],
 		);
 
 		return ComicInfoParser::toMetadata($parsed, $coverData, $coverMime);

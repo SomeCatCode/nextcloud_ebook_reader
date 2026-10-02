@@ -14,7 +14,7 @@ final class ComicInfoParser {
 	private const FIELDS = ['Title', 'Series', 'Number', 'Summary', 'Writer', 'Publisher', 'Year', 'Month', 'Day', 'LanguageISO', 'Genre', 'Tags', 'Manga'];
 
 	/**
-	 * @return array{fields: array<string, ?string>, summaryRaw: ?string, coverIndex: int, coverExplicit?: bool}
+	 * @return array{fields: array<string, ?string>, summaryRaw: ?string, coverIndex: int, coverExplicit: bool}
 	 */
 	public static function parse(?string $xml): array {
 		$fields = [];
@@ -47,7 +47,7 @@ final class ComicInfoParser {
 	}
 
 	/**
-	 * @param array{fields: array<string, ?string>, summaryRaw: ?string, coverIndex: int} $parsed
+	 * @param array{fields: array<string, ?string>, summaryRaw: ?string, coverIndex: int, coverExplicit: bool} $parsed
 	 */
 	public static function toMetadata(array $parsed, ?string $coverData, ?string $coverMime): BookMetadata {
 		$fields = $parsed['fields'];
