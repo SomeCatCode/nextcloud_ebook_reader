@@ -484,8 +484,11 @@ export function adoptConversion(fileId: number, body: { name: string, deleteOrig
  * @param body
  * @param body.target
  * @param body.deleteOriginal
+ * @param body.optimize
+ * @param body.optimize.maxHeight
+ * @param body.optimize.pngToJpeg
  */
-export async function convertAsync<T = unknown>(fileId: number, body: { target: string, deleteOriginal: boolean }): Promise<{ taskId: number } | { sync: T }> {
+export async function convertAsync<T = unknown>(fileId: number, body: { target: string, deleteOriginal: boolean, optimize?: { maxHeight: number, pngToJpeg: boolean } }): Promise<{ taskId: number } | { sync: T }> {
 	return await startTask<T>('post', `/books/${fileId}/convert`, body)
 }
 

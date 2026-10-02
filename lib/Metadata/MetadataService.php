@@ -110,6 +110,8 @@ class MetadataService {
 	public function extractLocal(string $localPath, string $format, ?string $displayName = null): BookMetadata {
 		$fromName = $this->filenameExtractor->fromFilename($displayName ?? basename($localPath));
 		$meta = null;
+		// comic archives are read by their content: a ".cbr" may really be a ZIP and vice versa
+		$format = ComicArchive::actualFormat($localPath, $format);
 		foreach ($this->extractors as $extractor) {
 			if (!$extractor->supports($format)) {
 				continue;

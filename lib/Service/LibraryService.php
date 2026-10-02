@@ -463,8 +463,13 @@ class LibraryService {
 	 * Books whose file vanished are tombstoned.
 	 * @param ?callable(File, bool): void $progress called for every e-book found (bool = needs indexing)
 	 */
-	public function scanUser(string $userId, bool $inline = false, ?callable $progress = null): int {
-		$stats = $this->scan($userId, $inline ? null : 0.0, $progress);
+	/**
+	 * @param ?callable(File, bool): void $progress
+	 * @param bool $force re-read every book (inline), e.g. after installing an archive tool; with $formats only those formats
+	 * @param list<string>|null $formats
+	 */
+	public function scanUser(string $userId, bool $inline = false, ?callable $progress = null, bool $force = false, ?array $formats = null): int {
+		$stats = $this->scan($userId, $inline || $force ? null : 0.0, $progress, null, $force ? ($formats ?? []) : null);
 		return $stats['indexed'] + $stats['queued'];
 	}
 
@@ -482,9 +487,10 @@ class LibraryService {
 	 * @param ?float $inlineSeconds seconds to index inline before queueing (null = all inline, 0 = queue all)
 	 * @param ?callable(File, bool): void $progress
 	 * @param ?int $inlineMaxBytes files larger than this are never indexed inline (null = no limit)
+	 * @param list<string>|null $forceFormats null = only changed books; [] = force all; otherwise force these formats
 	 * @return array{found: int, indexed: int, queued: int}
 	 */
-	private function scan(string $userId, ?float $inlineSeconds, ?callable $progress = null, ?int $inlineMaxBytes = null): array {
+	private function scan(string $userId, ?float $inlineSeconds, ?callable $progress = null, ?int $inlineMaxBytes = null, ?array $forceFormats = null): array {
 		$existing = [];
 		foreach ($this->bookMapper->findAllByUser($userId) as $b) {
 			$existing[$b->getFileId()] = $b;
@@ -492,7 +498,7 @@ class LibraryService {
 		$deadline = $inlineSeconds === null ? INF : microtime(true) + $inlineSeconds;
 		$found = [];
 		$stats = ['found' => 0, 'indexed' => 0, 'queued' => 0];
-		$complete = $this->walkLibrary($userId, function (File $file, string $format, ?string $sidecarEtag = null) use ($userId, $existing, &$found, &$stats, $deadline, $progress, $inlineMaxBytes): void {
+		$complete = $this->walkLibrary($userId, function (File $file, string $format, ?string $sidecarEtag = null) use ($userId, $existing, &$found, &$stats, $deadline, $progress, $inlineMaxBytes, $forceFormats): void {
 			$id = $file->getId();
 			$found[$id] = true;
 			$stats['found']++;
@@ -500,6 +506,8 @@ class LibraryService {
 			$stale = $b === null || $b->getDeletedAt() !== null || $b->getFileMtime() !== $file->getMTime()
 				|| $b->getFileEtag() !== (string)$file->getEtag() || $b->getFormat() !== $format
 				|| $b->getSidecarEtag() !== $sidecarEtag;
+			$forced = $forceFormats !== null && ($forceFormats === [] || in_array($format, $forceFormats, true));
+			$stale = $stale || $forced;
 			if ($progress !== null) {
 				$progress($file, $stale);
 			}
@@ -508,7 +516,7 @@ class LibraryService {
 			}
 			if (microtime(true) < $deadline && ($inlineMaxBytes === null || (int)$file->getSize() <= $inlineMaxBytes)) {
 				try {
-					$this->indexFile($userId, $file);
+					$this->indexFile($userId, $file, $forced);
 					$stats['indexed']++;
 					return;
 				} catch (\Throwable $e) {

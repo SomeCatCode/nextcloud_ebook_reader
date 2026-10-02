@@ -8,6 +8,7 @@ import { Archive } from 'libarchive.js'
 import wasmUrl from 'libarchive.js/dist/libarchive.wasm?url'
 import workerUrl from 'libarchive.js/dist/worker-bundle.js?url'
 import { davUrlForPath, fetchBookBlob } from '../services/api.ts'
+import { davUpload } from '../services/davUpload.ts'
 
 const IMAGE_RE = /\.(jpe?g|png|gif|webp|avif|bmp)$/i
 
@@ -114,7 +115,7 @@ export async function uploadCbz(cbrPath: string, cbz: Blob, overwrite = false): 
 	if (!overwrite && await davExists(target)) {
 		throw new TargetExistsError(target)
 	}
-	await axios.put(davUrlForPath(target), cbz, { headers: { 'Content-Type': 'application/comicbook+zip' } })
+	await davUpload(target, cbz, { contentType: 'application/comicbook+zip' })
 	return target
 }
 

@@ -467,6 +467,96 @@
                     }
                 }
             },
+            "OptimizeEstimate": {
+                "type": "object",
+                "required": [
+                    "pages",
+                    "oversizedPages",
+                    "currentBytes",
+                    "estimatedBytes",
+                    "exact"
+                ],
+                "properties": {
+                    "pages": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "oversizedPages": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "currentBytes": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "estimatedBytes": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "exact": {
+                        "type": "boolean"
+                    }
+                }
+            },
+            "OptimizeResult": {
+                "type": "object",
+                "required": [
+                    "tasks",
+                    "skipped"
+                ],
+                "properties": {
+                    "tasks": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/OptimizeTask"
+                        }
+                    },
+                    "skipped": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/OptimizeSkipped"
+                        }
+                    }
+                }
+            },
+            "OptimizeSkipped": {
+                "type": "object",
+                "required": [
+                    "fileId",
+                    "error",
+                    "status"
+                ],
+                "properties": {
+                    "fileId": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "error": {
+                        "type": "string"
+                    },
+                    "status": {
+                        "type": "integer",
+                        "format": "int64"
+                    }
+                }
+            },
+            "OptimizeTask": {
+                "type": "object",
+                "required": [
+                    "fileId",
+                    "taskId"
+                ],
+                "properties": {
+                    "fileId": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "taskId": {
+                        "type": "integer",
+                        "format": "int64"
+                    }
+                }
+            },
             "OrganizeItem": {
                 "type": "object",
                 "required": [
@@ -2852,7 +2942,8 @@
                                                     "type": "object",
                                                     "required": [
                                                         "tools",
-                                                        "server"
+                                                        "server",
+                                                        "optimize"
                                                     ],
                                                     "properties": {
                                                         "tools": {
@@ -2891,6 +2982,25 @@
                                                                     "type": "array",
                                                                     "items": {
                                                                         "type": "string"
+                                                                    }
+                                                                }
+                                                            }
+                                                        },
+                                                        "optimize": {
+                                                            "type": "object",
+                                                            "required": [
+                                                                "available",
+                                                                "maxHeights"
+                                                            ],
+                                                            "properties": {
+                                                                "available": {
+                                                                    "type": "boolean"
+                                                                },
+                                                                "maxHeights": {
+                                                                    "type": "array",
+                                                                    "items": {
+                                                                        "type": "integer",
+                                                                        "format": "int64"
                                                                     }
                                                                 }
                                                             }
@@ -3138,6 +3248,14 @@
                                         "type": "boolean",
                                         "default": false,
                                         "description": "Validate synchronously, then convert in the background and return a task id (poll GET /api/v1/tasks/{taskId})"
+                                    },
+                                    "optimize": {
+                                        "type": "object",
+                                        "default": {},
+                                        "description": "Optional lossy image optimization: maxHeight (0, 2560 or 1920), jpegQuality (70 to 95, default 85), pngToJpeg. The target may equal the source format then. Always runs as a task.",
+                                        "additionalProperties": {
+                                            "type": "object"
+                                        }
                                     }
                                 }
                             }
@@ -3234,7 +3352,7 @@
                         }
                     },
                     "400": {
-                        "description": "Invalid target",
+                        "description": "Invalid target or optimize options",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -3433,6 +3551,549 @@
                     },
                     "422": {
                         "description": "The comic cannot be read",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "additionalProperties": {
+                                                        "type": "object"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "additionalProperties": {
+                                                        "type": "object"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Current user is not logged in",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/ocs/v2.php/apps/ebookreader/api/v1/books/{fileId}/convert/estimate": {
+            "get": {
+                "operationId": "convert-estimate",
+                "summary": "Estimates the result of an image optimization",
+                "description": "Reads page headers and re-encodes at most three pages, so it is fast even for large files.",
+                "tags": [
+                    "convert"
+                ],
+                "security": [
+                    {
+                        "bearer_auth": []
+                    },
+                    {
+                        "basic_auth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "fileId",
+                        "in": "path",
+                        "description": "File id",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int64"
+                        }
+                    },
+                    {
+                        "name": "maxHeight",
+                        "in": "query",
+                        "description": "Maximum page height: 0 (off), 2560 or 1920",
+                        "schema": {
+                            "type": "integer",
+                            "format": "int64",
+                            "default": 0
+                        }
+                    },
+                    {
+                        "name": "pngToJpeg",
+                        "in": "query",
+                        "description": "Convert PNG pages without transparency to JPEG",
+                        "schema": {
+                            "type": "boolean",
+                            "default": false
+                        }
+                    },
+                    {
+                        "name": "OCS-APIRequest",
+                        "in": "header",
+                        "description": "Required to be true for the API request to pass",
+                        "required": true,
+                        "schema": {
+                            "type": "boolean",
+                            "default": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Estimate returned (pages, oversizedPages, currentBytes, estimatedBytes, exact)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "$ref": "#/components/schemas/OptimizeEstimate"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid options or nothing to optimize",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "additionalProperties": {
+                                                        "type": "object"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Download of this file is disabled",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "additionalProperties": {
+                                                        "type": "object"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Book not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "additionalProperties": {
+                                                        "type": "object"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "413": {
+                        "description": "File too large for the server",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "additionalProperties": {
+                                                        "type": "object"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "415": {
+                        "description": "Not a comic, or the server cannot optimize or read it",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "additionalProperties": {
+                                                        "type": "object"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "The comic cannot be read",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "additionalProperties": {
+                                                        "type": "object"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "additionalProperties": {
+                                                        "type": "object"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Current user is not logged in",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/ocs/v2.php/apps/ebookreader/api/v1/convert/optimize": {
+            "post": {
+                "operationId": "convert-optimize-books",
+                "summary": "Optimizes the images of several comics",
+                "description": "Creates one background task per book; the tasks run one after another. The format stays the same (CBR becomes CBZ) and the new file is called \"Name (optimized).ext\" next to the original.",
+                "tags": [
+                    "convert"
+                ],
+                "security": [
+                    {
+                        "bearer_auth": []
+                    },
+                    {
+                        "basic_auth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": false,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "fileIds": {
+                                        "type": "array",
+                                        "default": [],
+                                        "description": "File ids (at most 100)",
+                                        "items": {
+                                            "type": "integer",
+                                            "format": "int64"
+                                        }
+                                    },
+                                    "maxHeight": {
+                                        "type": "integer",
+                                        "format": "int64",
+                                        "default": 0,
+                                        "description": "Maximum page height: 0 (off), 2560 or 1920"
+                                    },
+                                    "pngToJpeg": {
+                                        "type": "boolean",
+                                        "default": false,
+                                        "description": "Convert PNG pages without transparency to JPEG"
+                                    },
+                                    "deleteOriginal": {
+                                        "type": "boolean",
+                                        "default": false,
+                                        "description": "Move the originals to the trash afterwards"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "OCS-APIRequest",
+                        "in": "header",
+                        "description": "Required to be true for the API request to pass",
+                        "required": true,
+                        "schema": {
+                            "type": "boolean",
+                            "default": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Tasks created: tasks lists {fileId, taskId}, skipped the books that were rejected with their reason",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "$ref": "#/components/schemas/OptimizeResult"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid options or file ids",
                         "content": {
                             "application/json": {
                                 "schema": {

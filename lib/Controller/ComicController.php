@@ -149,7 +149,25 @@ class ComicController extends Controller {
 		$format = $this->formatOf($file);
 		// CBZ and CBT are read in PHP; CBR/CB7 only if a tool (7z/unrar/bsdtar) is installed. Otherwise 404:
 		// the client then downloads the file and unpacks it in the browser.
-		return $format !== null && $this->archiveTools->canRead($format) ? $file : null;
+		if ($format === null) {
+			return null;
+		}
+		return $this->archiveTools->canRead($format) || $this->archiveTools->canRead($this->sniffFormat($file, $format)) ? $file : null;
+	}
+
+	/** Format by content (a ".cbr" that is really a ZIP is readable without any tool). */
+	private function sniffFormat(File $file, string $declared): string {
+		try {
+			$fh = $file->fopen('rb');
+		} catch (\Throwable) {
+			return $declared;
+		}
+		if (!is_resource($fh)) {
+			return $declared;
+		}
+		$head = fread($fh, 512);
+		fclose($fh);
+		return is_string($head) ? (ComicArchive::formatFromHeader($head) ?? $declared) : $declared;
 	}
 
 	private function formatOf(File $file): ?string {

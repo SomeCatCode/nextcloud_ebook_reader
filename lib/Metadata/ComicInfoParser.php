@@ -14,12 +14,13 @@ final class ComicInfoParser {
 	private const FIELDS = ['Title', 'Series', 'Number', 'Summary', 'Writer', 'Publisher', 'Year', 'Month', 'Day', 'LanguageISO', 'Genre', 'Tags', 'Manga'];
 
 	/**
-	 * @return array{fields: array<string, ?string>, summaryRaw: ?string, coverIndex: int}
+	 * @return array{fields: array<string, ?string>, summaryRaw: ?string, coverIndex: int, coverExplicit: bool}
 	 */
 	public static function parse(?string $xml): array {
 		$fields = [];
 		$summaryRaw = null;
 		$coverIndex = 0;
+		$coverExplicit = false;
 		$doc = $xml === null || $xml === '' ? null : XmlUtil::load($xml);
 		if ($doc !== null) {
 			$xp = new \DOMXPath($doc);
@@ -34,9 +35,10 @@ final class ComicInfoParser {
 			$pageEl = $pages === false ? null : $pages->item(0);
 			if ($pageEl instanceof \DOMElement && ctype_digit($pageEl->getAttribute('Image'))) {
 				$coverIndex = (int)$pageEl->getAttribute('Image');
+				$coverExplicit = true;
 			}
 		}
-		return ['fields' => $fields, 'summaryRaw' => $summaryRaw, 'coverIndex' => $coverIndex];
+		return ['fields' => $fields, 'summaryRaw' => $summaryRaw, 'coverIndex' => $coverIndex, 'coverExplicit' => $coverExplicit];
 	}
 
 	/** Whether the ComicInfo says the comic reads right to left. */
@@ -45,7 +47,7 @@ final class ComicInfoParser {
 	}
 
 	/**
-	 * @param array{fields: array<string, ?string>, summaryRaw: ?string, coverIndex: int} $parsed
+	 * @param array{fields: array<string, ?string>, summaryRaw: ?string, coverIndex: int, coverExplicit: bool} $parsed
 	 */
 	public static function toMetadata(array $parsed, ?string $coverData, ?string $coverMime): BookMetadata {
 		$fields = $parsed['fields'];
@@ -92,23 +94,56 @@ final class ComicInfoParser {
 	 *
 	 * @return array{0: ?string, 1: ?string} image bytes and mime
 	 */
-	public static function pickCover(ComicArchive $archive, int $coverIndex): array {
+	public static function pickCover(ComicArchive $archive, int $coverIndex, bool $explicit = false): array {
 		$pages = $archive->pages();
-		foreach (array_unique([$coverIndex, 0, 1]) as $i) {
-			if (!isset($pages[$i])) {
-				continue;
-			}
+		return self::chooseCover(static function (int $i) use ($archive, $pages): ?string {
+			return isset($pages[$i]) ? $archive->read($pages[$i]) : null;
+		}, $coverIndex, $explicit);
+	}
+
+	/** Pages wider than this (width / height) are banners or double pages, not covers. */
+	public const MAX_COVER_ASPECT = 1.3;
+	/** How many leading pages are considered when looking for a portrait cover. */
+	public const COVER_CANDIDATES = 4;
+
+	/**
+	 * Cover image of a comic: the page marked as FrontCover in ComicInfo.xml, otherwise the first of the
+	 * leading pages in portrait format (a wide title banner or a double page is skipped), otherwise the
+	 * first readable image.
+	 *
+	 * @param \Closure(int): ?string $read page content by index (null if missing)
+	 * @return array{0: ?string, 1: ?string} image data and mime type
+	 */
+	public static function chooseCover(\Closure $read, int $coverIndex, bool $explicit): array {
+		$fallback = [null, null];
+		$order = $explicit ? [$coverIndex] : [];
+		$order = array_values(array_unique(array_merge($order, range(0, self::COVER_CANDIDATES - 1))));
+		foreach ($order as $n => $i) {
 			try {
-				$data = $archive->read($pages[$i]);
+				$data = $read($i);
 			} catch (\Throwable) {
 				continue;
 			}
 			$mime = $data === null ? null : ImageUtil::mime($data);
-			if ($data !== null && $mime !== null) {
+			if ($data === null || $mime === null) {
+				continue;
+			}
+			if (($explicit && $n === 0) || self::isPortrait($data)) {
 				return [$data, $mime];
 			}
+			if ($fallback[0] === null) {
+				$fallback = [$data, $mime];
+			}
 		}
-		return [null, null];
+		return $fallback;
+	}
+
+	private static function isPortrait(string $data): bool {
+		$size = @getimagesizefromstring($data);
+		if ($size === false || $size[0] <= 0 || $size[1] <= 0) {
+			return true;
+		}
+		return $size[0] / $size[1] <= self::MAX_COVER_ASPECT;
 	}
 
 	/**

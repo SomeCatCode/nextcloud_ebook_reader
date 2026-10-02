@@ -44,6 +44,10 @@ class ConvertService {
 	public const REASON_RAR = 'RAR can only be written with proprietary software';
 	public const REASON_EXISTS = 'A file with this name already exists';
 	public const REASON_FOLDER = 'You cannot create files in this folder';
+	public const REASON_NO_READ = 'The server cannot read this format (bsdtar or unrar is required for CBR)';
+	public const REASON_NO_OPTIMIZE = 'Image optimization is not available on this server';
+	/** Suffix of the file name when a comic is optimized without changing its format */
+	public const OPTIMIZED_SUFFIX = ' (optimized)';
 
 	public function __construct(
 		private LibraryService $library,
@@ -55,12 +59,14 @@ class ConvertService {
 		private ArchiveCache $archiveCache,
 		private SidecarService $sidecar,
 		private ?ComicWriter $writer = null,
+		private ?ImageOptimizer $optimizer = null,
 	) {
 		$this->writer ??= new ComicWriter($tools);
+		$this->optimizer ??= new ImageOptimizer();
 	}
 
 	/**
-	 * @return array{tools: array{sevenZip: bool, unrar: bool, bsdtar: bool}, server: array{read: list<string>, write: list<string>}}
+	 * @return array{tools: array{sevenZip: bool, unrar: bool, bsdtar: bool}, server: array{read: list<string>, write: list<string>}, optimize: array{available: bool, maxHeights: list<int>}}
 	 */
 	public function capabilities(): array {
 		$read = [];
@@ -73,11 +79,15 @@ class ConvertService {
 				$write[] = $f;
 			}
 		}
-		return ['tools' => $this->tools->available(), 'server' => ['read' => $read, 'write' => $write]];
+		return [
+			'tools' => $this->tools->available(),
+			'server' => ['read' => $read, 'write' => $write],
+			'optimize' => ['available' => ImageOptimizer::available(), 'maxHeights' => ImageOptimizer::HEIGHTS],
+		];
 	}
 
 	/**
-	 * @return array{source: string, targets: list<array{format: string, mode: string, reason?: string}>}
+	 * @return array{source: string, optimize: array{available: bool, reason?: string}, targets: list<array{format: string, mode: string, reason?: string, optimizeOnly?: bool}>}
 	 * @throws \OCP\AppFramework\Db\DoesNotExistException
 	 * @throws \OCP\Files\NotFoundException
 	 */
@@ -86,16 +96,28 @@ class ConvertService {
 		$file = $this->library->getFileForUser($userId, $fileId);
 		$source = $book->getFormat();
 		if (!self::isSource($source)) {
-			return ['source' => $source, 'targets' => []];
+			return ['source' => $source, 'optimize' => ['available' => false], 'targets' => []];
 		}
 		$parent = $file->getParent();
 		$base = pathinfo($file->getName(), PATHINFO_FILENAME);
 		$targets = [];
+		$optimize = ['available' => true];
+		if (!ImageOptimizer::available()) {
+			$optimize = ['available' => false, 'reason' => self::REASON_NO_OPTIMIZE];
+		} elseif (!$this->serverCanRead($source)) {
+			// only the server optimizes; CBR needs bsdtar or unrar to be read
+			$optimize = ['available' => false, 'reason' => self::REASON_NO_READ];
+		}
 		foreach (self::FORMATS as $candidate) {
 			$target = self::normaliseKey($candidate);
 			$entry = ['format' => $target, 'mode' => 'unavailable'];
 			if ($target === $source) {
 				$entry['reason'] = self::REASON_CURRENT;
+				// the same format is possible when the pages are optimized ("optimize only")
+				if ($optimize['available'] && $this->serverCanWrite($target) && $parent->isCreatable() && !$parent->nodeExists($base . self::OPTIMIZED_SUFFIX . '.' . $target)) {
+					$entry['mode'] = 'server';
+					$entry['optimizeOnly'] = true;
+				}
 			} elseif ($target === 'cbr') {
 				$entry['reason'] = self::REASON_RAR;
 			} elseif (!$parent->isCreatable()) {
@@ -108,27 +130,102 @@ class ConvertService {
 			}
 			$targets[] = $entry;
 		}
-		return ['source' => $source, 'targets' => $targets];
+		return ['source' => $source, 'optimize' => $optimize, 'targets' => $targets];
 	}
 
 	/**
 	 * Synchronous part of an asynchronous conversion: throws what convert() would throw before it starts working.
 	 *
+	 * @param ?array{maxHeight: int, jpegQuality: int, pngToJpeg: bool} $optimize validated options, null = plain conversion
 	 * @throws ConvertException
 	 * @throws \OCP\AppFramework\Db\DoesNotExistException
 	 * @throws \OCP\Files\NotFoundException
 	 */
-	public function validate(string $userId, int $fileId, string $target, bool $deleteOriginal): void {
-		$this->check($userId, $fileId, $target, $deleteOriginal);
+	public function validate(string $userId, int $fileId, string $target, bool $deleteOriginal, ?array $optimize = null): void {
+		$this->check($userId, $fileId, $target, $deleteOriginal, $optimize);
 	}
 
 	/**
+	 * Target format of "optimize this comic": the format itself, CBR (read only) becomes CBZ.
+	 */
+	public static function optimizeTarget(string $source): string {
+		return $source === 'cbr' ? 'cbz' : $source;
+	}
+
+	/**
+	 * Name of the converted comic: "Name (optimized).ext" when the format stays, otherwise "Name.ext".
+	 */
+	public static function targetName(string $fileName, string $source, string $target): string {
+		$base = pathinfo($fileName, PATHINFO_FILENAME);
+		return $base . ($target === $source ? self::OPTIMIZED_SUFFIX : '') . '.' . $target;
+	}
+
+	/**
+	 * Estimates the result of an optimization (samples a few pages, see ImageOptimizer::estimate()).
+	 *
+	 * @param array{maxHeight: int, jpegQuality: int, pngToJpeg: bool} $options
+	 * @return array{pages: int, oversizedPages: int, currentBytes: int, estimatedBytes: int, exact: bool}
+	 * @throws ConvertException
+	 * @throws \OCP\AppFramework\Db\DoesNotExistException
+	 * @throws \OCP\Files\NotFoundException
+	 */
+	public function estimateOptimize(string $userId, int $fileId, array $options): array {
+		$book = $this->library->getBook($userId, $fileId);
+		$file = $this->library->getFileForUser($userId, $fileId);
+		$source = $book->getFormat();
+		if (!self::isSource($source)) {
+			throw new ConvertException('Only comics can be optimized', 415);
+		}
+		if (!ImageOptimizer::isActive($options)) {
+			throw new ConvertException('Nothing to optimize', 400);
+		}
+		if (!ImageOptimizer::available()) {
+			throw new ConvertException(self::REASON_NO_OPTIMIZE, 415);
+		}
+		if (!$this->serverCanRead($source)) {
+			throw new ConvertException(self::REASON_NO_READ, 415);
+		}
+		if ($file->getSize() > self::MAX_SOURCE_BYTES) {
+			throw new ConvertException('The file is too large to convert on the server', 413);
+		}
+		try {
+			$localSource = $this->archiveCache->localPath($file);
+		} catch (\RuntimeException $e) {
+			throw new ConvertException('Cannot read the file', 500, $e);
+		}
+		try {
+			try {
+				$archive = ComicArchive::open($localSource, $source, $this->tools);
+			} catch (UnsafeArchiveException|\RuntimeException $e) {
+				throw new ConvertException('The comic cannot be read: ' . $e->getMessage(), 422, $e);
+			}
+			try {
+				$pages = $archive->pages();
+				if ($pages === []) {
+					throw new ConvertException('The comic contains no pages', 422);
+				}
+				if (count($pages) > ArchiveTools::MAX_ENTRIES) {
+					throw new ConvertException('The comic has too many pages to convert on the server', 413);
+				}
+				return ($this->optimizer ?? new ImageOptimizer())->estimate($archive, $pages, $options, (int)$file->getSize());
+			} catch (UnsafeArchiveException|\RuntimeException $e) {
+				throw new ConvertException('The comic cannot be read: ' . $e->getMessage(), 422, $e);
+			} finally {
+				$archive->close();
+			}
+		} finally {
+			$this->archiveCache->release($localSource);
+		}
+	}
+
+	/**
+	 * @param ?array{maxHeight: int, jpegQuality: int, pngToJpeg: bool} $optimize
 	 * @return array{0: Book, 1: File, 2: string, 3: string, 4: \OCP\Files\Folder, 5: string} book, file, source format, target format, parent folder, target file name
 	 * @throws ConvertException
 	 * @throws \OCP\AppFramework\Db\DoesNotExistException
 	 * @throws \OCP\Files\NotFoundException
 	 */
-	private function check(string $userId, int $fileId, string $target, bool $deleteOriginal): array {
+	private function check(string $userId, int $fileId, string $target, bool $deleteOriginal, ?array $optimize = null): array {
 		$book = $this->library->getBook($userId, $fileId);
 		$file = $this->library->getFileForUser($userId, $fileId);
 		$source = $book->getFormat();
@@ -139,7 +236,14 @@ class ConvertService {
 		if (!in_array($target, self::FORMATS, true)) {
 			throw new ConvertException('Unknown target format', 400);
 		}
-		if ($target === $source) {
+		if ($optimize !== null && !ImageOptimizer::isActive($optimize)) {
+			$optimize = null;
+		}
+		if ($optimize !== null && !ImageOptimizer::available()) {
+			throw new ConvertException(self::REASON_NO_OPTIMIZE, 415);
+		}
+		// the same format is only allowed as "optimize only"
+		if ($target === $source && $optimize === null) {
 			throw new ConvertException('The book already has this format', 400);
 		}
 		if ($target === 'cbr') {
@@ -158,7 +262,7 @@ class ConvertService {
 		if ($deleteOriginal && !$file->isDeletable()) {
 			throw new ConvertException('The original cannot be deleted', 403);
 		}
-		$targetName = pathinfo($file->getName(), PATHINFO_FILENAME) . '.' . $target;
+		$targetName = self::targetName($file->getName(), $source, $target);
 		if ($parent->nodeExists($targetName)) {
 			throw new ConvertException(self::REASON_EXISTS, 409);
 		}
@@ -167,13 +271,17 @@ class ConvertService {
 
 	/**
 	 * @param ?callable(float, string): void $progress optional progress callback (fraction 0..1, short English step text)
+	 * @param ?array{maxHeight: int, jpegQuality: int, pngToJpeg: bool} $optimize validated image options (lossy downscale of the pages), null = none
 	 * @return array{book: Book, fileId: int, path: string}
 	 * @throws ConvertException
 	 * @throws \OCP\AppFramework\Db\DoesNotExistException
 	 * @throws \OCP\Files\NotFoundException
 	 */
-	public function convert(string $userId, int $fileId, string $target, bool $deleteOriginal, ?callable $progress = null): array {
-		[$book, $file, $source, $target, $parent, $targetName] = $this->check($userId, $fileId, $target, $deleteOriginal);
+	public function convert(string $userId, int $fileId, string $target, bool $deleteOriginal, ?callable $progress = null, ?array $optimize = null): array {
+		[$book, $file, $source, $target, $parent, $targetName] = $this->check($userId, $fileId, $target, $deleteOriginal, $optimize);
+		if ($optimize !== null && !ImageOptimizer::isActive($optimize)) {
+			$optimize = null;
+		}
 
 		@set_time_limit(0);
 		$staging = $this->tempManager->getTemporaryFolder('-ebr-convert');
@@ -193,7 +301,7 @@ class ConvertService {
 		}
 		try {
 			try {
-				$prepared = $this->stage($localSource, $source, $staging, $book, $progress);
+				$prepared = $this->stage($localSource, $source, $staging, $book, $progress, $optimize);
 			} finally {
 				$this->archiveCache->release($localSource);
 			}
@@ -312,9 +420,10 @@ class ConvertService {
 	 * Extracts the pages into the staging directory under their final names.
 	 *
 	 * @param ?callable(float, string): void $progress
+	 * @param ?array{maxHeight: int, jpegQuality: int, pngToJpeg: bool} $optimize
 	 * @return array{pages: list<string>, names: list<string>, comicInfo: ?string, coverIndex: int, hrefs?: list<string>}
 	 */
-	private function stage(string $localSource, string $format, string $staging, Book $book, ?callable $progress = null): array {
+	private function stage(string $localSource, string $format, string $staging, Book $book, ?callable $progress = null, ?array $optimize = null): array {
 		try {
 			$archive = ComicArchive::open($localSource, $format, $this->tools);
 		} catch (UnsafeArchiveException|\RuntimeException $e) {
@@ -329,17 +438,14 @@ class ConvertService {
 				throw new ConvertException('The comic has too many pages to convert on the server', 413);
 			}
 			$comicInfo = $archive->comicInfo();
-			$width = max(4, strlen((string)count($pages)));
 			$names = [];
 			$writtenBytes = 0;
 			$pageCount = count($pages);
 			foreach ($pages as $i => $page) {
 				if ($progress !== null) {
-					$progress(0.05 + 0.7 * ((float)$i / (float)$pageCount), 'Extracting page ' . ($i + 1) . ' of ' . $pageCount);
+					$progress(0.05 + 0.7 * ((float)$i / (float)$pageCount), ($optimize !== null ? 'Optimizing page ' : 'Extracting page ') . ($i + 1) . ' of ' . $pageCount);
 				}
 				$ext = strtolower(pathinfo($page, PATHINFO_EXTENSION));
-				$ext = $ext === 'jpeg' ? 'jpg' : $ext;
-				$name = sprintf('%0' . $width . 'd.%s', $i + 1, $ext);
 				try {
 					$data = $archive->read($page);
 				} catch (UnsafeArchiveException|\RuntimeException $e) {
@@ -349,6 +455,16 @@ class ConvertService {
 				if ($writtenBytes > ArchiveTools::MAX_TOTAL_BYTES) {
 					throw new ConvertException('The comic is too large to convert on the server', 413);
 				}
+				if ($optimize !== null && $data !== null) {
+					// one page at a time; unchanged pages keep their bytes and extension
+					$res = ($this->optimizer ?? new ImageOptimizer())->optimizePage($data, $optimize);
+					if ($res['changed']) {
+						$data = $res['data'];
+						$ext = $res['ext'] ?? $ext;
+					}
+					unset($res);
+				}
+				$name = ImageOptimizer::pageName($i, $pageCount, $ext);
 				if ($data === null || file_put_contents($staging . '/' . $name, $data) === false) {
 					throw new ConvertException('Page ' . ($i + 1) . ' cannot be read', 422);
 				}
@@ -362,12 +478,17 @@ class ConvertService {
 		} else {
 			$generated = null;
 		}
-		return [
+		$prepared = [
 			'pages' => $pages,
 			'names' => $names,
 			'comicInfo' => $comicInfo ?? $generated,
 			'coverIndex' => ComicInfoParser::parse($comicInfo)['coverIndex'],
 		];
+		if ($optimize !== null) {
+			// extensions may have changed (PNG to JPEG): the reading position has to point to the new names
+			$prepared['hrefs'] = $names;
+		}
+		return $prepared;
 	}
 
 	/**
@@ -472,6 +593,11 @@ class ConvertService {
 		} else {
 			$ext = strtolower(pathinfo($oldPages[$index], PATHINFO_EXTENSION));
 			$newHref = sprintf('%0' . $width . 'd.%s', $index + 1, $ext === 'jpeg' ? 'jpg' : $ext);
+			if (isset($hrefs[$index]) && $hrefs[$index] !== '') {
+				// optimized comics: the page may have a new extension
+				$newHref = $hrefs[$index];
+				$ext = strtolower(pathinfo($newHref, PATHINFO_EXTENSION));
+			}
 			$type = 'image/' . ($ext === 'jpg' ? 'jpeg' : $ext);
 		}
 		if ($newHref === null) {

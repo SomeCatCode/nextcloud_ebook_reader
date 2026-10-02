@@ -41,7 +41,7 @@ class CbrExtractor implements ExtractorInterface {
 		$archive = ComicArchive::open($localPath, $format, $tools);
 		try {
 			$parsed = ComicInfoParser::parse($archive->comicInfo());
-			[$cover, $mime] = ComicInfoParser::pickCover($archive, $parsed['coverIndex']);
+			[$cover, $mime] = ComicInfoParser::pickCover($archive, $parsed['coverIndex'], $parsed['coverExplicit']);
 			return ComicInfoParser::toMetadata($parsed, $cover, $mime);
 		} finally {
 			$archive->close();

@@ -18,6 +18,7 @@ use OCA\EbookReader\Service\ArchiveCache;
 use OCA\EbookReader\Service\ArchiveTools;
 use OCA\EbookReader\Service\ConvertException;
 use OCA\EbookReader\Service\ConvertService;
+use OCA\EbookReader\Service\ImageOptimizer;
 use OCA\EbookReader\Service\LibraryService;
 use OCA\EbookReader\Service\ProgressService;
 use OCA\EbookReader\Tests\Unit\Metadata\Fixtures;
@@ -384,7 +385,9 @@ class ConvertServiceTest extends TestCase {
 			$byFormat[$x['format']] = $x;
 		}
 		$this->assertSame(['cbz', 'cbr', 'cb7', 'cbt', 'epub'], array_keys($byFormat));
-		$this->assertSame('unavailable', $byFormat['cbz']['mode']);
+		// same format: only possible as "optimize only" (when GD can re-encode the pages)
+		$this->assertSame(ConvertService::REASON_CURRENT, $byFormat['cbz']['reason']);
+		$this->assertSame(\OCA\EbookReader\Service\ImageOptimizer::available() ? 'server' : 'unavailable', $byFormat['cbz']['mode']);
 		$this->assertSame('unavailable', $byFormat['cbr']['mode']);
 		$this->assertSame(ConvertService::REASON_RAR, $byFormat['cbr']['reason']);
 		$this->assertSame('server', $byFormat['cbt']['mode']);
@@ -446,11 +449,153 @@ class ConvertServiceTest extends TestCase {
 		return $out;
 	}
 
+	private function needZipAndGd(): void {
+		if (!class_exists(\ZipArchive::class) || !ImageOptimizer::available() || !function_exists('imagepng')) {
+			$this->markTestSkipped('zip and GD are required');
+		}
+	}
+
+	/** @return string path of a CBZ with a large PNG, a large JPEG and a small JPEG page */
+	private function imageCbz(): string {
+		$make = static function (int $w, int $h, string $type): string {
+			$im = imagecreatetruecolor($w, $h);
+			for ($i = 0; $i < 150; $i++) {
+				imagefilledrectangle($im, random_int(0, $w - 1), random_int(0, $h - 1), random_int(0, $w - 1), random_int(0, $h - 1), (int)imagecolorallocate($im, random_int(0, 255), random_int(0, 255), random_int(0, 255)));
+			}
+			ob_start();
+			$type === 'png' ? imagepng($im, null, 0) : imagejpeg($im, null, 98);
+			return (string)ob_get_clean();
+		};
+		$path = Fixtures::temp('.cbz');
+		$zip = new \ZipArchive();
+		$zip->open($path, \ZipArchive::CREATE);
+		$zip->addFromString('p1.png', $make(1200, 2400, 'png'));
+		$zip->addFromString('p2.jpg', $make(1500, 2400, 'jpg'));
+		$zip->addFromString('p3.jpg', $make(300, 400, 'jpg'));
+		$zip->close();
+		return $path;
+	}
+
+	public function testOptimizeOnlyKeepsTheFormatAddsASuffixAndKeepsPageOrder(): void {
+		$this->needZipAndGd();
+		$this->wireLibrary();
+		$cbz = $this->imageCbz();
+		$name = 'Comic Title.cbz';
+		$file = $this->fileMock($cbz, $name, 1);
+		$this->libraryLookups[1] = [$this->book(1, 'cbz', $name), $file];
+		$p = new Progress();
+		$p->setLocator((string)json_encode(['href' => 'p2.jpg', 'type' => 'image/jpeg', 'locations' => ['position' => 2]]));
+		$p->setPercentage(0.5);
+		$this->storedProgress = $p;
+		$steps = [];
+		$opts = ['maxHeight' => 1920, 'jpegQuality' => 85, 'pngToJpeg' => true];
+
+		$this->service->convert('u', 1, 'cbz', false, function (float $f, string $s) use (&$steps): void {
+			$steps[] = $s;
+		}, $opts);
+
+		$this->assertArrayHasKey('Comic Title (optimized).cbz', $this->written);
+		$out = $this->written['Comic Title (optimized).cbz'];
+		$a = ComicArchive::open($out, 'cbz');
+		$this->assertSame(['0001.jpg', '0002.jpg', '0003.jpg'], $a->pages());
+		$sizes = array_map(static fn (string $n): array => array_slice((array)getimagesizefromstring((string)$a->read($n)), 0, 2), $a->pages());
+		$this->assertSame([[960, 1920], [1200, 1920], [300, 400]], $sizes);
+		// the small page is byte for byte the original
+		$orig = ComicArchive::open($cbz, 'cbz');
+		$this->assertSame($orig->read('p3.jpg'), $a->read('0003.jpg'));
+		$a->close();
+		$orig->close();
+		$this->assertContains('Optimizing page 2 of 3', $steps);
+		// reading position follows the page and its new extension
+		$this->assertSame('0002.jpg', $this->putProgress[0][1]['href']);
+		$this->assertSame('image/jpeg', $this->putProgress[0][1]['type']);
+	}
+
+	public function testPngPageWithNewJpegNameKeepsTheReadingPosition(): void {
+		$this->needZipAndGd();
+		$this->wireLibrary();
+		$cbz = $this->imageCbz();
+		$name = 'Comic Title.cbz';
+		$this->libraryLookups[1] = [$this->book(1, 'cbz', $name), $this->fileMock($cbz, $name, 1)];
+		$p = new Progress();
+		$p->setLocator((string)json_encode(['href' => 'p1.png', 'type' => 'image/png', 'locations' => ['position' => 1]]));
+		$p->setPercentage(0.1);
+		$this->storedProgress = $p;
+		$this->service->convert('u', 1, 'cbt', false, null, ['maxHeight' => 0, 'jpegQuality' => 85, 'pngToJpeg' => true]);
+		$this->assertArrayHasKey('Comic Title.cbt', $this->written);
+		$this->assertSame('0001.jpg', $this->putProgress[0][1]['href']);
+	}
+
+	public function testSameFormatIsOnlyAllowedWhenOptimizing(): void {
+		$this->wireLibrary();
+		$name = 'Comic Title.cbz';
+		$this->libraryLookups[1] = [$this->book(1, 'cbz', $name), $this->fileMock(Fixtures::path('plain.cbz'), $name, 1)];
+		foreach ([null, ['maxHeight' => 0, 'jpegQuality' => 85, 'pngToJpeg' => false]] as $opts) {
+			try {
+				$this->service->validate('u', 1, 'cbz', false, $opts);
+				$this->fail('expected a 400');
+			} catch (ConvertException $e) {
+				$this->assertSame(400, $e->getStatus());
+			}
+		}
+		if (ImageOptimizer::available()) {
+			$this->service->validate('u', 1, 'cbz', false, ['maxHeight' => 1920, 'jpegQuality' => 85, 'pngToJpeg' => false]);
+			$this->existing['Comic Title (optimized).cbz'] = true;
+			$this->expectException(ConvertException::class);
+			$this->service->validate('u', 1, 'cbz', false, ['maxHeight' => 1920, 'jpegQuality' => 85, 'pngToJpeg' => false]);
+		} else {
+			$this->expectException(ConvertException::class);
+			$this->service->validate('u', 1, 'cbz', false, ['maxHeight' => 1920, 'jpegQuality' => 85, 'pngToJpeg' => false]);
+		}
+	}
+
+	public function testTargetsOfferTheSameFormatAsOptimizeOnly(): void {
+		$this->wireLibrary();
+		$name = 'Comic Title.cbz';
+		$this->libraryLookups[1] = [$this->book(1, 'cbz', $name), $this->fileMock(Fixtures::path('plain.cbz'), $name, 1)];
+		$res = $this->service->targets('u', 1);
+		$this->assertSame(ImageOptimizer::available(), $res['optimize']['available']);
+		foreach ($res['targets'] as $t) {
+			if ($t['format'] === 'cbz') {
+				$this->assertSame(ImageOptimizer::available() ? 'server' : 'unavailable', $t['mode']);
+				$this->assertSame(ImageOptimizer::available(), $t['optimizeOnly'] ?? false);
+			}
+		}
+	}
+
+	public function testOptimizeIsUnavailableWhenTheServerCannotReadTheSource(): void {
+		$this->wireLibrary();
+		$name = 'Comic Title.cbr';
+		$this->libraryLookups[1] = [$this->book(1, 'cbr', $name), $this->fileMock(Fixtures::path('plain.cbz'), $name, 1)];
+		$res = $this->service->targets('u', 1);
+		$this->assertFalse($res['optimize']['available']);
+		$this->expectException(ConvertException::class);
+		$this->service->estimateOptimize('u', 1, ['maxHeight' => 1920, 'jpegQuality' => 85, 'pngToJpeg' => false]);
+	}
+
+	public function testEstimateSamplesTheComic(): void {
+		$this->needZipAndGd();
+		$this->wireLibrary();
+		$cbz = $this->imageCbz();
+		$name = 'Comic Title.cbz';
+		$this->libraryLookups[1] = [$this->book(1, 'cbz', $name), $this->fileMock($cbz, $name, 1)];
+		$res = $this->service->estimateOptimize('u', 1, ['maxHeight' => 1920, 'jpegQuality' => 85, 'pngToJpeg' => false]);
+		$this->assertSame(3, $res['pages']);
+		$this->assertSame(2, $res['oversizedPages']);
+		$this->assertTrue($res['exact']);
+		$this->assertSame((int)filesize($cbz), $res['currentBytes']);
+		$this->assertLessThan($res['currentBytes'], $res['estimatedBytes']);
+		$this->expectException(ConvertException::class);
+		$this->service->estimateOptimize('u', 1, ['maxHeight' => 0, 'jpegQuality' => 85, 'pngToJpeg' => false]);
+	}
+
 	public function testCapabilities(): void {
 		$c = $this->service->capabilities();
 		$this->assertSame(['sevenZip' => false, 'unrar' => false, 'bsdtar' => false], $c['tools']);
 		$this->assertSame(['cbz', 'cbt'], $c['server']['read']);
 		$this->assertSame(['cbz', 'cbt', 'epub'], $c['server']['write']);
+		$this->assertSame(ImageOptimizer::available(), $c['optimize']['available']);
+		$this->assertSame([2560, 1920], $c['optimize']['maxHeights']);
 	}
 
 	private function tag(string $type, string $name, string $source): Tag {

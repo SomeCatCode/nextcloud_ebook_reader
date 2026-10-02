@@ -43,25 +43,11 @@ class CbzExtractor implements ExtractorInterface {
 
 		$parsed = ComicInfoParser::parse($comicInfo === null ? null : $zip->read($comicInfo));
 
-		$coverData = null;
-		$coverMime = null;
-		$order = array_unique(array_merge([$parsed['coverIndex']], [0, 1]));
-		foreach ($order as $i) {
-			if (!isset($images[$i])) {
-				continue;
-			}
-			try {
-				$data = $zip->read($images[$i]);
-			} catch (UnsafeArchiveException) {
-				continue;
-			}
-			$mime = $data === null ? null : ImageUtil::mime($data);
-			if ($data !== null && $mime !== null) {
-				$coverData = $data;
-				$coverMime = $mime;
-				break;
-			}
-		}
+		[$coverData, $coverMime] = ComicInfoParser::chooseCover(
+			static fn (int $i): ?string => isset($images[$i]) ? $zip->read($images[$i]) : null,
+			$parsed['coverIndex'],
+			$parsed['coverExplicit'],
+		);
 
 		return ComicInfoParser::toMetadata($parsed, $coverData, $coverMime);
 	}

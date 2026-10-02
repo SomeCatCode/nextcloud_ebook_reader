@@ -166,6 +166,30 @@ namespace OCA\EbookReader;
  *     progress: ?EbookReaderProgress,
  *     error?: string,
  * }
+ *
+ * @psalm-type EbookReaderOptimizeEstimate = array{
+ *     pages: int,
+ *     oversizedPages: int,
+ *     currentBytes: int,
+ *     estimatedBytes: int,
+ *     exact: bool,
+ * }
+ *
+ * @psalm-type EbookReaderOptimizeTask = array{
+ *     fileId: int,
+ *     taskId: int,
+ * }
+ *
+ * @psalm-type EbookReaderOptimizeSkipped = array{
+ *     fileId: int,
+ *     error: string,
+ *     status: int,
+ * }
+ *
+ * @psalm-type EbookReaderOptimizeResult = array{
+ *     tasks: list<EbookReaderOptimizeTask>,
+ *     skipped: list<EbookReaderOptimizeSkipped>,
+ * }
  */
 class ResponseDefinitions {
 }

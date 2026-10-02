@@ -16,6 +16,7 @@ import { zipSync } from 'fflate'
 import { makeArchiveLoader } from '../../packages/reader-core/src/comic-rar.ts'
 import { loadLibarchive } from '../components/reader/libarchive.ts'
 import { adoptConversion, davUrlForPath } from '../services/api.ts'
+import { davUpload } from '../services/davUpload.ts'
 import { writeSevenZip, writeTar } from './archiveWriters.ts'
 import { ConvertError } from './convertApi.ts'
 import { buildComicInfo, buildEpub, comicInfoCoverIndex, comicInfoIsRtl } from './epub.ts'
@@ -194,13 +195,13 @@ export async function convertInBrowser(book: Book, target: ConvertFormat, option
 	signal?.throwIfAborted()
 	let fileId: number
 	try {
-		const res = await axios.put(davUrlForPath(path), result, {
-			// never overwrite a file that appeared in the meantime
-			headers: { 'Content-Type': MIME[target], 'If-None-Match': '*' },
+		// chunked for large results; never overwrite a file that appeared in the meantime
+		fileId = await davUpload(path, result, {
+			contentType: MIME[target],
+			overwrite: false,
 			signal,
-			onUploadProgress: (e) => onProgress?.('upload', e.loaded, e.total ?? result.size),
+			onProgress: (loaded, total) => onProgress?.('upload', loaded, total),
 		})
-		fileId = parseInt(String(res.headers['oc-fileid'] ?? ''), 10) || 0
 	} catch (e) {
 		if ((e as { response?: { status?: number } }).response?.status === 412) {
 			throw new ConvertError(409, 'A file with this name already exists')
