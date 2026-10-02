@@ -40,12 +40,12 @@ class SeriesController extends AbstractOCSController {
 	 * @param string|null $tag Filter by tag
 	 * @param string|null $author Filter by author
 	 * @param string|null $status Filter by read status (unread|reading|finished)
-	 * @param int<0, 1> $hideFinished 1 = leave out finished books (ignored when status is given)
 	 * @param string $sort "added" sorts by the newest book of the series, everything else by name (natural order)
 	 * @param string $order Sort order (asc|desc)
 	 * @param list<string>|string|null $include Entries "genre:<name>", "tag:<name>", "author:<name>", "format:<fmt>" or "shelf:<id>" the book must match (see match)
 	 * @param list<string>|string|null $exclude Entries in the same form; books having any of them are excluded
 	 * @param string $match "all" (every include must match) or "any" (at least one)
+	 * @param int<0, 1> $hideFinished 1 = leave out finished books (ignored when status is given)
 	 * @return DataResponse<Http::STATUS_OK, array{series: list<EbookReaderSeries>}, array{}>
 	 * @throws OCSForbiddenException Not logged in
 	 *
@@ -60,12 +60,12 @@ class SeriesController extends AbstractOCSController {
 		?string $tag = null,
 		?string $author = null,
 		?string $status = null,
-		int $hideFinished = 0,
 		string $sort = 'title',
 		string $order = 'asc',
 		array|string|null $include = null,
 		array|string|null $exclude = null,
 		string $match = 'all',
+		int $hideFinished = 0,
 	): DataResponse {
 		$userId = $this->uid();
 		$query = BookQuery::fromRequestParams([

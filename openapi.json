@@ -1863,18 +1863,6 @@
                         }
                     },
                     {
-                        "name": "hideFinished",
-                        "in": "query",
-                        "description": "1 = leave out finished books (ignored when status is given)",
-                        "schema": {
-                            "type": "integer",
-                            "format": "int64",
-                            "default": 0,
-                            "minimum": 0,
-                            "maximum": 1
-                        }
-                    },
-                    {
                         "name": "sort",
                         "in": "query",
                         "description": "Sort field (title|author|series|rating|added|read|shelf); shelf sorts by position inside a manual shelf (include shelf:<id>), series by series index",
@@ -1971,6 +1959,18 @@
                             "format": "int64",
                             "nullable": true,
                             "default": null,
+                            "minimum": 0,
+                            "maximum": 1
+                        }
+                    },
+                    {
+                        "name": "hideFinished",
+                        "in": "query",
+                        "description": "1 = leave out finished books (ignored when status is given)",
+                        "schema": {
+                            "type": "integer",
+                            "format": "int64",
+                            "default": 0,
                             "minimum": 0,
                             "maximum": 1
                         }
@@ -8922,18 +8922,6 @@
                         }
                     },
                     {
-                        "name": "hideFinished",
-                        "in": "query",
-                        "description": "1 = leave out finished books (ignored when status is given)",
-                        "schema": {
-                            "type": "integer",
-                            "format": "int64",
-                            "default": 0,
-                            "minimum": 0,
-                            "maximum": 1
-                        }
-                    },
-                    {
                         "name": "sort",
                         "in": "query",
                         "description": "\"added\" sorts by the newest book of the series, everything else by name (natural order)",
@@ -8998,6 +8986,18 @@
                         "schema": {
                             "type": "string",
                             "default": "all"
+                        }
+                    },
+                    {
+                        "name": "hideFinished",
+                        "in": "query",
+                        "description": "1 = leave out finished books (ignored when status is given)",
+                        "schema": {
+                            "type": "integer",
+                            "format": "int64",
+                            "default": 0,
+                            "minimum": 0,
+                            "maximum": 1
                         }
                     },
                     {
