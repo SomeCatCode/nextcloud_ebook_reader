@@ -110,7 +110,12 @@ class ArchiveTools {
 				$last = $e->getMessage();
 			}
 		}
-		throw new \RuntimeException('Cannot list archive: ' . $last);
+		$hint = '';
+		if (($format ?? 'cbr') === 'cbr' && !in_array(self::TOOL_UNRAR, $tools, true) && !in_array(self::TOOL_BSDTAR, $tools, true)) {
+			// several 7-Zip builds (e.g. Alpine's 7zip package) cannot read RAR
+			$hint = ' (install bsdtar from libarchive-tools or unrar for RAR support)';
+		}
+		throw new \RuntimeException('Cannot list archive: ' . $last . $hint);
 	}
 
 	/**

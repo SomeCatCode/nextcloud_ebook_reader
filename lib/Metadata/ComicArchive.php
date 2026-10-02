@@ -34,6 +34,8 @@ final class ComicArchive {
 	 * @throws \RuntimeException|UnsafeArchiveException if the archive cannot be read
 	 */
 	public static function open(string $path, string $format, ?ArchiveTools $tools = null): self {
+		// The extension often lies (a ".cbr" that is a ZIP, a ".cbz" that is a RAR): go by the content.
+		$format = self::actualFormat($path, $format);
 		switch ($format) {
 			case 'cbz':
 				$zip = SafeZip::open($path);
@@ -62,6 +64,35 @@ final class ComicArchive {
 			default:
 				throw new \InvalidArgumentException('Not a comic format: ' . $format);
 		}
+	}
+
+	/**
+	 * Comic format by the archive's magic bytes; the declared format when the content is not recognised.
+	 */
+	public static function actualFormat(string $path, string $declared): string {
+		if (!in_array($declared, ['cbz', 'cbr', 'cb7', 'cbt'], true)) {
+			return $declared;
+		}
+		$fh = @fopen($path, 'rb');
+		if ($fh === false) {
+			return $declared;
+		}
+		$head = fread($fh, 512);
+		fclose($fh);
+		return is_string($head) ? (self::formatFromHeader($head) ?? $declared) : $declared;
+	}
+
+	/** Comic format of the first bytes of an archive (512 bytes cover the tar header), or null. */
+	public static function formatFromHeader(string $head): ?string {
+		$type = ArchiveTools::typeFromMagic($head);
+		if ($type !== null) {
+			return match ($type) {
+				'zip' => 'cbz',
+				'rar' => 'cbr',
+				'7z' => 'cb7',
+			};
+		}
+		return strlen($head) >= 262 && substr($head, 257, 5) === 'ustar' ? 'cbt' : null;
 	}
 
 	/** @return list<string> all file entries */

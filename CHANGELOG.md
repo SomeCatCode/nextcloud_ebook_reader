@@ -5,6 +5,10 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+### Behoben
+- Comic-Archive werden nach ihrem Inhalt statt nach der Dateiendung gelesen: Eine `.cbr`, die eigentlich ein ZIP ist (häufig), wird jetzt ohne Zusatzprogramm direkt in PHP gelesen; ebenso `.cbz`-Dateien, die in Wahrheit RAR oder 7z sind (dann über das Archiv-Programm). Vorher scheiterten Cover und Metadaten mit „sevenZip exited with 2“.
+- Kann bei einer echten RAR-Datei nur 7-Zip ohne RAR-Unterstützung genutzt werden (z. B. das `7zip`-Paket von Alpine/AIO), nennt die Fehlermeldung jetzt die Lösung: `libarchive-tools` (bsdtar) oder `unrar` installieren.
+
 ## 0.6.0 – 2026-10-02
 
 ### Hinzugefügt
