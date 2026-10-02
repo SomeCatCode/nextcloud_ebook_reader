@@ -84,6 +84,28 @@ export interface BookInfo {
 	pageCount: number
 }
 
+export type AnnotationColor = 'yellow' | 'green' | 'blue' | 'pink' | 'purple'
+
+/** A highlight to draw into the book (reflowable formats only). `cfi` is the range CFI of the text. */
+export interface ReaderAnnotation {
+	/** Annotation id (uuid), returned with `annotation-click` */
+	id: string
+	cfi: string
+	color: AnnotationColor | null
+	/** has a note: drawn with an additional underline */
+	hasNote: boolean
+}
+
+/** Text the user has selected in the book. Coordinates are relative to the reader container (px). */
+export interface ReaderSelection {
+	text: string
+	/** Range CFI of the selection */
+	cfi: string
+	/** Locator of the selection start (href, progression, totalProgression, cfi) */
+	locator: ReaderLocator
+	rect: { left: number, top: number, right: number, bottom: number }
+}
+
 export interface ReaderEvents {
 	relocate: { locator: ReaderLocator, percentage: number, label?: string, page?: { current: number, total: number } }
 	ready: BookInfo
@@ -91,6 +113,12 @@ export interface ReaderEvents {
 	/** Emitted for a tap/click on the page */
 	tap: { zone: 'left' | 'center' | 'right' }
 	key: { key: string }
+	/** The user selected text (reflowable books). The UI offers highlight/note/copy. */
+	selection: ReaderSelection
+	/** The selection is gone (collapsed, page turned) */
+	'selection-clear': Record<string, never>
+	/** The user clicked a drawn highlight */
+	'annotation-click': { id: string, rect: ReaderSelection['rect'] }
 	/** A link in the book points outside of it. foliate's default (window.open) is always cancelled; the UI decides. */
 	'external-link': { url: string }
 }
@@ -135,6 +163,16 @@ export interface ReaderHandle {
 	/** Cover of the open book (first page of a comic), or null if the format has none */
 	getCover(): Promise<Blob | null>
 	clearSearch(): void
+	/** Replaces the highlights drawn in the book. No-op for comics and fixed layouts. */
+	setAnnotations(annotations: ReaderAnnotation[]): void
+	/** True when highlights/selection can be used with the open book (reflowable text). */
+	supportsAnnotations(): boolean
+	/** Removes the text selection in the book */
+	clearSelection(): void
+	/** Locator of the visible page; its cfi is the start of the page. Used for bookmarks. */
+	getPageLocator(): ReaderLocator | null
+	/** Is the locator (e.g. of a bookmark) on the visible page? */
+	isLocatorOnPage(locator: ReaderLocator): boolean
 	on<K extends keyof ReaderEvents>(event: K, cb: (payload: ReaderEvents[K]) => void): () => void
 	destroy(): void
 }

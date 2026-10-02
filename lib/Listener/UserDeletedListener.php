@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace OCA\EbookReader\Listener;
 
+use OCA\EbookReader\Db\AnnotationMapper;
 use OCA\EbookReader\Db\BookMapper;
 use OCA\EbookReader\Db\ProgressMapper;
 use OCA\EbookReader\Db\ShelfBookMapper;
@@ -24,7 +25,7 @@ use OCP\User\Events\UserDeletedEvent;
 use Psr\Log\LoggerInterface;
 
 /**
- * Owner: W1. Deletes books, tags, shelves, progress and orphaned covers of a deleted user.
+ * Owner: W1. Deletes books, tags, shelves, progress, annotations and orphaned covers of a deleted user.
  * @template-implements IEventListener<Event>
  */
 class UserDeletedListener implements IEventListener {
@@ -38,6 +39,7 @@ class UserDeletedListener implements IEventListener {
 		private LoggerInterface $logger,
 		private ShelfMapper $shelfMapper,
 		private ShelfBookMapper $shelfBookMapper,
+		private AnnotationMapper $annotationMapper,
 	) {
 	}
 
@@ -58,6 +60,7 @@ class UserDeletedListener implements IEventListener {
 		}
 		$this->step($userId, 'delete books', fn () => $this->bookMapper->deleteByUser($userId));
 		$this->step($userId, 'delete progress', fn () => $this->progressMapper->deleteByUser($userId));
+		$this->step($userId, 'delete annotations', fn () => $this->annotationMapper->deleteByUser($userId));
 		$this->step($userId, 'delete tasks', fn () => $this->taskMapper->deleteByUser($userId));
 		$this->step($userId, 'delete shelves', function () use ($userId): void {
 			$ids = $this->shelfMapper->findIdsByUser($userId);

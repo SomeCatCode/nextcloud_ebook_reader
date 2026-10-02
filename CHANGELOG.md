@@ -5,6 +5,26 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+## 0.6.0 – 2026-10-02
+
+### Hinzugefügt
+- **Markierungen, Notizen und Lesezeichen** im Reader: Text in EPUB, MOBI, AZW3 und FB2 markieren und aus fünf Farben wählen, eine Notiz dazu schreiben oder den Text kopieren. Ein Klick auf eine Markierung öffnet sie zum Ändern (Farbe, Notiz, Löschen). Der Lesezeichen-Button in der Leiste markiert die aktuelle Seite, auch bei Comics (Seitenindex). Das neue Panel „Markierungen & Lesezeichen“ (Tab neben dem Inhaltsverzeichnis) listet alles nach Typ und Position, springt zur Stelle, bearbeitet Notizen und exportiert alles als Markdown-Datei (im Browser erzeugt). Markierungen werden als SVG-Overlay gezeichnet, Notiztexte erscheinen nur als Text und nie im Buch-HTML. Beim Anlegen, Ändern und Löschen aktualisiert sich die Oberfläche sofort, Fehler erscheinen als Hinweis.
+- **Annotations-API** für weitere Clients (z. B. die Android-App): `GET/POST /api/v1/books/{fileId}/annotations`, `PATCH/DELETE /api/v1/annotations/{uuid}`. Die UUID erzeugt der Client (Anlegen auch offline), der Server nimmt sie als Upsert an. Last-write-wins über `clientUpdatedAt` (älterer Stand: `409` mit dem aktuellen Eintrag), Löschen setzt einen Tombstone. `GET /api/v1/sync` liefert zusätzlich `annotations` (inklusive Tombstones, eigener Cursor-Anteil), die Capabilities melden `annotations: true`. Neue Tabelle `ebookreader_annotations` (Migration `Version1005`); beim Löschen eines Benutzers oder eines Buchs werden die Einträge entfernt, Tombstones nach 90 Tagen. Download-gesperrte Freigaben liefern keine Markierungen. Details in `docs/CONTRACTS-v4.md`.
+- **OPDS-Katalog** (OPDS 1.2) für E-Reader-Apps wie KOReader, Moon+ Reader, Librera, Thorium oder Panels: Navigation nach Neu hinzugefügt, Weiterlesen, Alle Bücher, Autoren, Serien, Genres, Tags und Regalen (auch intelligente Regale), Suche (OpenSearch), Seiten zu 50 Büchern, Cover, Metadaten und Download mit Content-Length und Range-Unterstützung. Anmeldung per HTTP Basic mit einem App-Passwort unter `/apps/ebookreader/opds` (ohne gültige Anmeldung `401` mit `WWW-Authenticate`, mit Brute-Force-Schutz und Rate-Limits). Standardmäßig aus: jeder Benutzer schaltet ihn in den App-Einstellungen selbst ein (mit Katalog-URL zum Kopieren), Administratoren können ihn serverweit sperren (`opds_enabled`). Es sind nur Bücher der eigenen Bibliothek abrufbar, Dateien aus Freigaben ohne Download-Recht werden nicht ausgeliefert. Neuer Endpunkt `GET/PUT /api/v1/opds` für die Schalter.
+- **Dashboard-Widget „Weiterlesen“:** zeigt die angefangenen Bücher (zuletzt gelesen zuerst, bis zu 7) mit Cover, Autor und Fortschritt, aktualisiert sich selbst und bietet einen Button zur Bibliothek.
+- Bücher mit fehlenden Metadaten finden: neuer Filter `missing:<Feld>` (Genre, Tags, Autor, Serie, Beschreibung, Cover, Sprache). In der Navigation zeigt die Gruppe „Nachpflegen“ („Needs attention“) die Felder mit Anzahl der betroffenen Bücher (Einträge mit 0 werden ausgeblendet). Ein Klick schaltet wie bei anderen Filtern zwischen enthalten, ausgeschlossen und aus um; Chips heißen z. B. „Ohne Genre“ bzw. „Hat Genre“. Funktioniert in Bibliothek, Serien und Smart-Regalen, mit „alle/beliebige“ und in der URL. `GET /facets` liefert dazu `missing` mit den Zählern.
+
+### Geändert
+- Gelesene Bücher werden in der Bibliothek standardmäßig ausgeblendet. Ein Schalter in der Werkzeugleiste („Gelesene ausblenden“) blendet sie wieder ein und wird im Browser gemerkt. Der Status-Filter „Gelesen“ zeigt sie weiterhin. Neuer Parameter `hideFinished=1` für `GET /books` und `GET /series`.
+
+### Behoben
+- „Weiterlesen“ zeigte auch Bücher, die bereits als gelesen markiert waren. Sie verschwinden jetzt sofort nach dem Markieren aus der Leiste.
+
+### Dokumentation
+- README für das öffentliche Repository überarbeitet: interne Planungsdetails entfernt, Funktionen und Einstellungen aktualisiert, Beta-Hinweis statt Alpha-Warnung (im Produktiveinsatz erprobt).
+- Neue Anleitung „Archiv-Programme installieren (7-Zip)“: eigenes Image auf Basis des offiziellen Docker-Images und Nextcloud All-in-One über `NEXTCLOUD_ADDITIONAL_APKS`.
+- Neu: `docs/RELEASING.md` (Ablauf für Releases und den App Store).
+
 ## 0.5.1 – 2026-10-01
 
 ### Behoben

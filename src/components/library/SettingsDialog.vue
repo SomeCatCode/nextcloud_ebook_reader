@@ -87,6 +87,51 @@
 				</div>
 			</section>
 
+			<section v-if="opds && opds.allowed">
+				<h3>{{ t('ebookreader', 'OPDS catalog') }}</h3>
+				<p class="hint">
+					{{ t('ebookreader', 'Lets e-reader apps such as KOReader, Moon+ Reader, Librera, Thorium or Panels browse and download your library.') }}
+				</p>
+				<NcCheckboxRadioSwitch
+					type="switch"
+					:modelValue="opds.enabled"
+					:disabled="opdsBusy"
+					@update:modelValue="setOpdsEnabled">
+					{{ t('ebookreader', 'Enable the OPDS catalog for my account') }}
+				</NcCheckboxRadioSwitch>
+				<template v-if="opds.enabled">
+					<div class="library-settings__url">
+						<NcTextField
+							:modelValue="opds.url"
+							readonly
+							:label="t('ebookreader', 'Catalog URL')" />
+						<NcButton @click="copyOpdsUrl">
+							<template #icon>
+								<NcIconSvgWrapper :path="mdiContentCopy" />
+							</template>
+							{{ t('ebookreader', 'Copy') }}
+						</NcButton>
+					</div>
+					<p class="hint">
+						{{ t('ebookreader', 'Create an app password under Settings → Security and enter your user name and that app password in the reader app. Do not use your normal password.') }}
+					</p>
+				</template>
+			</section>
+
+			<section v-if="opds && opds.isAdmin">
+				<h3>{{ t('ebookreader', 'OPDS catalog (administration)') }}</h3>
+				<NcCheckboxRadioSwitch
+					type="switch"
+					:modelValue="opds.allowed"
+					:disabled="opdsBusy"
+					@update:modelValue="setOpdsAllowed">
+					{{ t('ebookreader', 'Allow the OPDS catalog on this server') }}
+				</NcCheckboxRadioSwitch>
+				<p class="hint">
+					{{ t('ebookreader', 'When switched off, nobody can use the catalog, regardless of their own setting.') }}
+				</p>
+			</section>
+
 			<section>
 				<h3>{{ t('ebookreader', 'Genres') }}</h3>
 				<NcTextArea
@@ -100,18 +145,20 @@
 </template>
 
 <script setup lang="ts">
+import type { OpdsState } from '../../services/opdsApi.ts'
 import type { MetadataTarget, MetadataWriteMode } from '../../types.ts'
 
-import { mdiClose, mdiFolderPlusOutline } from '@mdi/js'
+import { mdiClose, mdiContentCopy, mdiFolderPlusOutline } from '@mdi/js'
 import { getFilePickerBuilder, showError, showSuccess } from '@nextcloud/dialogs'
 import { t } from '@nextcloud/l10n'
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import NcTextArea from '@nextcloud/vue/components/NcTextArea'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
+import { getOpds, putOpds } from '../../services/opdsApi.ts'
 import { useSettingsStore } from '../../stores/settings.ts'
 import { resolveTarget, resolveWriteMode, writesBookFile } from './metadataStorage.ts'
 
@@ -136,6 +183,58 @@ const writeModes = computed(() => [
 	{ value: 'immediate' as const, label: t('ebookreader', 'Immediately'), help: t('ebookreader', 'Written into the file right away (slow for large files).') },
 ])
 const genreText = ref((initial.genreList ?? []).join('\n'))
+
+const opds = ref<OpdsState | null>(null)
+const opdsBusy = ref(false)
+onMounted(async () => {
+	try {
+		opds.value = await getOpds()
+	} catch {
+		// the OPDS section stays hidden
+	}
+})
+
+/**
+ * @param patch
+ * @param patch.enabled
+ * @param patch.allowed
+ */
+async function updateOpds(patch: { enabled?: boolean, allowed?: boolean }): Promise<void> {
+	opdsBusy.value = true
+	try {
+		opds.value = await putOpds(patch)
+	} catch {
+		showError(t('ebookreader', 'Could not save the settings'))
+	} finally {
+		opdsBusy.value = false
+	}
+}
+
+/**
+ * @param value
+ */
+function setOpdsEnabled(value: boolean): Promise<void> {
+	return updateOpds({ enabled: value })
+}
+
+/**
+ * @param value
+ */
+function setOpdsAllowed(value: boolean): Promise<void> {
+	return updateOpds({ allowed: value })
+}
+
+/**
+ *
+ */
+async function copyOpdsUrl(): Promise<void> {
+	try {
+		await navigator.clipboard.writeText(opds.value?.url ?? '')
+		showSuccess(t('ebookreader', 'Copied to the clipboard'))
+	} catch {
+		showError(t('ebookreader', 'Could not copy the URL'))
+	}
+}
 
 const buttons = computed(() => [
 	{
@@ -242,6 +341,13 @@ async function save(): Promise<void> {
 			justify-content: space-between;
 			gap: 8px;
 		}
+	}
+
+	&__url {
+		display: flex;
+		align-items: flex-end;
+		gap: 8px;
+		margin: 8px 0;
 	}
 
 	&__option-help {

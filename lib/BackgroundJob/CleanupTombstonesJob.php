@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace OCA\EbookReader\BackgroundJob;
 
+use OCA\EbookReader\Db\AnnotationMapper;
 use OCA\EbookReader\Db\BookMapper;
 use OCA\EbookReader\Db\ShelfBookMapper;
 use OCA\EbookReader\Db\ShelfMapper;
@@ -22,12 +23,14 @@ use OCP\Files\NotFoundException;
 use Psr\Log\LoggerInterface;
 
 /**
- * Removes tombstone rows (deleted_at) older than 30 days and comic pages from the page cache
+ * Removes tombstone rows (deleted_at) older than 30 days (with the shelf assignments and annotations of those books), annotation tombstones
+ * older than 90 days and comic pages from the page cache
  * (see ComicController) that were not generated within the last 30 days. Also deletes finished tasks older than
  * 24 hours (and fails dead running ones) and trims the local archive cache to its limit.
  */
 class CleanupTombstonesJob extends TimedJob {
 	public const RETENTION_DAYS = 30;
+	public const ANNOTATION_RETENTION_DAYS = 90;
 
 	public function __construct(
 		private ITimeFactory $timeFactory,
@@ -38,6 +41,7 @@ class CleanupTombstonesJob extends TimedJob {
 		private ArchiveCache $archiveCache,
 		private ShelfMapper $shelfMapper,
 		private ShelfBookMapper $shelfBookMapper,
+		private AnnotationMapper $annotationMapper,
 	) {
 		parent::__construct($timeFactory);
 		$this->setInterval(24 * 60 * 60);
@@ -51,6 +55,11 @@ class CleanupTombstonesJob extends TimedJob {
 			$this->cleanupShelfAssignments($cutoff * 1000);
 		} catch (\Throwable $e) {
 			$this->logger->warning('Shelf cleanup failed: ' . $e->getMessage(), ['app' => 'ebookreader']);
+		}
+		try {
+			$this->annotationMapper->deleteTombstonesOlderThan(($this->timeFactory->getTime() - self::ANNOTATION_RETENTION_DAYS * 86400) * 1000);
+		} catch (\Throwable $e) {
+			$this->logger->warning('Annotation tombstone cleanup failed: ' . $e->getMessage(), ['app' => 'ebookreader']);
 		}
 		$this->bookMapper->deleteTombstonesOlderThan($cutoff * 1000);
 		$this->cleanupComicPages($cutoff);
@@ -67,8 +76,8 @@ class CleanupTombstonesJob extends TimedJob {
 	}
 
 	/**
-	 * Drops the shelf assignments of the tombstones that are about to be purged (tombstones can come back until then,
-	 * so the assignments are kept as long as the row exists).
+	 * Drops the shelf assignments and annotations of the tombstones that are about to be purged (tombstones can come back
+	 * until then, so they are kept as long as the row exists).
 	 */
 	private function cleanupShelfAssignments(int $cutoffMs): void {
 		$afterId = 0;
@@ -80,6 +89,7 @@ class CleanupTombstonesJob extends TimedJob {
 				$afterId = max($afterId, $row['id']);
 			}
 			foreach ($byUser as $userId => $fileIds) {
+				$this->annotationMapper->deleteByUserAndFiles((string)$userId, $fileIds);
 				$shelfIds = $this->shelfMapper->findIdsByUser((string)$userId);
 				$this->shelfBookMapper->deleteFilesFromShelves($shelfIds, $fileIds);
 			}

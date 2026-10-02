@@ -166,7 +166,7 @@ describe('library store', () => {
 
 	it('saves book tags optimistically and rolls back on failure', async () => {
 		const store = useLibraryStore()
-		mocked.getFacets.mockResolvedValue({ genres: [], tags: [], authors: [], series: [], formats: [] })
+		mocked.getFacets.mockResolvedValue({ genres: [], tags: [], authors: [], series: [], formats: [], missing: { genre: 0, tag: 0, author: 0, series: 0, description: 0, cover: 0, language: 0 } })
 		await store.reload()
 		mocked.patchMetadata.mockImplementationOnce(() => Promise.resolve({ book: book(1, { tags: ['a'] }), warnings: ['app only'] }))
 		const p = store.saveBookTags(1, { genres: [], tags: ['a'] })
@@ -218,6 +218,33 @@ describe('library store', () => {
 		expect(store.books[0].readStatus).toBe('unread')
 	})
 
+	it('hides finished books by default unless a status filter is set', async () => {
+		localStorage.clear()
+		const store = useLibraryStore()
+		await store.reload()
+		expect(mocked.listBooks).toHaveBeenLastCalledWith(expect.objectContaining({ hideFinished: 1 }))
+		expect(store.hasFilters).toBe(false)
+		store.setStatus('finished')
+		expect(mocked.listBooks).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'finished', hideFinished: undefined }))
+		store.setStatus(null)
+		store.setHideFinished(false)
+		expect(mocked.listBooks).toHaveBeenLastCalledWith(expect.objectContaining({ hideFinished: undefined }))
+		expect(localStorage.getItem('ebookreader.hideFinished')).toBe('0')
+	})
+
+	it('drops a book marked finished from the list and continue reading', async () => {
+		localStorage.clear()
+		mocked.recentBooks.mockResolvedValue({ books: [book(1, { readStatus: 'reading' })] })
+		const store = useLibraryStore()
+		await store.reload()
+		store.recent = [book(1, { readStatus: 'reading' })]
+		mocked.patchAppData.mockResolvedValueOnce(book(1, { readStatus: 'finished' }))
+		await store.setReadStatus(1, 'finished')
+		expect(store.books.map((b) => b.fileId)).toEqual([2])
+		expect(store.recent).toEqual([])
+		expect(store.total).toBe(1)
+	})
+
 	it('manages selection and bulk tags', async () => {
 		const store = useLibraryStore()
 		await store.reload()
@@ -226,7 +253,7 @@ describe('library store', () => {
 		store.toggleSelected(1)
 		expect(store.selectedIds).toEqual([2])
 		mocked.bulkTags.mockResolvedValue({ updated: 1, failed: [] })
-		mocked.getFacets.mockResolvedValue({ genres: [], tags: [], authors: [], series: [], formats: [] })
+		mocked.getFacets.mockResolvedValue({ genres: [], tags: [], authors: [], series: [], formats: [], missing: { genre: 0, tag: 0, author: 0, series: 0, description: 0, cover: 0, language: 0 } })
 		const res = await store.bulkTags({ addGenres: ['X'], removeGenres: [], addTags: [], removeTags: [] })
 		expect(res.updated).toBe(1)
 		expect(mocked.bulkTags).toHaveBeenCalledWith(expect.objectContaining({ fileIds: [2], addGenres: ['X'] }))
@@ -236,7 +263,7 @@ describe('library store', () => {
 
 	it('orders the selection like the list and keeps it after a bulk metadata edit', async () => {
 		const store = useLibraryStore()
-		mocked.getFacets.mockResolvedValue({ genres: [], tags: [], authors: [], series: [], formats: [] })
+		mocked.getFacets.mockResolvedValue({ genres: [], tags: [], authors: [], series: [], formats: [], missing: { genre: 0, tag: 0, author: 0, series: 0, description: 0, cover: 0, language: 0 } })
 		await store.reload()
 		const listOrder = store.books.map((b) => b.fileId)
 		store.toggleSelected(listOrder[1])
@@ -252,7 +279,7 @@ describe('library store', () => {
 
 	it('polls a bulk metadata task and reports its result', async () => {
 		const store = useLibraryStore()
-		mocked.getFacets.mockResolvedValue({ genres: [], tags: [], authors: [], series: [], formats: [] })
+		mocked.getFacets.mockResolvedValue({ genres: [], tags: [], authors: [], series: [], formats: [], missing: { genre: 0, tag: 0, author: 0, series: 0, description: 0, cover: 0, language: 0 } })
 		await store.reload()
 		mocked.bulkMetadata.mockResolvedValueOnce({ taskId: 7 })
 		vi.mocked(pollTask).mockResolvedValueOnce({
@@ -273,7 +300,7 @@ describe('library store', () => {
 
 	it('resets an override and applies the book re-read from the file', async () => {
 		const store = useLibraryStore()
-		mocked.getFacets.mockResolvedValue({ genres: [], tags: [], authors: [], series: [], formats: [] })
+		mocked.getFacets.mockResolvedValue({ genres: [], tags: [], authors: [], series: [], formats: [], missing: { genre: 0, tag: 0, author: 0, series: 0, description: 0, cover: 0, language: 0 } })
 		await store.reload()
 		mocked.resetOverrides.mockResolvedValueOnce(book(1, { title: 'From file', overrides: [] }))
 		await store.resetOverrides(1, 'title')
@@ -283,7 +310,7 @@ describe('library store', () => {
 
 	it('embeds metadata into the book file right away for small books', async () => {
 		const store = useLibraryStore()
-		mocked.getFacets.mockResolvedValue({ genres: [], tags: [], authors: [], series: [], formats: [] })
+		mocked.getFacets.mockResolvedValue({ genres: [], tags: [], authors: [], series: [], formats: [], missing: { genre: 0, tag: 0, author: 0, series: 0, description: 0, cover: 0, language: 0 } })
 		await store.reload()
 		mocked.embedMetadata.mockResolvedValueOnce({ sync: { book: book(1, { title: 'Embedded' }), warnings: [], written: true } })
 		expect(await store.embedMetadata(1)).toEqual({ written: true, warnings: [] })
@@ -293,7 +320,7 @@ describe('library store', () => {
 
 	it('embeds large books through a server task', async () => {
 		const store = useLibraryStore()
-		mocked.getFacets.mockResolvedValue({ genres: [], tags: [], authors: [], series: [], formats: [] })
+		mocked.getFacets.mockResolvedValue({ genres: [], tags: [], authors: [], series: [], formats: [], missing: { genre: 0, tag: 0, author: 0, series: 0, description: 0, cover: 0, language: 0 } })
 		mocked.listBooks.mockResolvedValue({ books: [book(1, { size: 50 * 1024 * 1024 })], total: 1 })
 		await store.reload()
 		mocked.embedMetadata.mockResolvedValueOnce({ taskId: 9 })
@@ -306,7 +333,7 @@ describe('library store', () => {
 
 	it('shows that saving tags queued a background write', async () => {
 		const store = useLibraryStore()
-		mocked.getFacets.mockResolvedValue({ genres: [], tags: [], authors: [], series: [], formats: [] })
+		mocked.getFacets.mockResolvedValue({ genres: [], tags: [], authors: [], series: [], formats: [], missing: { genre: 0, tag: 0, author: 0, series: 0, description: 0, cover: 0, language: 0 } })
 		await store.reload()
 		mocked.patchMetadata.mockResolvedValueOnce({ book: book(1, { tags: ['a'] }), warnings: [], writeQueued: true })
 		expect(await store.saveBookTags(1, { genres: [], tags: ['a'] })).toEqual({ warnings: [], writeQueued: true })

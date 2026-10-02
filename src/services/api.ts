@@ -1,4 +1,7 @@
 import type {
+	Annotation,
+	AnnotationCreate,
+	AnnotationPatch,
 	AppDataPatch,
 	ArchiveEntries,
 	Book,
@@ -673,4 +676,45 @@ export async function fetchBookBlob(book: Pick<Book, 'path'>, signal?: AbortSign
 		throw new ApiError(res.status, `Could not load book (${res.status})`)
 	}
 	return await res.blob()
+}
+
+// ---- Annotations (highlights, notes, bookmarks) --------------------------
+
+/**
+ * Live annotations of a book.
+ *
+ * @param fileId
+ */
+export async function listAnnotations(fileId: number): Promise<Annotation[]> {
+	return (await request<{ annotations: Annotation[] }>('get', `/books/${fileId}/annotations`)).annotations
+}
+
+/**
+ * Creates the annotation or updates the one with the same uuid. Throws ConflictError (`current` = server version) on 409.
+ *
+ * @param fileId
+ * @param body
+ */
+export function createAnnotation(fileId: number, body: AnnotationCreate): Promise<Annotation> {
+	return request<Annotation>('post', `/books/${fileId}/annotations`, { body })
+}
+
+/**
+ * Throws ConflictError (`current` = server version) on 409.
+ *
+ * @param uuid
+ * @param body
+ */
+export function patchAnnotation(uuid: string, body: AnnotationPatch): Promise<Annotation> {
+	return request<Annotation>('patch', `/annotations/${uuid}`, { body })
+}
+
+/**
+ * Sets the tombstone on the server.
+ *
+ * @param uuid
+ * @param clientUpdatedAt
+ */
+export function deleteAnnotation(uuid: string, clientUpdatedAt?: number): Promise<Annotation> {
+	return request<Annotation>('delete', `/annotations/${uuid}`, { params: { clientUpdatedAt } })
 }

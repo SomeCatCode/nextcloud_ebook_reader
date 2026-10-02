@@ -50,7 +50,7 @@ class ProgressController extends AbstractOCSController {
 	}
 
 	/**
-	 * Most recently read books ("continue reading")
+	 * Most recently read books that are not finished ("continue reading")
 	 *
 	 * @param int<1, 50> $limit Maximum number of books
 	 * @return DataResponse<Http::STATUS_OK, array{books: list<EbookReaderBook>}, array{}>
@@ -63,15 +63,20 @@ class ProgressController extends AbstractOCSController {
 	public function recent(int $limit = 10): DataResponse {
 		$userId = $this->uid();
 		$limit = max(1, min(self::MAX_RECENT, $limit));
-		$rows = $this->progressMapper->findRecent($userId, $limit);
+		// finished books are done and do not belong in "continue reading"; read a few more rows to fill the list
+		$rows = $this->progressMapper->findRecent($userId, min($limit * 4, 200));
 		$byFile = [];
 		foreach ($this->bookMapper->findByUserAndFiles($userId, array_map(static fn ($p): int => $p->getFileId(), $rows)) as $book) {
 			$byFile[$book->getFileId()] = $book;
 		}
 		$books = [];
 		foreach ($rows as $row) {
-			if (isset($byFile[$row->getFileId()])) {
-				$books[] = $byFile[$row->getFileId()];
+			$book = $byFile[$row->getFileId()] ?? null;
+			if ($book !== null && $book->getReadStatus() !== Book::STATUS_FINISHED) {
+				$books[] = $book;
+				if (count($books) >= $limit) {
+					break;
+				}
 			}
 		}
 		return new DataResponse(['books' => $this->serializer->serializeMany($userId, $books)]);

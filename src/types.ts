@@ -68,7 +68,7 @@ export type MetadataOverrideField = 'title' | 'authors' | 'series' | 'seriesInde
 
 export type SortKey = 'title' | 'author' | 'series' | 'rating' | 'added' | 'read' | 'shelf'
 
-export type FilterType = 'genre' | 'tag' | 'author' | 'series' | 'format' | 'shelf'
+export type FilterType = 'genre' | 'tag' | 'author' | 'series' | 'format' | 'shelf' | 'missing'
 
 export interface FilterTerm {
 	type: FilterType
@@ -87,6 +87,8 @@ export interface BookQuery {
 	order?: 'asc' | 'desc'
 	/** 0: only books without a series, 1: only books with one */
 	inSeries?: 0 | 1
+	/** 1: leave out finished books (ignored when status is set) */
+	hideFinished?: 1
 	limit?: number
 	offset?: number
 }
@@ -107,14 +109,22 @@ export interface Facets {
 	authors: FacetEntry[]
 	series: FacetEntry[]
 	formats: FacetEntry[]
+	/** number of books lacking each maintainable field */
+	missing: MissingCounts
 }
+
+export type MissingField = 'genre' | 'tag' | 'author' | 'series' | 'description' | 'cover' | 'language'
+
+export type MissingCounts = Record<MissingField, number>
 
 export interface SyncResult {
 	books: Book[]
 	/** file ids */
 	deleted: number[]
 	progress: Progress[]
+	annotations?: Annotation[]
 	cursor: string
+	hasMore?: boolean
 }
 
 export interface AppDataPatch {
@@ -421,3 +431,43 @@ export interface SeriesEntry {
 }
 
 export type SeriesQuery = Omit<BookQuery, 'inSeries' | 'limit' | 'offset' | 'sort'> & { sort?: 'name' | 'added' }
+
+export type AnnotationType = 'highlight' | 'note' | 'bookmark'
+export type AnnotationColor = 'yellow' | 'green' | 'blue' | 'pink' | 'purple'
+
+/** Highlight, note or bookmark of a book (`GET /books/{fileId}/annotations`). Times are ms since epoch. */
+export interface Annotation {
+	uuid: string
+	fileId: number
+	type: AnnotationType
+	locator: Locator
+	/** selected text excerpt, max 2000 characters */
+	text: string | null
+	/** max 10000 characters */
+	note: string | null
+	color: AnnotationColor | null
+	createdAt: number
+	updatedAt: number
+	clientUpdatedAt: number
+	deleted: boolean
+}
+
+export interface AnnotationCreate {
+	uuid?: string
+	type: AnnotationType
+	locator: Locator
+	text?: string | null
+	note?: string | null
+	color?: AnnotationColor | null
+	clientUpdatedAt?: number
+	createdAt?: number
+}
+
+/** Empty string for `note` / `color` clears the value on the server. */
+export interface AnnotationPatch {
+	locator?: Locator
+	text?: string
+	note?: string
+	color?: AnnotationColor | ''
+	clientUpdatedAt?: number
+}

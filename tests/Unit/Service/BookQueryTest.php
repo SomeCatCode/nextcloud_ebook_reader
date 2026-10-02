@@ -49,6 +49,15 @@ class BookQueryTest extends TestCase {
 		], $q->include);
 	}
 
+	public function testMissingTermsAreValidated(): void {
+		$q = BookQuery::fromRequestParams([
+			'include' => ['missing:genre', 'missing:Cover', 'missing:bogus', 'missing:', 'missing:GENRE'],
+			'exclude' => 'missing:language,missing:nope',
+		]);
+		$this->assertSame([['type' => 'missing', 'name' => 'genre'], ['type' => 'missing', 'name' => 'cover']], $q->include);
+		$this->assertSame([['type' => 'missing', 'name' => 'language']], $q->exclude);
+	}
+
 	public function testShelfTermAndSort(): void {
 		$q = BookQuery::fromRequestParams(['include' => ['shelf:12', 'tag:Fantasy/*'], 'exclude' => ['shelf:3'], 'sort' => 'shelf']);
 		$this->assertSame([['type' => 'shelf', 'name' => '12'], ['type' => 'tag', 'name' => 'Fantasy/*']], $q->include);

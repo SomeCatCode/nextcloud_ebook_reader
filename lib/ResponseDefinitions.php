@@ -33,6 +33,20 @@ namespace OCA\EbookReader;
  *     updatedAt: int,
  * }
  *
+ * @psalm-type EbookReaderAnnotation = array{
+ *     uuid: string,
+ *     fileId: int,
+ *     type: 'highlight'|'note'|'bookmark',
+ *     locator: EbookReaderLocator,
+ *     text: ?string,
+ *     note: ?string,
+ *     color: 'yellow'|'green'|'blue'|'pink'|'purple'|null,
+ *     createdAt: int,
+ *     updatedAt: int,
+ *     clientUpdatedAt: int,
+ *     deleted: bool,
+ * }
+ *
  * @psalm-type EbookReaderBook = array{
  *     fileId: int,
  *     format: string,
@@ -71,6 +85,7 @@ namespace OCA\EbookReader;
  *     authors: list<EbookReaderFacetEntry>,
  *     series: list<EbookReaderFacetEntry>,
  *     formats: list<EbookReaderFacetEntry>,
+ *     missing: array{genre: int, tag: int, author: int, series: int, description: int, cover: int, language: int},
  * }
  *
  * @psalm-type EbookReaderSettings = array{
@@ -86,6 +101,7 @@ namespace OCA\EbookReader;
  *     books: list<EbookReaderBook>,
  *     deleted: list<int>,
  *     progress: list<EbookReaderProgress>,
+ *     annotations: list<EbookReaderAnnotation>,
  *     cursor: string,
  *     hasMore: bool,
  * }

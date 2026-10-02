@@ -94,6 +94,7 @@ import ShelfNameDialog from './ShelfNameDialog.vue'
 import { displayTermName } from '../../services/hierarchy.ts'
 import { termToString, useLibraryStore } from '../../stores/library.ts'
 import { useShelvesStore } from '../../stores/shelves.ts'
+import { missingLabel } from './missing.ts'
 
 const store = useLibraryStore()
 const shelves = useShelvesStore()
@@ -147,6 +148,7 @@ const typeLabels = computed<Record<string, string>>(() => ({
 	series: t('ebookreader', 'Series'),
 	format: t('ebookreader', 'Format'),
 	shelf: t('ebookreader', 'Shelf'),
+	missing: '',
 }))
 
 /**
@@ -168,7 +170,10 @@ const termChips = computed(() => {
 		key: state + ':' + termToString(term),
 		term,
 		state,
-		label: `${typeLabels.value[term.type]}: ${termLabel(term)}`,
+		// "Without genre" / "Has genre" read as a whole, the other chips as "Type: value"
+		label: term.type === 'missing'
+			? missingLabel(term.name, state)
+			: `${typeLabels.value[term.type]}: ${termLabel(term)}`,
 	})
 	return [
 		...store.filters.include.map((x) => make(x, 'include')),

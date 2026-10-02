@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace OCA\EbookReader\Tests\Unit\Db;
 
+use OCA\EbookReader\Db\Annotation;
 use OCA\EbookReader\Db\Book;
 use OCA\EbookReader\Db\Progress;
 use OCA\EbookReader\Db\Shelf;
@@ -50,9 +51,21 @@ class EntityInsertFieldsTest extends TestCase {
 		$this->assertContains('type', array_keys($shelf->getUpdatedFields()));
 	}
 
+	public function testNewAnnotationInsertsEveryColumnEvenWhenEqualToDefault(): void {
+		$a = new Annotation();
+		$a->setType(Annotation::TYPE_HIGHLIGHT);
+		$a->setDeleted(0);
+		$a->setNote(null);
+		$fields = array_keys($a->getUpdatedFields());
+		foreach (['userId', 'fileId', 'type', 'uuid', 'locator', 'text', 'note', 'color', 'createdAt', 'updatedAt', 'clientUpdatedAt', 'deleted'] as $f) {
+			$this->assertContains($f, $fields);
+		}
+		$this->assertNotContains('id', $fields);
+	}
+
 	/** @return list<array{class-string}> */
 	public static function entities(): array {
-		return [[Book::class], [Progress::class], [Tag::class], [Task::class], [Shelf::class], [ShelfBook::class]];
+		return [[Book::class], [Progress::class], [Tag::class], [Task::class], [Shelf::class], [ShelfBook::class], [Annotation::class]];
 	}
 
 	/** @param class-string $class */

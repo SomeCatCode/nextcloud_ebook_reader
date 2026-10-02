@@ -65,6 +65,7 @@ class BooksController extends AbstractOCSController {
 	 * @param list<string>|string|null $exclude Entries in the same form; books having any of them are excluded
 	 * @param string $match "all" (every include must match) or "any" (at least one)
 	 * @param int<0, 1>|null $inSeries 0 = only books without a series, 1 = only books in a series
+	 * @param int<0, 1> $hideFinished 1 = leave out finished books (ignored when status is given)
 	 * @return DataResponse<Http::STATUS_OK, EbookReaderBookList, array{}>
 	 * @throws OCSForbiddenException Not logged in
 	 *
@@ -88,11 +89,12 @@ class BooksController extends AbstractOCSController {
 		array|string|null $exclude = null,
 		string $match = 'all',
 		?int $inSeries = null,
+		int $hideFinished = 0,
 	): DataResponse {
 		$userId = $this->uid();
 		$query = BookQuery::fromRequestParams([
 			'search' => $search, 'format' => $format, 'genre' => $genre, 'tag' => $tag,
-			'author' => $author, 'series' => $series, 'status' => $status,
+			'author' => $author, 'series' => $series, 'status' => $status, 'hideFinished' => $hideFinished,
 			'sort' => $sort, 'order' => $order, 'limit' => $limit, 'offset' => $offset,
 			'include' => $include, 'exclude' => $exclude, 'match' => $match,
 			'inSeries' => $inSeries,

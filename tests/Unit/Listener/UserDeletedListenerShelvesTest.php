@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace OCA\EbookReader\Tests\Unit\Listener;
 
+use OCA\EbookReader\Db\AnnotationMapper;
 use OCA\EbookReader\Db\BookMapper;
 use OCA\EbookReader\Db\ProgressMapper;
 use OCA\EbookReader\Db\ShelfBookMapper;
@@ -24,7 +25,7 @@ use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 
 class UserDeletedListenerShelvesTest extends TestCase {
-	private function listener(ShelfMapper $shelves, ShelfBookMapper $shelfBooks, ?LoggerInterface $logger = null): UserDeletedListener {
+	private function listener(ShelfMapper $shelves, ShelfBookMapper $shelfBooks, ?LoggerInterface $logger = null, ?AnnotationMapper $annotations = null): UserDeletedListener {
 		$books = $this->createMock(BookMapper::class);
 		$books->method('findDistinctFileIdsByUser')->willReturn([]);
 		$books->method('findAllByUser')->willReturn([]);
@@ -38,6 +39,7 @@ class UserDeletedListenerShelvesTest extends TestCase {
 			$logger ?? $this->createMock(LoggerInterface::class),
 			$shelves,
 			$shelfBooks,
+			$annotations ?? $this->createMock(AnnotationMapper::class),
 		);
 	}
 
@@ -54,6 +56,14 @@ class UserDeletedListenerShelvesTest extends TestCase {
 		$shelfBooks = $this->createMock(ShelfBookMapper::class);
 		$shelfBooks->expects($this->once())->method('deleteByShelves')->with([3, 4]);
 		$this->listener($shelves, $shelfBooks)->handle($this->event('gone'));
+	}
+
+	public function testDeletesAnnotationsOfTheUser(): void {
+		$shelves = $this->createMock(ShelfMapper::class);
+		$shelves->method('findIdsByUser')->willReturn([]);
+		$annotations = $this->createMock(AnnotationMapper::class);
+		$annotations->expects($this->once())->method('deleteByUser')->with('gone');
+		$this->listener($shelves, $this->createMock(ShelfBookMapper::class), null, $annotations)->handle($this->event('gone'));
 	}
 
 	public function testUserWithoutShelvesOnlyDeletesRows(): void {
@@ -85,6 +95,7 @@ class UserDeletedListenerShelvesTest extends TestCase {
 			$logger,
 			$shelves,
 			$this->createMock(ShelfBookMapper::class),
+			$this->createMock(AnnotationMapper::class),
 		);
 		$listener->handle($this->event('gone'));
 	}

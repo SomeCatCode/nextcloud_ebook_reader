@@ -616,6 +616,8 @@ class LibraryService {
 		$out = [];
 		if ($q->status !== null) {
 			$out[] = $e->eq('b.read_status', $qb->createNamedParameter($q->status));
+		} elseif ($q->hideFinished) {
+			$out[] = $e->neq('b.read_status', $qb->createNamedParameter(Book::STATUS_FINISHED));
 		}
 		if ($q->inSeries !== null) {
 			$out[] = self::sql($q->inSeries
@@ -686,10 +688,45 @@ class LibraryService {
 				return $negate ? '(' . $e->isNull('b.series') . ' OR NOT (' . $cond . '))' : $cond;
 			case 'shelf':
 				return $allowShelf ? $this->shelfCondition($qb, $userId, $name, $negate) : null;
+			case 'missing':
+				return $this->missingCondition($qb, $name, $negate);
 			default:
 				$p = $qb->createNamedParameter(strtolower($name));
 				return $negate ? $e->neq($qb->createFunction('LOWER(b.format)'), $p) : $e->eq($qb->createFunction('LOWER(b.format)'), $p);
 		}
+	}
+
+	/**
+	 * `missing:<field>`: books lacking the field (include) or having it (negate). Unknown fields have no effect.
+	 */
+	private function missingCondition(IQueryBuilder $qb, string $field, bool $negate): ?string {
+		$e = $qb->expr();
+		switch ($field) {
+			case 'genre':
+			case 'tag':
+				$sub = $this->db->getQueryBuilder();
+				$sub->select('t.book_id')->from(self::TAGS, 't')
+					->where($sub->expr()->eq('t.type', $qb->createNamedParameter($field === 'genre' ? Tag::TYPE_GENRE : Tag::TYPE_TAG)));
+				$fn = $qb->createFunction('(' . $sub->getSQL() . ')');
+				return $negate ? $e->in('b.id', $fn) : $e->notIn('b.id', $fn);
+			case 'cover':
+				// has_cover is nullable: NULL counts as "no cover"
+				$has = $e->eq('b.has_cover', $qb->createNamedParameter(true, IQueryBuilder::PARAM_BOOL));
+				return $negate ? $has : '(' . $e->isNull('b.has_cover') . ' OR NOT (' . $has . '))';
+			case 'author':
+				$empty = $e->orX($e->isNull('b.authors'), $e->eq('b.authors', $qb->createNamedParameter('')), $e->eq('b.authors', $qb->createNamedParameter('[]')));
+				break;
+			case 'series':
+			case 'description':
+			case 'language':
+				$col = 'b.' . $field;
+				$empty = $e->orX($e->isNull($col), $e->eq($col, $qb->createNamedParameter('')));
+				break;
+			default:
+				return null;
+		}
+		$empty = self::sql($empty);
+		return $negate ? 'NOT ' . $empty : $empty;
 	}
 
 	/**
@@ -879,6 +916,64 @@ class LibraryService {
 			'authors' => $toList($authors),
 			'series' => $toList($series),
 			'formats' => $toList($formats),
+			'missing' => $this->missingCounts($userId),
+		];
+	}
+
+	/**
+	 * Number of non-deleted books lacking each maintainable field (two queries: one aggregate over the books, one over the tags).
+	 * @return array{genre: int, tag: int, author: int, series: int, description: int, cover: int, language: int}
+	 */
+	private function missingCounts(string $userId): array {
+		$qb = $this->db->getQueryBuilder();
+		$empty = static fn (string $col): string => "SUM(CASE WHEN $col IS NULL OR $col = '' THEN 1 ELSE 0 END)";
+		$qb->selectAlias($qb->createFunction('COUNT(*)'), 'total')
+			->selectAlias($qb->createFunction("SUM(CASE WHEN authors IS NULL OR authors = '' OR authors = '[]' THEN 1 ELSE 0 END)"), 'author')
+			->selectAlias($qb->createFunction($empty('series')), 'series')
+			->selectAlias($qb->createFunction($empty('description')), 'description')
+			->selectAlias($qb->createFunction($empty('language')), 'language')
+			->selectAlias($qb->createFunction('SUM(CASE WHEN has_cover = ' . (string)$qb->createNamedParameter(true, IQueryBuilder::PARAM_BOOL) . ' THEN 0 ELSE 1 END)'), 'cover')
+			->from(self::BOOKS)
+			->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
+			->andWhere($qb->expr()->isNull('deleted_at'));
+		$res = $qb->executeQuery();
+		$row = $res->fetch();
+		$res->closeCursor();
+
+		$tq = $this->db->getQueryBuilder();
+		$tq->select('t.type')
+			->selectAlias($tq->createFunction('COUNT(DISTINCT t.book_id)'), 'cnt')
+			->from(self::TAGS, 't')
+			->innerJoin('t', self::BOOKS, 'b', $tq->expr()->eq('b.id', 't.book_id'))
+			->where($tq->expr()->eq('b.user_id', $tq->createNamedParameter($userId)))
+			->andWhere($tq->expr()->isNull('b.deleted_at'))
+			->groupBy('t.type');
+		$res = $tq->executeQuery();
+		$withTags = [];
+		while ($r = $res->fetch()) {
+			$withTags[(string)$r['type']] = (int)$r['cnt'];
+		}
+		$res->closeCursor();
+		return self::buildMissingCounts(is_array($row) ? $row : [], $withTags);
+	}
+
+	/**
+	 * Normalises the aggregate row of the books query and the per-type counts of books having tags.
+	 * @param array<array-key, mixed> $row total, author, series, description, language, cover
+	 * @param array<string, int> $withTags tag type => number of books having at least one tag of it
+	 * @return array{genre: int, tag: int, author: int, series: int, description: int, cover: int, language: int}
+	 */
+	public static function buildMissingCounts(array $row, array $withTags): array {
+		$n = static fn (string $k): int => isset($row[$k]) && is_numeric($row[$k]) ? (int)$row[$k] : 0;
+		$total = $n('total');
+		return [
+			'genre' => max(0, $total - ($withTags[Tag::TYPE_GENRE] ?? 0)),
+			'tag' => max(0, $total - ($withTags[Tag::TYPE_TAG] ?? 0)),
+			'author' => $n('author'),
+			'series' => $n('series'),
+			'description' => $n('description'),
+			'cover' => $n('cover'),
+			'language' => $n('language'),
 		];
 	}
 

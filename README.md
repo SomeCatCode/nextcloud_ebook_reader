@@ -1,85 +1,80 @@
 # 📚 E-Book Reader für Nextcloud
 
-Bibliothek, Reader und Editor für E-Books und Comics direkt in deiner Nextcloud. Bücher bleiben normale Dateien in deinem Speicher. Die App liest sie, zeigt sie als Bibliothek an und synchronisiert den Lesefortschritt zwischen all deinen Geräten.
+Bibliothek, Reader und Editor für E-Books und Comics direkt in deiner Nextcloud. Deine Bücher bleiben normale Dateien in deinem Speicher. Die App liest sie ein, zeigt sie als Bibliothek an und synchronisiert den Lesefortschritt zwischen all deinen Geräten.
 
 ![Nextcloud 34](https://img.shields.io/badge/Nextcloud-34-0082c9?logo=nextcloud&logoColor=white)
 ![PHP 8.2+](https://img.shields.io/badge/PHP-8.2%2B-777bb4?logo=php&logoColor=white)
 ![Lizenz AGPL-3.0](https://img.shields.io/badge/Lizenz-AGPL--3.0--or--later-blue)
-![Status Alpha](https://img.shields.io/badge/Status-Alpha-orange)
+![Status Beta](https://img.shields.io/badge/Status-Beta-yellow)
 [![CI](https://github.com/SomeCatCode/nextcloud_ebook_reader/actions/workflows/ci.yml/badge.svg)](https://github.com/SomeCatCode/nextcloud_ebook_reader/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/SomeCatCode/nextcloud_ebook_reader?include_prereleases)](https://github.com/SomeCatCode/nextcloud_ebook_reader/releases)
 
-> [!WARNING]
-> **Alpha-Version.** Die App ist vollständig implementiert und durch automatische Tests abgedeckt, wurde aber noch nicht in einer produktiven Nextcloud-Instanz erprobt. Bitte zuerst in einer Testinstanz ausprobieren und Backups deiner Bücher behalten. Der Editor verändert Dateien, auch wenn Nextcloud dabei automatisch eine Version anlegt.
+> [!NOTE]
+> **Beta.** Die App wird produktiv mit einer großen Bibliothek (E-Books und Comics bis 400 MB) eingesetzt und ist durch automatische Tests abgedeckt. Bis zur Version 1.0 können sich Details noch ändern. Der Editor verändert Dateien. Nextcloud legt dabei zwar automatisch eine Version an, ein Backup deiner Bücher schadet trotzdem nicht.
 
 ---
 
 ## Funktionen
 
 ### Lesen
-- **Formate:** EPUB 2/3, MOBI, AZW3 (KF8), FB2, FB2.ZIP, CBZ, CBR
-- Direkt aus der **Files-App** öffnen, per Klick oder über das Kontextmenü „Im E-Book Reader öffnen“
-- Paginierte oder scrollende Darstellung, Themes **hell / sepia / dunkel**, Schriftart, Schriftgröße, Zeilenhöhe
-- Inhaltsverzeichnis, Volltextsuche, Tastatur (←/→, Bild↑/↓), Tipp-Zonen und Wischgesten
-- Comics: Einzel- oder Doppelseite, Leserichtung rechts-nach-links (Manga)
-- **CBZ-Comics werden seitenweise vom Server geladen**, passend zur Bildschirmgröße verkleinert und auf dem Server zwischengespeichert. Die erste Seite erscheint sofort, auch bei großen Dateien, und das Handy muss nicht das ganze Archiv laden.
-- **Lesefortschritt wird auf dem Server gespeichert** und ist auf jedem Gerät an derselben Stelle. Bei Konflikten fragt die App, ob du zur neueren Position springen möchtest.
+- **Formate:** EPUB 2/3, MOBI, AZW3 (KF8), FB2, FB2.ZIP sowie die Comic-Formate CBZ, CBR, CB7 und CBT.
+- Direkt aus der **Files-App** öffnen: per Klick oder über „Im E-Book Reader öffnen“.
+- Paginierte oder scrollende Darstellung, Themes hell, sepia und dunkel, wählbare Schriftart, Schriftgröße und Zeilenhöhe.
+- Inhaltsverzeichnis, Volltextsuche, Tastatur, Tipp-Zonen und Wischgesten.
+- Comics als Einzel- oder Doppelseite, Leserichtung rechts nach links (Manga).
+- **Markierungen, Notizen und Lesezeichen:** Text markieren (fünf Farben), Notiz dazu schreiben, Seiten mit einem Lesezeichen versehen (auch Comics). Alles steht im Panel „Markierungen & Lesezeichen“, wird auf dem Server gespeichert und lässt sich als Markdown exportieren.
+- **Große Dateien laden schnell.** Comics kommen seitenweise vom Server, auf Bildschirmgröße verkleinert, und EPUBs werden kapitelweise geladen. Die erste Seite erscheint sofort.
+- **Der Lesefortschritt wird auf dem Server gespeichert** und ist auf jedem Gerät an derselben Stelle. Gibt es eine neuere Position von einem anderen Gerät, fragt die App, ob sie dorthin springen soll.
 
 ### Bibliothek
-- Cover-Raster oder Listenansicht mit Lesefortschritt pro Buch
-- „Weiterlesen“-Leiste mit den zuletzt gelesenen Büchern
-- Navigation nach **Genres, Tags, Autoren, Serien und Formaten**
-- Kombinierbare Filter, Suche und Sortierung (Titel, Autor, Serie, Bewertung, zuletzt hinzugefügt/gelesen)
-- Bewertung (Sterne) und Lesestatus (ungelesen / lese gerade / gelesen)
-- Genres und Tags für mehrere Bücher gleichzeitig setzen
-- Metadaten und Cover werden automatisch aus den Dateien gelesen, neue Bücher erkennt die App von selbst
-
-### Regale
-- **Manuelle Regale**: Bücher per Hand in benannte Regale legen und dort beliebig sortieren. Ein Buch kann in mehreren Regalen stehen; das Entfernen aus einem Regal löscht das Buch nicht.
-- **Intelligente Regale**: speichern einen Filter (Genres, Tags, Autoren, Serien, Formate, Suche, Lesestatus) und zeigen immer die aktuellen Treffer.
-- Bis zu 200 Regale pro Benutzer, Namen sind pro Benutzer eindeutig (ohne Beachtung der Groß-/Kleinschreibung).
-- Filter `shelf:<id>` in der Bibliothek (API: `include=shelf:<id>`, bei manuellen Regalen mit `sort=shelf` in Regalreihenfolge). Regale sind privat und werden beim Löschen des Benutzers entfernt.
-- **Serien**: `GET /series` liefert die Serien der gefilterten Bücher, `inSeries=0|1` trennt Bücher mit und ohne Serie.
-- **Hierarchische Genres und Tags**: Namen wie `Fantasy/High Fantasy` bilden einen Baum (bis zu 5 Ebenen). Der Filter `tag:Fantasy/*` (bzw. `genre:Fantasy/*`) trifft `Fantasy` und alles darunter, auch als Ausschluss.
+- Cover-Raster oder Liste mit Lesefortschritt, dazu eine „Weiterlesen“-Leiste.
+- **Dashboard-Widget „Weiterlesen“:** zeigt auf dem Nextcloud-Dashboard die angefangenen Bücher mit Cover, Autor und Fortschritt. Ein Klick öffnet das Buch im Reader.
+- **OPDS-Katalog** für E-Reader-Apps wie KOReader, Moon+ Reader oder Thorium: Bibliothek durchstöbern und Bücher herunterladen (siehe [OPDS-Katalog](#opds-katalog)).
+- Navigation nach **Genres, Tags, Autoren, Serien und Formaten**. Genres und Tags können hierarchisch sein (z. B. `Fantasy/High Fantasy`).
+- **Kombinierbare Filter:** jeden Eintrag ein- oder ausschließen, „alle“ oder „mindestens einer“ müssen passen, dazu Suche und Sortierung. Der Filter steht in der URL und lässt sich als Lesezeichen speichern.
+- **Nachpflegen:** Bücher ohne Genre, Tags, Autor, Serie, Beschreibung, Cover oder Sprache finden und gezielt ergänzen.
+- **Regale:** manuelle Regale mit eigener Reihenfolge, dazu intelligente Regale, die einen gespeicherten Filter immer aktuell anzeigen.
+- **Serien zusammenfassen:** eine Karte pro Serie mit Bandanzahl und Lesestand.
+- **Mehrfachauswahl:** Autoren, Serie mit automatischer Bandnummerierung, Verlag, Sprache, Genres und Tags für viele Bücher auf einmal ändern. Außerdem Bücher in Regale legen, umbenennen und einsortieren oder löschen (in den Papierkorb).
+- **Hochladen** per Drag & Drop, auch sehr große Dateien.
+- Bewertung (Sterne) und Lesestatus (ungelesen, lese gerade, gelesen).
+- Metadaten und Cover liest die App automatisch aus den Dateien. Neue, geänderte und gelöschte Bücher erkennt sie selbst.
 
 ### Bearbeiten
-- **Metadaten:** Titel, Autoren, Serie und Band, Beschreibung, Genres, Tags, Sprache, Verlag, Datum, ISBN
-- **Cover** tauschen (Upload oder eine Seite als Cover wählen)
-- **Kapitel bzw. Seiten entfernen und per Drag & Drop umsortieren**
-- **Inhaltsverzeichnis** umbenennen, umsortieren und verschachteln
-- Datei umbenennen, frei oder nach einem Muster wie `{author} - {title}`
-- Speichern oder „Als Kopie speichern“. Nextcloud legt beim Überschreiben automatisch eine Version an.
+- **Metadaten:** Titel, Autoren, Serie und Band, Beschreibung, Genres, Tags, Sprache, Verlag, Datum, ISBN.
+- **Cover** tauschen (Upload oder eine Seite als Cover wählen).
+- **Kapitel bzw. Seiten** entfernen und per Drag & Drop umsortieren, **Inhaltsverzeichnis** bearbeiten.
+- **Umbenennen und Einsortieren** nach Muster, z. B. `{author}/{series}/{series_index:2} - {title}`, mit Vorschau vor dem Ausführen.
+- **Konvertieren** zwischen CBZ, CB7, CBT und EPUB (Fixed Layout). Die Vor- und Nachteile jedes Formats werden erklärt. CBR lässt sich nicht als Ziel anlegen, weil RAR nur mit proprietärer Software geschrieben werden kann.
+- Speichern oder „Als Kopie speichern“. Lange Vorgänge laufen auf dem Server mit Fortschrittsanzeige weiter.
 
-| | EPUB | CBZ | FB2 | CBR | MOBI / AZW3 |
+| | EPUB | CBZ | FB2 | CBR / CB7 / CBT | MOBI / AZW3 |
 |---|:-:|:-:|:-:|:-:|:-:|
-| Metadaten, Genres, Tags | ✅ | ✅ | ✅ | ✅¹ | ✅² |
-| Cover tauschen | ✅ | ✅ | ✅ | ✅¹ | – |
-| Kapitel/Seiten umsortieren und entfernen | ✅ | ✅ | ✅ | ✅¹ | – |
-| Inhaltsverzeichnis bearbeiten | ✅ | ✅ | ✅ | ✅¹ | – |
+| Metadaten, Genres, Tags | ✅ | ✅ | ✅ | ✅¹ | ✅¹ |
+| Cover tauschen | ✅ | ✅ | ✅ | ✅² | – |
+| Kapitel/Seiten umsortieren und entfernen | ✅ | ✅ | ✅ | ✅² | – |
+| Inhaltsverzeichnis bearbeiten | ✅ | ✅ | ✅ | ✅² | – |
 
-¹ nach Umwandlung in CBZ, die der Editor per Klick anbietet
-² in der Begleitdatei bzw. der App-Datenbank, die Datei selbst bleibt unverändert
+¹ in der Begleitdatei (siehe unten), die Buchdatei bleibt unverändert<br>
+² nach Umwandlung in CBZ, die der Editor per Klick anbietet
 
-### Metadaten-Speicherung / Begleitdateien
+### Wo Metadaten gespeichert werden
 
-Geänderte Metadaten (Titel, Serie, Genres, Tags ...) speichert die App je nach Einstellung „Wo Metadaten-Änderungen gespeichert werden“:
+Geänderte Metadaten speichert die App je nach Einstellung „Wo Metadaten-Änderungen gespeichert werden“:
 
 | Ziel | Wirkung |
 |---|---|
-| **Begleitdatei** (Standard) | Eine kleine versteckte Datei `.<Buchdatei>.opf` neben dem Buch, z. B. `.Golden Boy 01.cbz.opf`. Schnell, funktioniert für alle Formate (auch MOBI, AZW3, CBR, CB7, CBT), die Buchdatei bleibt unangetastet und die Metadaten wandern mit den Dateien (Kopie, Sync, Backup). |
-| In der Datei | Die Metadaten werden ins Buch geschrieben (EPUB, CBZ, FB2, FBZ). Andere Reader sehen sie, aber die Datei wird neu geschrieben. „Im Hintergrund“ oder „sofort“ steuert nur, wann das passiert. |
-| Beides | Begleitdatei sofort, Datei nach der Einstellung für das Schreiben. |
-| Nur Bibliothek | Nur in der Datenbank der App. Ist Ordner oder Freigabe schreibgeschützt, fällt die App ebenfalls darauf zurück und zeigt einen Hinweis. |
+| **Begleitdatei** (Standard) | Eine kleine, versteckte Datei `.<Buchdatei>.opf` neben dem Buch, z. B. `.Golden Boy 01.cbz.opf`. Schnell, für alle Formate, die Buchdatei bleibt unangetastet, und die Metadaten wandern bei Kopie, Sync und Backup mit. Format: Calibre-kompatibles OPF 2.0. |
+| In der Datei | Die Metadaten werden ins Buch geschrieben (EPUB, CBZ, FB2, FBZ), sodass auch andere Reader sie sehen. Das passiert im Hintergrund oder sofort. |
+| Beides | Die Begleitdatei sofort, die Buchdatei nach der Einstellung oben. |
+| Nur Bibliothek | Nur in der Datenbank der App, z. B. bei schreibgeschützten Ordnern. |
 
-- Die Begleitdatei ist Calibre-kompatibles OPF 2.0 (Titel, Autoren, Beschreibung, Sprache, Verlag, Datum, ISBN, Schlagwörter, Serie und Band). Genres und Tags unterscheidet die App über zusätzliche `ebookreader:`-Einträge, ohne diese gelten alle Schlagwörter als Genre-Kandidaten bzw. Tags.
-- Rangfolge beim Einlesen: in der App geänderte Felder (Datenbank) vor Begleitdatei vor eingebetteten Metadaten vor Dateiname. Ändert jemand die Begleitdatei von außen (Calibre, Texteditor, Sync), liest die App das Buch neu ein.
-- Umbenennen, Verschieben, Sortieren, Konvertieren und Löschen eines Buchs nehmen die Begleitdatei mit (beim Löschen landet sie im Papierkorb).
-- Andere Reader (Kobo, KOReader ...) lesen nur eingebettete Metadaten. Mit **„Metadaten in die Buchdatei schreiben“** in den Buchdetails (EPUB, CBZ, FB2, FBZ) schreibst du die aktuellen Werte nachträglich ins Buch.
-- Eine frühere Einstellung „nie“ gilt jetzt als „Nur Bibliothek“.
+Rangfolge beim Einlesen: in der App geänderte Felder, dann die Begleitdatei, dann die Metadaten im Buch, zuletzt der Dateiname. Beim Umbenennen, Verschieben, Konvertieren und Löschen wandert die Begleitdatei mit. „Metadaten in die Buchdatei schreiben“ in den Buchdetails überträgt die Werte nachträglich ins Buch, etwa für Kobo oder KOReader.
 
 ### Sicherheit und Datenschutz
-- Skripte in E-Books werden **nicht** ausgeführt, externe Inhalte wie Tracking-Pixel oder Web-Fonts werden **nicht** nachgeladen. Details: [docs/SECURITY-READER.md](docs/SECURITY-READER.md)
-- Keine Verbindungen zu externen Diensten, keine Telemetrie
+- Skripte in E-Books werden **nicht** ausgeführt, externe Inhalte wie Tracking-Pixel oder Web-Fonts werden **nicht** nachgeladen, und Links öffnen erst nach Rückfrage. Details: [docs/SECURITY-READER.md](docs/SECURITY-READER.md).
+- Freigaben mit „Download verbieten“ werden respektiert.
+- Keine Verbindungen zu externen Diensten, keine Telemetrie.
 
 ---
 
@@ -87,44 +82,42 @@ Geänderte Metadaten (Titel, Serie, Genres, Tags ...) speichert die App je nach 
 
 | | |
 |---|---|
-| Nextcloud | **34** (Hub 26 Spring) |
-| PHP | 8.2 oder neuer, mit den Erweiterungen `zip`, `gd`, `dom`, `libxml`, `mbstring`. Diese sind in üblichen Nextcloud-Installationen und im offiziellen Docker-Image bereits vorhanden. |
-| Hintergrundjobs | **Cron** empfohlen (Einstellungen → Verwaltung → Grundeinstellungen). AJAX funktioniert auch, dann werden große Bibliotheken aber nur langsam eingelesen. |
-| Browser | aktuelle Versionen von Firefox, Chrome/Edge oder Safari |
+| Nextcloud | **34** |
+| PHP | 8.2 oder neuer mit `zip`, `gd`, `dom`, `libxml`, `mbstring`. Das ist in üblichen Installationen und im offiziellen Docker-Image enthalten. |
+| Hintergrundjobs | **Cron** empfohlen. Mit AJAX werden große Bibliotheken nur langsam eingelesen. |
+| Optional | **7-Zip** bzw. `bsdtar` für CBR und CB7 auf dem Server, siehe [Archiv-Programme installieren](#archiv-programme-installieren-7-zip) |
+| Browser | aktuelles Firefox, Chrome/Edge oder Safari |
 
 ---
 
 ## Installation
 
-Die App ist noch nicht im Nextcloud App Store. Für die Installation hast du zwei Möglichkeiten.
+Die App ist noch nicht im Nextcloud App Store.
 
-### Variante A: Aus einem Release-Paket (empfohlen)
+### Aus einem Release-Paket (empfohlen)
 
-1. Lade `ebookreader.tar.gz` von der [Releases-Seite](https://github.com/SomeCatCode/nextcloud_ebook_reader/releases/latest) herunter. Optional kannst du es mit der mitgelieferten `.sha256`-Datei prüfen:
+1. `ebookreader.tar.gz` von der [Releases-Seite](https://github.com/SomeCatCode/nextcloud_ebook_reader/releases/latest) herunterladen. Optional mit der `.sha256`-Datei prüfen:
    ```bash
    sha256sum -c ebookreader.tar.gz.sha256
    ```
-2. Entpacke das Paket in das App-Verzeichnis deiner Nextcloud, meist `custom_apps/` oder `apps/`:
+2. Ins App-Verzeichnis entpacken (meist `custom_apps/`) und die Rechte setzen:
    ```bash
    tar -xzf ebookreader.tar.gz -C /var/www/nextcloud/custom_apps/
    ```
    ```bash
    chown -R www-data:www-data /var/www/nextcloud/custom_apps/ebookreader
    ```
-3. Aktiviere die App, entweder in der Weboberfläche unter **Apps → Deaktivierte Apps → E-Book Reader** oder per Kommandozeile:
+3. Aktivieren, unter **Apps → Deaktivierte Apps** oder per Kommandozeile:
    ```bash
    sudo -u www-data php /var/www/nextcloud/occ app:enable ebookreader
    ```
 
-### Variante B: Aus dem Quellcode bauen
+### Aus dem Quellcode
 
-Dafür brauchst du Node.js ≥ 22 und npm.
+Dafür brauchst du Node.js ≥ 22. Zur Laufzeit sind keine Composer-Pakete nötig.
 
 ```bash
-cd /var/www/nextcloud/custom_apps
-```
-```bash
-git clone https://github.com/SomeCatCode/nextcloud_ebook_reader.git ebookreader
+cd /var/www/nextcloud/custom_apps && git clone https://github.com/SomeCatCode/nextcloud_ebook_reader.git ebookreader
 ```
 ```bash
 cd ebookreader && npm ci && npm run build
@@ -133,30 +126,14 @@ cd ebookreader && npm ci && npm run build
 sudo -u www-data php /var/www/nextcloud/occ app:enable ebookreader
 ```
 
-Zur Laufzeit braucht die App keine Composer-Pakete, Nextcloud lädt die PHP-Klassen selbst.
+### Docker
 
-Ein installierbares Paket wie in Variante A kannst du auch selbst bauen:
+Die App gehört nach `/var/www/html/custom_apps/ebookreader` im Nextcloud-Container und muss `www-data` gehören. `occ` läuft als `www-data`. Zuerst das Paket herunterladen und entpacken:
 ```bash
-make appstore
+curl -LO https://github.com/SomeCatCode/nextcloud_ebook_reader/releases/latest/download/ebookreader.tar.gz && tar -xzf ebookreader.tar.gz
 ```
-Das Paket liegt danach unter `build/artifacts/ebookreader.tar.gz`.
 
-### Variante C: Nextcloud in Docker
-
-In allen Docker-Varianten gilt: Die App gehört nach **`/var/www/html/custom_apps/ebookreader`** im Nextcloud-Container und muss dem Benutzer **`www-data`** gehören. `occ` läuft immer als `www-data`.
-
-Zuerst das Paket herunterladen und entpacken:
-```bash
-curl -LO https://github.com/SomeCatCode/nextcloud_ebook_reader/releases/latest/download/ebookreader.tar.gz
-```
-```bash
-tar -xzf ebookreader.tar.gz
-```
-Im aktuellen Verzeichnis liegt danach der Ordner `ebookreader/`.
-
-#### C1: Offizielles `nextcloud`-Image, per `docker cp`
-
-Das funktioniert mit jedem laufenden Container, ohne die Compose-Datei zu ändern. `nextcloud` steht hier für den Namen deines Containers (`docker ps` zeigt ihn):
+**Offizielles Image** (`nextcloud` steht für den Container-Namen):
 ```bash
 docker cp ebookreader nextcloud:/var/www/html/custom_apps/
 ```
@@ -166,286 +143,216 @@ docker exec -u root nextcloud chown -R www-data:www-data /var/www/html/custom_ap
 ```bash
 docker exec -u www-data nextcloud php occ app:enable ebookreader
 ```
+Alternativ als Volume in der Compose-Datei: `- ./ebookreader:/var/www/html/custom_apps/ebookreader`.
 
-Die App liegt damit im Volume von `/var/www/html` und übersteht Neustarts und Image-Updates.
+**Nextcloud All-in-One:** Hier heißt der Container `nextcloud-aio-nextcloud`, die Befehle sind sonst dieselben wie oben. Cron und Schreibrechte sind bei AIO schon eingerichtet.
 
-#### C2: Offizielles Image, per Compose eingebunden
-
-Damit liegt die App als Ordner neben deiner `docker-compose.yml` und lässt sich dort aktualisieren. Den entpackten Ordner `ebookreader/` neben die Compose-Datei legen und im Nextcloud-Service einbinden:
-```yaml
-services:
-  app:
-    image: nextcloud:34-apache
-    volumes:
-      - nextcloud:/var/www/html
-      - ./ebookreader:/var/www/html/custom_apps/ebookreader
-    # ...
-```
-Dann neu starten und die App aktivieren:
-```bash
-docker compose up -d
-```
-```bash
-docker compose exec -u www-data app php occ app:enable ebookreader
-```
-Falls Nextcloud beim Aktivieren über fehlende Rechte klagt, einmal die Besitzrechte setzen:
-```bash
-docker compose exec -u root app chown -R www-data:www-data /var/www/html/custom_apps/ebookreader
-```
-
-#### C3: Nextcloud All-in-One (AIO)
-
-Bei AIO heißt der Container `nextcloud-aio-nextcloud`:
-```bash
-sudo docker cp ebookreader nextcloud-aio-nextcloud:/var/www/html/custom_apps/
-```
-```bash
-sudo docker exec -u root nextcloud-aio-nextcloud chown -R www-data:www-data /var/www/html/custom_apps/ebookreader
-```
-```bash
-sudo docker exec -u www-data nextcloud-aio-nextcloud php occ app:enable ebookreader
-```
-Cron, PHP-Extensions und Schreibrechte auf `config/` sind bei AIO schon eingerichtet.
-
-#### Hintergrundjobs im Docker-Setup
-
-Das offizielle Image führt Cron nicht selbst aus. Damit neue Bücher zuverlässig eingelesen werden, braucht es einen eigenen Cron-Container mit denselben Volumes:
+**Cron im offiziellen Image:** Das Image führt Cron nicht selbst aus. Dafür braucht es einen zusätzlichen Service mit denselben Volumes:
 ```yaml
   cron:
     image: nextcloud:34-apache
     entrypoint: /cron.sh
     volumes:
       - nextcloud:/var/www/html
-      - ./ebookreader:/var/www/html/custom_apps/ebookreader   # nur bei C2
-    depends_on:
-      - app
-```
-Danach in Nextcloud unter **Verwaltung → Grundeinstellungen → Hintergrundjobs** „Cron“ auswählen. Bei AIO ist das bereits erledigt.
-
-#### Update im Docker-Setup
-
-Den neuen Release herunterladen und den alten Ordner ersetzen, bei C1/C3 per `docker cp` nach vorherigem Löschen, bei C2 im Ordner neben der Compose-Datei. Danach die Datenbank-Migrationen ausführen:
-```bash
-docker exec -u www-data nextcloud php occ upgrade
 ```
 
-#### `occ`-Befehle im Container
+### Update
 
-Alle `occ`-Befehle weiter unten funktionieren im Container genauso, mit vorangestelltem `docker exec`, zum Beispiel:
+Den neuen Release über den alten Ordner kopieren (vorher löschen) und die Migrationen ausführen. Unter Docker stellst du jeweils `docker exec -u www-data <container>` voran.
 ```bash
-docker exec -u www-data nextcloud php occ ebookreader:scan --all
-```
-
-### Nach der Installation: Dateitypen
-
-Beim Aktivieren trägt die App die Dateitypen **AZW3** und **FB2.ZIP** in `config/mimetypemapping.json` ein. Alle anderen Formate kennt Nextcloud schon. Dafür muss `config/` für den Webserver beschreibbar sein. Falls das nicht der Fall war (Hinweis im Log), trage die Typen nachträglich ein:
-```bash
-sudo -u www-data php occ maintenance:repair
+sudo -u www-data php occ upgrade
 ```
 ```bash
-sudo -u www-data php occ maintenance:mimetype:update-db --repair-filecache
+sudo -u www-data php occ ebookreader:scan --all
 ```
+
+---
+
+## Archiv-Programme installieren (7-Zip)
+
+CBZ und CBT verarbeitet die App ohne Zusatzprogramme. Für **CBR** (RAR) und **CB7** (7z) braucht der Server ein Archiv-Programm, damit Cover, Metadaten, die seitenweise Anzeige und die Konvertierung auf dem Server laufen. Ohne Programm entpackt der Browser diese Dateien selbst und fragt bei Dateien über 50 MB vorher nach.
+
+Die App sucht nacheinander nach `unrar`, `7zz`/`7z`/`7za` und `bsdtar`. Empfohlen sind **7-Zip** (für CB7 und CBR) plus **`bsdtar`** aus libarchive (liest RAR4 und RAR5 zuverlässig, auch wenn das 7-Zip-Paket ohne RAR-Unterstützung gebaut ist).
+
+### Ohne Docker
+
+| System | Befehl |
+|---|---|
+| Debian / Ubuntu | `sudo apt install 7zip libarchive-tools`, optional zusätzlich `unrar` (Debian: Bereich `non-free`) |
+| Alpine | `apk add 7zip libarchive-tools` |
+
+### Offizielles Docker-Image (eigenes Image bauen)
+
+Das offizielle `nextcloud`-Image basiert auf Debian. Nachträglich per `docker exec` installierte Pakete gehen beim Neuerstellen des Containers verloren. Dauerhaft geht es mit einem eigenen Image:
+
+`Dockerfile` neben der `docker-compose.yml`:
+```dockerfile
+FROM nextcloud:34-apache
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends 7zip libarchive-tools \
+ && rm -rf /var/lib/apt/lists/*
+```
+
+In der `docker-compose.yml` statt `image:` bei **beiden** Services (`app` und `cron`) bauen lassen:
+```yaml
+services:
+  app:
+    build: .
+    pull_policy: build
+    # ... restliche Einstellungen unverändert
+  cron:
+    build: .
+    pull_policy: build
+    entrypoint: /cron.sh
+    # ...
+```
+
+Bauen und neu starten, das ist auch nach jedem Nextcloud-Update nötig:
+```bash
+docker compose build --pull && docker compose up -d
+```
+
+Für die FPM-Variante entsprechend `FROM nextcloud:34-fpm`.
+
+### Nextcloud All-in-One (AIO)
+
+AIO erlaubt kein eigenes Image. Zusätzliche Alpine-Pakete installiert man über die Umgebungsvariable **`NEXTCLOUD_ADDITIONAL_APKS`** des Mastercontainers. Der Standardwert ist `imagemagick`, er muss also mit angegeben werden:
+
+- **`docker run`:** beim Start des Mastercontainers ergänzen:
+  ```bash
+  --env NEXTCLOUD_ADDITIONAL_APKS="imagemagick 7zip libarchive-tools"
+  ```
+- **Compose:** im Service `nextcloud-aio-mastercontainer`:
+  ```yaml
+  environment:
+    - NEXTCLOUD_ADDITIONAL_APKS=imagemagick 7zip libarchive-tools
+  ```
+
+Danach den Mastercontainer mit der geänderten Variable neu erstellen und in der AIO-Oberfläche die Container stoppen und wieder starten. Die Pakete werden dann bei jedem Start des Nextcloud-Containers installiert.
+
+### Prüfen
+
+```bash
+docker exec nextcloud-aio-nextcloud sh -c 'command -v 7zz 7z bsdtar unrar'
+```
+Ohne Docker genügt `command -v 7z bsdtar`. Im Konvertieren-Dialog der App siehst du außerdem, welche Umwandlungen auf dem Server laufen und welche im Browser.
 
 ---
 
 ## Erste Schritte
 
-1. **Bücher ablegen:** Standardmäßig liest die App den Ordner **`/Books`** in deinen Dateien ein. In den Einstellungen der App (unten links in der Navigation) kannst du andere oder mehrere Ordner wählen.
-2. **App öffnen:** In der Nextcloud-Navigation auf **E-Book Reader** klicken. Beim ersten Mal auf **„Bibliothek scannen“** klicken. Danach erkennt die App neue, geänderte und gelöschte Bücher automatisch.
-3. **Lesen:** Auf ein Buch klicken und dann auf „Lesen“. Alternativ ein E-Book direkt in der Files-App öffnen.
-4. **Bearbeiten:** In der Detailansicht eines Buchs „Bearbeiten“ wählen, oder in Files im Kontextmenü „E-Book bearbeiten“.
+1. **Bücher ablegen:** Standardmäßig liest die App den Ordner **`/Books`**. In den Einstellungen der App (unten links) kannst du andere oder mehrere Ordner wählen.
+2. **Bibliothek scannen:** Beim ersten Mal auf „Bibliothek scannen“ klicken. Danach erkennt die App Änderungen automatisch.
+3. **Lesen:** ein Buch anklicken und „Lesen“ wählen, oder das Buch direkt in Files öffnen.
+4. **Nachpflegen:** In der Navigation unter „Nachpflegen“ findest du Bücher ohne Genre, Tags und Ähnliches. Mit der Mehrfachauswahl ergänzt du sie gesammelt.
 
-### Nützliche `occ`-Befehle
+### `occ`-Befehle
 
 | Befehl | Zweck |
 |---|---|
 | `occ ebookreader:scan <benutzer>` | Bibliothek eines Benutzers einlesen |
-| `occ ebookreader:scan --all` | Bibliotheken aller Benutzer einlesen, z. B. nach dem ersten Einrichten |
-| `occ ebookreader:inspect <pfad-zur-datei>` | Metadaten einer Datei als JSON ausgeben, praktisch zur Fehlersuche |
+| `occ ebookreader:scan --all` | alle Bibliotheken einlesen |
+| `occ ebookreader:inspect <pfad>` | Metadaten einer Datei als JSON ausgeben (Fehlersuche) |
 
 ### Admin-Einstellungen
 
 | Schlüssel | Standard | Bedeutung |
 |---|---|---|
-| `max_edit_size_mb` | `500` | Maximale Dateigröße, die der Editor bearbeitet |
-| `archive_cache_mb` | `2048` | Größe des lokalen Archiv-Caches für Dateien auf Fremdspeichern, siehe [Große Bibliotheken](#große-bibliotheken--große-dateien) |
-| `async_inline` | `true` | Aufgaben (Speichern, Konvertieren) direkt nach der Antwort im selben PHP-Prozess ausführen; `false` überlässt alles dem Hintergrundjob |
+| `max_edit_size_mb` | `500` | maximale Dateigröße für den Editor |
+| `archive_cache_mb` | `2048` | lokaler Cache für Bücher auf WebDAV-, SMB- oder S3-Speicher und bei serverseitiger Verschlüsselung |
+| `opds_enabled` | `true` | OPDS-Katalog auf diesem Server erlaubt (jeder Benutzer schaltet ihn zusätzlich selbst ein) |
+| `async_inline` | `true` | Speichern und Konvertieren direkt nach der Antwort im selben PHP-Prozess ausführen (bei PHP-FPM); `false` überlässt das dem Hintergrundjob |
 
-```bash
-sudo -u www-data php occ config:app:set ebookreader max_edit_size_mb --value=1000
-```
-
----
-
-## Große Bibliotheken / große Dateien
-
-Auch Comics und Bücher mit 300 bis 400 MB sind unterstützt. Dafür läuft nichts Langsames mehr direkt im Web-Request: Speichern im Editor und Konvertierungen laufen als Aufgabe mit Fortschrittsanzeige, der Reader lädt EPUBs nur eintragsweise, und das Schreiben von Metadaten packt ZIP-Dateien nicht neu.
-
-### Cron
-
-Empfohlen ist System-Cron, alle 5 Minuten, als Webserver-Benutzer:
-```cron
-*/5 * * * * php -f /var/www/nextcloud/cron.php
-```
-Unter **Verwaltung → Grundeinstellungen → Hintergrundjobs** „Cron“ auswählen. Der Hintergrundjob liest große Dateien ein (Dateien über 20 MB werden nie im Web-Request indexiert, beim manuellen Scan nur Dateien bis 50 MB direkt) und führt Aufgaben aus, die nicht direkt nach der Antwort laufen konnten.
-
-### Dauerhafter Worker (`background-job:worker`)
-
-Ab Nextcloud 27 kann ein Worker Hintergrundjobs ohne Wartezeit abarbeiten, sinnvoll für große Bibliotheken und für Aufgaben (Speichern, Konvertieren), wenn der Inline-Lauf nicht möglich ist (siehe unten):
-```bash
-sudo -u www-data php occ background-job:worker 'OCA\EbookReader\BackgroundJob\RunTaskJob'
-```
-Beispiel für eine systemd-Unit (`/etc/systemd/system/nextcloud-ebookreader-worker.service`):
-```ini
-[Unit]
-Description=Nextcloud Hintergrundjob-Worker (E-Book Reader)
-After=network.target
-
-[Service]
-User=www-data
-WorkingDirectory=/var/www/nextcloud
-ExecStart=/usr/bin/php occ background-job:worker -t 3600 'OCA\\EbookReader\\BackgroundJob\\RunTaskJob'
-Restart=always
-RestartSec=2
-
-[Install]
-WantedBy=multi-user.target
-```
-`sudo systemctl enable --now nextcloud-ebookreader-worker`. Der Worker beendet sich mit `-t 3600` (Sekunden) regelmäßig und wird von systemd neu gestartet, damit PHP-Speicher freigegeben wird. Ohne Klassennamen arbeitet der Worker alle Hintergrundjobs ab.
-
-### Aufgaben: inline oder per Job
-
-Nach dem Speichern bzw. Konvertieren antwortet der Server sofort mit einer Aufgaben-ID. Die Aufgabe läuft dann
-- **direkt nach der Antwort im selben PHP-Prozess**, wenn PHP als FPM/FastCGI läuft (`fastcgi_finish_request()` ist verfügbar), und
-- zusätzlich als **Hintergrundjob** (`RunTaskJob`) als Ersatz. Beide starten die Aufgabe nie doppelt.
-
-Bei `mod_php` (Apache ohne FPM) gibt es keinen Inline-Lauf, weil der Browser sonst auf das Ende warten müsste. Die Aufgabe zeigt dann „Waiting for background job“ und wird vom Cron oder vom Worker ausgeführt. Mit `async_inline=false` lässt sich der Inline-Lauf auch bei FPM abschalten:
-```bash
-sudo -u www-data php occ config:app:set ebookreader async_inline --value=false
-```
-Bei PHP-FPM darf `request_terminate_timeout` den Inline-Lauf nicht vorzeitig beenden (bei sehr großen Dateien auf `0` oder einen hohen Wert setzen). Wird eine Aufgabe doch abgebrochen, markiert der tägliche Aufräum-Job sie nach 6 Stunden ohne Fortschritt als fehlgeschlagen. Fertige Aufgaben werden nach 24 Stunden gelöscht.
-
-### Archiv-Cache und Limits
-
-| Schlüssel | Standard | Bedeutung |
-|---|---|---|
-| `archive_cache_mb` | `2048` | Obergrenze des lokalen Archiv-Caches (`<temp>/ebookreader-cache`) |
-| `async_inline` | `true` | Inline-Lauf von Aufgaben nach der Antwort, siehe oben |
-| `max_edit_size_mb` | `500` | Maximale Dateigröße für den Editor (größere Dateien: 413) |
-
-Liegen Bücher auf lokalem, unverschlüsseltem Speicher, liest die App direkt von der Datei und kopiert nichts. Bei WebDAV-, SMB-, S3-Speichern und serverseitiger Verschlüsselung wird jede Dateiversion höchstens einmal in den Cache kopiert (Reader, Editor, Konvertierung, Einlesen). Ist das Limit überschritten, werden zuerst die am längsten nicht benutzten Einträge gelöscht; ein Eintrag, der gerade benutzt wird, bleibt erhalten. Plane Platz im temporären Verzeichnis ein (`tempdirectory` in `config.php`).
 ```bash
 sudo -u www-data php occ config:app:set ebookreader archive_cache_mb --value=4096 --type=integer
 ```
 
-### 7z installieren (CB7 und schnelleres CBR)
+---
 
-Für CB7 und zum serverseitigen Lesen von CBR/CB7 braucht der Server `7z` (oder `unrar`/`bsdtar`). Ohne diese Programme übernimmt der Browser das, und fragt bei Dateien über 50 MB vorher nach.
+## OPDS-Katalog
 
-| System | Befehl |
-|---|---|
-| Debian/Ubuntu | `sudo apt install p7zip-full` (oder `7zip` ab Debian 12/Ubuntu 22.10) |
-| Alpine | `apk add 7zip` |
-| Docker (offizielles Image) | `docker exec -u root nextcloud sh -c "apt-get update && apt-get install -y p7zip-full"`, geht beim Neuerstellen des Containers verloren; dauerhaft über ein eigenes `Dockerfile` (`FROM nextcloud:34-apache` + `RUN apt-get update && apt-get install -y p7zip-full && rm -rf /var/lib/apt/lists/*`) |
+Mit dem OPDS-Katalog (OPDS 1.2, Atom) durchsuchen E-Reader-Apps deine Bibliothek und laden Bücher direkt herunter, ohne den Browser.
+
+**Aktivieren:**
+1. In der App unten links die **Einstellungen** öffnen und im Abschnitt „OPDS-Katalog“ **„Enable the OPDS catalog for my account“** einschalten. Der Katalog ist standardmäßig aus.
+2. Die angezeigte **Katalog-URL** kopieren, z. B. `https://cloud.example.com/index.php/apps/ebookreader/opds`.
+3. Unter **Einstellungen → Sicherheit** in Nextcloud ein **App-Passwort** erstellen. In der Reader-App den Benutzernamen und dieses App-Passwort eintragen (HTTP Basic), nicht das normale Passwort. Mit einem App-Passwort lässt sich der Zugang jederzeit einzeln widerrufen.
+
+**Inhalt:** Neu hinzugefügt, Weiterlesen, Alle Bücher, Autoren, Serien, Genres, Tags und Regale (auch intelligente Regale), dazu eine Suche (OpenSearch). Listen sind seitenweise mit 50 Büchern. Zu jedem Buch gibt es Cover, Beschreibung, Autoren, Serie, Genres und Tags sowie den Download in der Originalform. Es erscheinen nur Bücher aus deiner Bibliothek. Dateien aus Freigaben ohne Download-Recht werden nicht ausgeliefert.
+
+**Admin-Schalter:** Administratoren können den Katalog für den ganzen Server sperren, entweder im selben Abschnitt der App-Einstellungen oder per `occ`. Gesperrt ist er für alle Benutzer nicht erreichbar, egal was sie selbst eingestellt haben.
+
+```bash
+sudo -u www-data php occ config:app:set ebookreader opds_enabled --value=false --type=boolean
+```
+
+**Getestete Apps:** Bisher wurden nur die Antworten gegen die OPDS-Spezifikation geprüft, nicht jede App einzeln. Der Katalog sollte mit KOReader, Moon+ Reader, Librera, Thorium Reader sowie Panels und Chunky (Comics) funktionieren. Fehler bitte als Issue melden.
+
+Hinweis: Fortschritt synchronisieren diese Apps nicht über OPDS. Der Lesefortschritt der Nextcloud-App bleibt davon unberührt.
+
+---
+
+## Große Bibliotheken und große Dateien
+
+- **Cron:** Empfohlen ist System-Cron alle 5 Minuten (`*/5 * * * * php -f /var/www/nextcloud/cron.php`). Dateien über 20 MB werden im Hintergrund eingelesen.
+- **Sofortige Hintergrundaufgaben:** Speichern im Editor und Konvertieren laufen als Aufgabe mit Fortschritt. Unter PHP-FPM startet die Aufgabe direkt nach der Antwort. Unter `mod_php` übernimmt der nächste Cron-Lauf, oder ein dauerhafter Worker:
+  ```bash
+  sudo -u www-data php occ background-job:worker -t 3600 'OCA\EbookReader\BackgroundJob\RunTaskJob'
+  ```
+  Den Worker richtest du am besten als systemd-Dienst ein, der automatisch neu startet. Bei PHP-FPM darf `request_terminate_timeout` lange Aufgaben nicht abbrechen.
+- **Fremdspeicher:** Liegen Bücher auf lokalem, unverschlüsseltem Speicher, liest die App sie direkt. Sonst wird jede Dateiversion höchstens einmal in den Archiv-Cache kopiert (`archive_cache_mb`, im temporären Verzeichnis).
 
 ---
 
 ## Bekannte Einschränkungen
 
-- **DRM-geschützte Bücher** (Kindle, Adobe) lassen sich nicht öffnen. Die App zeigt einen entsprechenden Hinweis.
-- **MOBI/AZW3-Dateien** werden nicht verändert. Metadaten-Änderungen landen in der Begleitdatei (Standard) bzw. nur in der App.
+- **DRM-geschützte Bücher** (Kindle, Adobe) lassen sich nicht öffnen.
+- **MOBI/AZW3** werden nicht verändert. Metadaten landen in der Begleitdatei.
 - **Öffentliche Freigabe-Links** öffnen Bücher nicht im Reader, dort gibt es den normalen Download.
-- **Safari:** Die Tipp- und Wischnavigation im Reader kann eingeschränkt sein, siehe [docs/SECURITY-READER.md](docs/SECURITY-READER.md).
-- **PDF** wird bewusst nicht unterstützt, dafür hat Nextcloud einen eigenen Viewer.
+- **PDF** ist bewusst nicht dabei, dafür hat Nextcloud einen eigenen Viewer.
 
 ---
 
 ## Entwicklung
 
-Voraussetzungen: Docker, Node.js ≥ 22, PHP ≥ 8.2 (für lokale Tests mit `zip` und `gd`).
+Voraussetzungen: Docker, Node.js ≥ 22, PHP ≥ 8.2 mit `zip` und `gd`.
 
 ```bash
-make build
-```
-```bash
-make dev-up
-```
-```bash
-make enable
+make build && make dev-up && make enable
 ```
 
-Nextcloud 34 läuft dann mit MariaDB und Redis auf **http://localhost:8080**. Die Test-Zugangsdaten stehen in `docker/docker-compose.yml`. Das App-Verzeichnis ist direkt gemountet; `npm run watch` baut das Frontend bei jeder Änderung neu.
+Nextcloud 34 läuft dann auf http://localhost:8080 (Zugangsdaten in `docker/docker-compose.yml`). `npm run watch` baut das Frontend bei Änderungen neu.
 
 | Befehl | Zweck |
 |---|---|
-| `make build` | npm-Abhängigkeiten installieren und das Frontend nach `js/` bauen |
-| `npm run watch` | Frontend bei Änderungen neu bauen |
-| `make dev-up` / `make dev-down` | Testumgebung starten / stoppen |
-| `make dev-reset` | Testumgebung komplett zurücksetzen |
-| `make test-php` | PHPUnit im PHP-8.3-Container |
-| `make test-js` | Vitest |
+| `make test-php` / `make test-js` | PHPUnit / Vitest |
 | `make lint` | ESLint, vue-tsc, `php -l`, Psalm |
 | `make openapi` | `openapi.json` neu erzeugen |
-| `make appstore` | Installationspaket bauen |
-
-### Release erstellen
-
-Releases baut GitHub Actions automatisch ([release.yml](.github/workflows/release.yml)), sobald ein Versions-Tag gepusht wird:
-
-```bash
-git tag v0.2.0
-```
-```bash
-git push origin v0.2.0
-```
-
-Die Version kommt **aus dem Tag**: Die Pipeline trägt sie beim Bauen selbst in `appinfo/info.xml` ein. Damit die Version auch im Repo stimmt, kannst du sie vorher optional mit `make bump VERSION=0.2.0` setzen und committen. Dann erscheint im Workflow auch kein Hinweis zur abweichenden Version.
-
-Die Pipeline führt zuerst alle Tests und Checks aus der CI aus, baut dann das Paket und veröffentlicht es als GitHub-Release mit `ebookreader.tar.gz` und `.sha256`. Die Release-Notes entstehen automatisch aus den Commits. Tags mit Suffix wie `v0.2.0-beta.1` werden als Pre-Release markiert.
-
-**Nextcloud App Store (optional):** Die Pipeline kann Releases auch signieren und im App Store veröffentlichen. Dafür die App [im App Store registrieren](https://nextcloudappstore.readthedocs.io/en/latest/developer.html) und zwei Repository-Secrets anlegen:
-- `APP_PRIVATE_KEY`: Inhalt von `ebookreader.key`
-- `APPSTORE_TOKEN`: API-Token aus dem App-Store-Konto
-
-Ohne diese Secrets werden die beiden Schritte übersprungen.
-
-Test-Bücher (EPUB, FB2, CBZ, MOBI …) erzeugt `php tests/fixtures/generate.php` reproduzierbar nach `tests/fixtures/books/`.
-
-### Aufbau
+| `make appstore` | Installationspaket nach `build/artifacts/` |
 
 ```
-lib/                  PHP-Backend (Controller, Services, Metadaten-Extraktoren, Editor, Jobs)
-src/                  Vue-3-Frontend (Bibliothek, Reader, Editor, Files/Viewer-Integration)
-packages/reader-core/ Framework-unabhängiger Reader-Kern auf Basis von foliate-js
-tests/                PHPUnit-Tests und Test-Bücher
-docs/                 Technische Dokumentation
+lib/                  PHP-Backend (Controller, Services, Metadaten, Editor, Jobs)
+src/                  Vue-3-Frontend
+packages/reader-core/ framework-unabhängiger Reader-Kern auf Basis von foliate-js
+tests/                PHPUnit-Tests und Test-Bücher (tests/fixtures/generate.php)
 ```
 
-### Weitere Dokumentation
+- REST-API: [openapi.json](openapi.json)
+- Sicherheitskonzept des Readers: [docs/SECURITY-READER.md](docs/SECURITY-READER.md)
+- Releases erstellen: [docs/RELEASING.md](docs/RELEASING.md)
+- Änderungen: [CHANGELOG.md](CHANGELOG.md)
 
-- [PLAN.md](PLAN.md): Projektplan, Architektur, Datenmodell und Roadmap
-- [docs/CONTRACTS.md](docs/CONTRACTS.md): API- und Schnittstellenverträge
-- [docs/SECURITY-READER.md](docs/SECURITY-READER.md): Sicherheitskonzept des Readers
-- [docs/DEVIATIONS.md](docs/DEVIATIONS.md): Abweichungen vom Plan
-- [openapi.json](openapi.json): REST-API-Beschreibung. Die API ist vorbereitet für externe Clients, z. B. eine spätere Android-App.
-
----
-
-## Roadmap
-
-- OPDS-Feed, damit sich die Bibliothek in KOReader, Moon+ Reader und Librera nutzen lässt
-- KOReader-Sync für den Lesefortschritt
-- Dashboard-Widget „Weiterlesen“ und Einbindung in die Nextcloud-Suche
-- Markierungen, Notizen und Lesezeichen
-- Android-App
+Fehler und Wünsche bitte als [Issue](https://github.com/SomeCatCode/nextcloud_ebook_reader/issues) melden.
 
 ---
 
 ## Danksagung
 
 - [foliate-js](https://github.com/johnfactotum/foliate-js) (MIT) von John Factotum: Rendering-Engine des Readers
-- [libarchive.js](https://github.com/nika-begiashvili/libarchivejs) (MIT): Entpacken von CBR-Dateien im Browser
+- [libarchive.js](https://github.com/nika-begiashvili/libarchivejs) (MIT): Entpacken von CBR/CB7 im Browser
 - [fflate](https://github.com/101arrowz/fflate) (MIT): ZIP-Erzeugung im Browser
+
+Inoffizielle App, nicht mit der Nextcloud GmbH verbunden. Nextcloud ist eine Marke der Nextcloud GmbH.
 
 ## Lizenz
 
