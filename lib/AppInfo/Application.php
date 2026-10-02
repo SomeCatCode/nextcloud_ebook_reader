@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace OCA\EbookReader\AppInfo;
 
 use OCA\EbookReader\Capabilities;
+use OCA\EbookReader\Dashboard\ContinueReadingWidget;
 use OCA\EbookReader\Listener\CspListener;
 use OCA\EbookReader\Listener\FileEventListener;
 use OCA\EbookReader\Listener\LoadFilesScriptsListener;
@@ -53,6 +54,7 @@ class Application extends App implements IBootstrap {
 
 	public function register(IRegistrationContext $context): void {
 		$context->registerCapability(Capabilities::class);
+		$context->registerDashboardWidget(ContinueReadingWidget::class);
 		$context->registerPreviewProvider(EbookCoverProvider::class, EbookCoverProvider::MIME_REGEX);
 
 		$context->registerEventListener(NodeCreatedEvent::class, FileEventListener::class);

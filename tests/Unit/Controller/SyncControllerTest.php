@@ -10,6 +10,8 @@ declare(strict_types=1);
 namespace OCA\EbookReader\Tests\Unit\Controller;
 
 use OCA\EbookReader\Controller\SyncController;
+use OCA\EbookReader\Db\Annotation;
+use OCA\EbookReader\Db\AnnotationMapper;
 use OCA\EbookReader\Db\Book;
 use OCA\EbookReader\Db\BookMapper;
 use OCA\EbookReader\Db\Progress;
@@ -25,16 +27,18 @@ class SyncControllerTest extends TestCase {
 	private BookMapper&MockObject $books;
 	private ProgressMapper&MockObject $progress;
 	private BookSerializer&MockObject $serializer;
+	private AnnotationMapper&MockObject $annotations;
 	private SyncController $controller;
 
 	protected function setUp(): void {
 		$this->books = $this->createMock(BookMapper::class);
 		$this->progress = $this->createMock(ProgressMapper::class);
 		$this->serializer = $this->createMock(BookSerializer::class);
+		$this->annotations = $this->createMock(AnnotationMapper::class);
 		$this->serializer->method('serializeMany')->willReturnCallback(
 			static fn (string $u, array $books): array => array_map(static fn (Book $b): array => ['fileId' => $b->getFileId()], $books)
 		);
-		$this->controller = new SyncController($this->createMock(IRequest::class), 'u', $this->books, $this->progress, $this->serializer);
+		$this->controller = new SyncController($this->createMock(IRequest::class), 'u', $this->books, $this->progress, $this->serializer, $this->annotations);
 	}
 
 	private function book(int $id, int $fileId, int $updatedAt, ?int $deletedAt = null): Book {
@@ -96,6 +100,46 @@ class SyncControllerTest extends TestCase {
 		$this->assertCount(500, $data['books']);
 		$this->assertTrue($data['hasMore']);
 		$this->assertSame([500, 500], SyncCursor::decode($data['cursor'])->books);
+	}
+
+	public function testAnnotationsIncludeTombstonesAndAdvanceTheirOwnCursor(): void {
+		$live = new Annotation();
+		$live->setId(4);
+		$live->setUuid('11111111-1111-4111-8111-111111111111');
+		$live->setUpdatedAt(300);
+		$gone = new Annotation();
+		$gone->setId(5);
+		$gone->setUuid('22222222-2222-4222-8222-222222222222');
+		$gone->setUpdatedAt(310);
+		$gone->setDeleted(1);
+		$this->books->method('findChangedSince')->willReturn([]);
+		$this->progress->method('findChangedSince')->willReturn([]);
+		$this->annotations->expects($this->once())->method('findChangedSince')->with('u', 7, 3, 501)->willReturn([$live, $gone]);
+
+		$data = $this->controller->sync((new SyncCursor([0, 0], [0, 0], [7, 3]))->encode())->getData();
+
+		$this->assertCount(2, $data['annotations']);
+		$this->assertFalse($data['annotations'][0]['deleted']);
+		$this->assertTrue($data['annotations'][1]['deleted']);
+		$this->assertSame([310, 5], SyncCursor::decode($data['cursor'])->annotations);
+		$this->assertFalse($data['hasMore']);
+	}
+
+	public function testAnnotationOverflowReportsHasMore(): void {
+		$rows = [];
+		for ($i = 1; $i <= 501; $i++) {
+			$a = new Annotation();
+			$a->setId($i);
+			$a->setUpdatedAt(1000);
+			$rows[] = $a;
+		}
+		$this->books->method('findChangedSince')->willReturn([]);
+		$this->progress->method('findChangedSince')->willReturn([]);
+		$this->annotations->method('findChangedSince')->willReturn($rows);
+		$data = $this->controller->sync('')->getData();
+		$this->assertCount(500, $data['annotations']);
+		$this->assertTrue($data['hasMore']);
+		$this->assertSame([1000, 500], SyncCursor::decode($data['cursor'])->annotations);
 	}
 
 	public function testInvalidCursorIsBadRequest(): void {

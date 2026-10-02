@@ -1,6 +1,8 @@
 import type { FoliateBook, OpenedBook } from './open-book.ts'
 import type {
 	BookInfo,
+	ReaderAnnotation,
+	ReaderSelection,
 	ReaderEvents,
 	ReaderFormat,
 	ReaderHandle,
@@ -19,6 +21,7 @@ import type {
  * SPDX-FileCopyrightText: 2026 Felix Kurth
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
+import { collapseCfi, colorValue, locatorOnPage } from './annotations.ts'
 import { planNavigation, toLocator } from './locator.ts'
 import { openBook } from './open-book.ts'
 import { hardenBook } from './secure-sections.ts'
@@ -63,6 +66,9 @@ export function createReader(container: HTMLElement, options: ReaderOptions = {}
 	let lastLocator: ReaderLocator | null = null
 	let sectionFraction: number | undefined
 	let destroyed = false
+	let annotations: ReaderAnnotation[] = []
+	let Overlay: Any = null
+	let lastAnnotationClick = 0
 
 	/** Reader host element sits inside container; recreated on every open(). */
 	let host: HTMLElement | null = null
@@ -135,7 +141,7 @@ export function createReader(container: HTMLElement, options: ReaderOptions = {}
 	/**
 	 * @param doc
 	 */
-	function bindDocument(doc: Document): void {
+	function bindDocument(doc: Document, index: number): void {
 		doc.addEventListener('click', (e: MouseEvent) => {
 			if (e.defaultPrevented) {
 				return
@@ -143,11 +149,131 @@ export function createReader(container: HTMLElement, options: ReaderOptions = {}
 			if (doc.getSelection?.()?.type === 'Range') {
 				return
 			}
-			emit('tap', { zone: zoneOf(e, doc) })
+			const zone = zoneOf(e, doc)
+			// a click on a drawn highlight is handled by foliate's show-annotation event (same event dispatch):
+			// it must neither toggle the toolbar nor turn the page
+			setTimeout(() => {
+				if (Date.now() - lastAnnotationClick > 300) {
+					emit('tap', { zone })
+				}
+			}, 0)
 		})
+		bindSelection(doc, index)
 		doc.addEventListener('keydown', (e: KeyboardEvent) => {
 			emit('key', { key: e.key })
 		})
+	}
+
+	/**
+	 * Reports text selections of a section document.
+	 *
+	 * @param doc
+	 * @param index
+	 */
+	function bindSelection(doc: Document, index: number): void {
+		if (!supportsAnnotations()) {
+			return
+		}
+		let timer: ReturnType<typeof setTimeout> | null = null
+		let pointerDown = false
+		const run = (): void => {
+			timer = null
+			const sel = doc.getSelection?.()
+			const text = sel?.toString().replace(/\s+/g, ' ').trim() ?? ''
+			if (!sel || sel.isCollapsed || sel.rangeCount === 0 || !text) {
+				emit('selection-clear', {})
+				return
+			}
+			const range = sel.getRangeAt(0)
+			try {
+				const cfi: string = view.getCFI(index, range)
+				emit('selection', { text, cfi, locator: locatorFor(index, cfi), rect: rectInContainer(range, doc) })
+			} catch (e) {
+				console.warn('ebookreader: could not read the selection', e)
+			}
+		}
+		const schedule = (delay: number): void => {
+			if (timer) {
+				clearTimeout(timer)
+			}
+			timer = setTimeout(run, delay)
+		}
+		doc.addEventListener('pointerdown', () => {
+			pointerDown = true
+			emit('selection-clear', {})
+		})
+		doc.addEventListener('pointerup', () => {
+			pointerDown = false
+			schedule(10)
+		})
+		doc.addEventListener('keyup', () => schedule(250))
+		// touch selection handles and keyboard selection change the range without pointer events
+		doc.addEventListener('selectionchange', () => {
+			if (!pointerDown) {
+				schedule(400)
+			}
+		})
+	}
+
+	/**
+	 * @param index section index
+	 * @param cfi
+	 */
+	function locatorFor(index: number, cfi: string): ReaderLocator {
+		const loc = view.lastLocation
+		const section = opened?.book.sections[index]
+		return toLocator({
+			cfi,
+			fraction: loc?.fraction ?? 0,
+			sectionIndex: index,
+			sectionFraction,
+			locationCurrent: loc?.location?.current,
+			tocLabel: loc?.tocItem?.label,
+			sectionHref: String(section?.id ?? ''),
+		}, false)
+	}
+
+	/**
+	 * @param range
+	 * @param doc
+	 */
+	function rectInContainer(range: Range, doc: Document): ReaderSelection['rect'] {
+		const frame = doc.defaultView?.frameElement as HTMLElement | null
+		const fr = frame?.getBoundingClientRect()
+		const host = container.getBoundingClientRect()
+		const r = range.getBoundingClientRect()
+		const ox = (fr ? fr.left : 0) - host.left
+		const oy = (fr ? fr.top : 0) - host.top
+		return { left: r.left + ox, top: r.top + oy, right: r.right + ox, bottom: r.bottom + oy }
+	}
+
+	/**
+	 *
+	 */
+	function supportsAnnotations(): boolean {
+		return !!view && !!opened && !opened.isComic && !view.isFixedLayout
+	}
+
+	/**
+	 * Draws or removes one highlight; failures (stale CFI) are ignored.
+	 *
+	 * @param annotation
+	 * @param remove
+	 */
+	async function drawAnnotation(annotation: ReaderAnnotation, remove = false): Promise<void> {
+		try {
+			await (remove ? view?.deleteAnnotation({ value: annotation.cfi }) : view?.addAnnotation({ value: annotation.cfi }))
+		} catch (e) {
+			console.warn('ebookreader: could not draw an annotation', e)
+		}
+	}
+
+	/**
+	 * @param a
+	 * @param b
+	 */
+	function sameLook(a: ReaderAnnotation, b: ReaderAnnotation): boolean {
+		return a.cfi === b.cfi && a.color === b.color && a.hasNote === b.hasNote
 	}
 
 	/**
@@ -205,6 +331,7 @@ export function createReader(container: HTMLElement, options: ReaderOptions = {}
 		view = null
 		opened = null
 		info = null
+		Overlay = null
 	}
 
 	/**
@@ -271,8 +398,37 @@ export function createReader(container: HTMLElement, options: ReaderOptions = {}
 						emit('external-link', { url })
 					}
 				})
-				view.addEventListener('load', (e: CustomEvent<{ doc: Document }>) => {
-					bindDocument(e.detail.doc)
+				view.addEventListener('load', (e: CustomEvent<{ doc: Document, index: number }>) => {
+					bindDocument(e.detail.doc, e.detail.index)
+				})
+				Overlay = (await import('../vendor/foliate-js/overlayer.js')).Overlayer
+				// Highlights are SVG shapes in foliate's overlayer next to the book document: nothing from the
+				// annotation (text, note) is ever written into the book's DOM (docs/SECURITY-READER.md).
+				view.addEventListener('draw-annotation', (e: CustomEvent<{ draw: (fn: Any, opts: Any) => void, annotation: { value: string } }>) => {
+					const a = annotations.find((x) => x.cfi === e.detail.annotation.value)
+					if (!a) {
+						return
+					}
+					const color = colorValue(a.color)
+					e.detail.draw((rects: Any, opts: Any) => {
+						const g = Overlay.highlight(rects, opts)
+						if (a.hasNote) {
+							g.append(Overlay.underline(rects, { color, width: 2 }))
+						}
+						return g
+					}, { color })
+				})
+				view.addEventListener('create-overlay', () => {
+					// a section was (re)loaded: draw its highlights
+					annotations.forEach((a) => void drawAnnotation(a))
+				})
+				view.addEventListener('show-annotation', (e: CustomEvent<{ value: string, range: Range }>) => {
+					const a = annotations.find((x) => x.cfi === e.detail.value)
+					if (!a) {
+						return
+					}
+					lastAnnotationClick = Date.now()
+					emit('annotation-click', { id: a.id, rect: rectInContainer(e.detail.range, e.detail.range.startContainer.ownerDocument as Document) })
 				})
 				await view.open(book.book)
 				view.renderer.addEventListener('relocate', (e: CustomEvent) => onRendererRelocate(e.detail))
@@ -361,6 +517,41 @@ export function createReader(container: HTMLElement, options: ReaderOptions = {}
 		},
 		clearSearch() {
 			view?.clearSearch?.()
+		},
+		setAnnotations(next) {
+			const prev = annotations
+			annotations = next
+			if (!supportsAnnotations()) {
+				return
+			}
+			for (const p of prev) {
+				// removed highlights disappear; a changed look is redrawn by the add below (same cfi key)
+				if (!next.some((n) => n.cfi === p.cfi)) {
+					void drawAnnotation(p, true)
+				}
+			}
+			for (const n of next) {
+				if (!prev.some((p) => sameLook(n, p))) {
+					void drawAnnotation(n)
+				}
+			}
+		},
+		supportsAnnotations,
+		clearSelection() {
+			view?.deselect?.()
+			emit('selection-clear', {})
+		},
+		getPageLocator() {
+			if (!lastLocator) {
+				return null
+			}
+			const cfi = lastLocator.locations?.cfi
+			return cfi
+				? { ...lastLocator, locations: { ...lastLocator.locations, cfi: collapseCfi(cfi) } }
+				: lastLocator
+		},
+		isLocatorOnPage(locator) {
+			return locatorOnPage(locator, lastLocator, view?.lastLocation?.cfi)
 		},
 		async getCover() {
 			try {

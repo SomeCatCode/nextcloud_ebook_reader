@@ -22,11 +22,14 @@ Bibliothek, Reader und Editor für E-Books und Comics direkt in deiner Nextcloud
 - Paginierte oder scrollende Darstellung, Themes hell, sepia und dunkel, wählbare Schriftart, Schriftgröße und Zeilenhöhe.
 - Inhaltsverzeichnis, Volltextsuche, Tastatur, Tipp-Zonen und Wischgesten.
 - Comics als Einzel- oder Doppelseite, Leserichtung rechts nach links (Manga).
+- **Markierungen, Notizen und Lesezeichen:** Text markieren (fünf Farben), Notiz dazu schreiben, Seiten mit einem Lesezeichen versehen (auch Comics). Alles steht im Panel „Markierungen & Lesezeichen“, wird auf dem Server gespeichert und lässt sich als Markdown exportieren.
 - **Große Dateien laden schnell.** Comics kommen seitenweise vom Server, auf Bildschirmgröße verkleinert, und EPUBs werden kapitelweise geladen. Die erste Seite erscheint sofort.
 - **Der Lesefortschritt wird auf dem Server gespeichert** und ist auf jedem Gerät an derselben Stelle. Gibt es eine neuere Position von einem anderen Gerät, fragt die App, ob sie dorthin springen soll.
 
 ### Bibliothek
 - Cover-Raster oder Liste mit Lesefortschritt, dazu eine „Weiterlesen“-Leiste.
+- **Dashboard-Widget „Weiterlesen“:** zeigt auf dem Nextcloud-Dashboard die angefangenen Bücher mit Cover, Autor und Fortschritt. Ein Klick öffnet das Buch im Reader.
+- **OPDS-Katalog** für E-Reader-Apps wie KOReader, Moon+ Reader oder Thorium: Bibliothek durchstöbern und Bücher herunterladen (siehe [OPDS-Katalog](#opds-katalog)).
 - Navigation nach **Genres, Tags, Autoren, Serien und Formaten**. Genres und Tags können hierarchisch sein (z. B. `Fantasy/High Fantasy`).
 - **Kombinierbare Filter:** jeden Eintrag ein- oder ausschließen, „alle“ oder „mindestens einer“ müssen passen, dazu Suche und Sortierung. Der Filter steht in der URL und lässt sich als Lesezeichen speichern.
 - **Nachpflegen:** Bücher ohne Genre, Tags, Autor, Serie, Beschreibung, Cover oder Sprache finden und gezielt ergänzen.
@@ -257,11 +260,35 @@ Ohne Docker genügt `command -v 7z bsdtar`. Im Konvertieren-Dialog der App siehs
 |---|---|---|
 | `max_edit_size_mb` | `500` | maximale Dateigröße für den Editor |
 | `archive_cache_mb` | `2048` | lokaler Cache für Bücher auf WebDAV-, SMB- oder S3-Speicher und bei serverseitiger Verschlüsselung |
+| `opds_enabled` | `true` | OPDS-Katalog auf diesem Server erlaubt (jeder Benutzer schaltet ihn zusätzlich selbst ein) |
 | `async_inline` | `true` | Speichern und Konvertieren direkt nach der Antwort im selben PHP-Prozess ausführen (bei PHP-FPM); `false` überlässt das dem Hintergrundjob |
 
 ```bash
 sudo -u www-data php occ config:app:set ebookreader archive_cache_mb --value=4096 --type=integer
 ```
+
+---
+
+## OPDS-Katalog
+
+Mit dem OPDS-Katalog (OPDS 1.2, Atom) durchsuchen E-Reader-Apps deine Bibliothek und laden Bücher direkt herunter, ohne den Browser.
+
+**Aktivieren:**
+1. In der App unten links die **Einstellungen** öffnen und im Abschnitt „OPDS-Katalog“ **„Enable the OPDS catalog for my account“** einschalten. Der Katalog ist standardmäßig aus.
+2. Die angezeigte **Katalog-URL** kopieren, z. B. `https://cloud.example.com/index.php/apps/ebookreader/opds`.
+3. Unter **Einstellungen → Sicherheit** in Nextcloud ein **App-Passwort** erstellen. In der Reader-App den Benutzernamen und dieses App-Passwort eintragen (HTTP Basic), nicht das normale Passwort. Mit einem App-Passwort lässt sich der Zugang jederzeit einzeln widerrufen.
+
+**Inhalt:** Neu hinzugefügt, Weiterlesen, Alle Bücher, Autoren, Serien, Genres, Tags und Regale (auch intelligente Regale), dazu eine Suche (OpenSearch). Listen sind seitenweise mit 50 Büchern. Zu jedem Buch gibt es Cover, Beschreibung, Autoren, Serie, Genres und Tags sowie den Download in der Originalform. Es erscheinen nur Bücher aus deiner Bibliothek. Dateien aus Freigaben ohne Download-Recht werden nicht ausgeliefert.
+
+**Admin-Schalter:** Administratoren können den Katalog für den ganzen Server sperren, entweder im selben Abschnitt der App-Einstellungen oder per `occ`. Gesperrt ist er für alle Benutzer nicht erreichbar, egal was sie selbst eingestellt haben.
+
+```bash
+sudo -u www-data php occ config:app:set ebookreader opds_enabled --value=false --type=boolean
+```
+
+**Getestete Apps:** Bisher wurden nur die Antworten gegen die OPDS-Spezifikation geprüft, nicht jede App einzeln. Der Katalog sollte mit KOReader, Moon+ Reader, Librera, Thorium Reader sowie Panels und Chunky (Comics) funktionieren. Fehler bitte als Issue melden.
+
+Hinweis: Fortschritt synchronisieren diese Apps nicht über OPDS. Der Lesefortschritt der Nextcloud-App bleibt davon unberührt.
 
 ---
 

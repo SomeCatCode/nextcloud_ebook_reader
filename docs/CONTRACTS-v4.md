@@ -131,3 +131,37 @@ Validation: max 4 KB, known keys only, at most 50 terms.
 | F | `src/**`, `packages/**` (not expected), `package.json`/lock (only for `@nextcloud/upload`) |
 
 Both add German CHANGELOG entries under `[Unreleased]`. Re-read the file right before editing. The version in `info.xml` + `package.json` is set to 0.5.0 by B (new migration).
+
+## 4. Annotations: highlights, notes, bookmarks (round 5)
+
+For the web reader and the Android app. Same rules as above (OCS, `#[NoAdminRequired]`, everything scoped by the session user, `#[UserRateLimit]` on writes). Timestamps are milliseconds since the epoch.
+
+**Migration `Version1005Date20261003000000`:** table `ebookreader_annotations` with `id`, `user_id`, `file_id`, `type`, `uuid` (unique per user, `ebr_annot_uuid`), `locator` (JSON text), `text`, `note`, `color`, `created_at`, `updated_at` (server time, drives the sync cursor), `client_updated_at` (last-write-wins clock), `deleted` (0/1 tombstone). Indexes on (`user_id`, `file_id`) and (`user_id`, `updated_at`).
+
+**Annotation JSON**
+```
+{ uuid, fileId, type: 'highlight'|'note'|'bookmark', locator, text: string|null, note: string|null,
+  color: 'yellow'|'green'|'blue'|'pink'|'purple'|null, createdAt, updatedAt, clientUpdatedAt, deleted: bool }
+```
+- `locator` has the shape of the progress locator (`{href, type?, title?, locations?: {progression?, totalProgression?, position?, cfi?}}`, max 4096 bytes, `href` required).
+- Highlights and notes of reflowable books carry the **range CFI** of the text in `locations.cfi` (that is what the web reader draws). `href` is the section id, `totalProgression` the position in the book at creation time (used for sorting when no CFI comparison is possible).
+- Bookmarks of reflowable books carry the point CFI of the start of the page, bookmarks of comics `locations.position` (1-based page index) and the page name in `href`.
+- `text` max 2000 characters, `note` max 10000 characters (limits count characters, not bytes). A highlight with a non-empty `note` is shown as a note; `type: 'note'` is what the web reader creates when the note is written together with the selection.
+- Max 5000 live annotations per book and user.
+
+**Endpoints**
+
+| Endpoint | Behaviour |
+|---|---|
+| `GET /books/{fileId}/annotations` | `{annotations: Annotation[]}` without tombstones, oldest first. |
+| `POST /books/{fileId}/annotations` | Body `{type, locator, uuid?, text?, note?, color?, clientUpdatedAt?, createdAt?}`. **Upsert by uuid** (server generates one when missing). `createdAt` keeps the original time of an annotation made offline (clamped to now). Returns the Annotation. A tombstoned uuid with a newer `clientUpdatedAt` is revived. |
+| `PATCH /annotations/{uuid}` | Body `{locator?, text?, note?, color?, clientUpdatedAt?}`. Missing = unchanged, empty string for `note`/`color` clears. `404` for unknown or deleted annotations. |
+| `DELETE /annotations/{uuid}?clientUpdatedAt=` | Sets the tombstone and returns it (idempotent). |
+
+- **Conflicts:** last write wins on `clientUpdatedAt` (default: server time; values more than 5 minutes ahead are clamped to now). A write with an older `clientUpdatedAt` than the stored one is rejected with **409** and `{current: Annotation}`; equal or newer wins. This applies to POST (upsert), PATCH and DELETE.
+- **Access:** `404` when the file is not accessible, `403` when the content may not be read (share with download disabled). `400` for invalid type, color, uuid (must be a UUID), locator or lengths, and when the uuid already belongs to another book.
+- The user always comes from the session; `user_id` is never accepted from the client.
+
+**Sync:** `GET /sync` gains `annotations: Annotation[]` (with tombstones, `deleted: true`, ordered by `updatedAt`, `id`; max 500 per call, `hasMore` covers it). The cursor has a third part `a` (older cursors without it start the annotations from the beginning). Clients apply rows by `uuid`: `deleted: true` removes the local row, otherwise they replace it unless their own `clientUpdatedAt` is newer. Capability flag: `ebookreader.annotations: true` in `/ocs/v2.php/cloud/capabilities`.
+
+**Cleanup:** deleting a user removes all annotations. When a book tombstone is finally purged (`CleanupTombstonesJob`, 30 days) its annotations for that user go with it. Annotation tombstones are purged after 90 days; an offline client that comes back later than that can recreate its annotations with the same uuid.

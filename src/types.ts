@@ -120,7 +120,9 @@ export interface SyncResult {
 	/** file ids */
 	deleted: number[]
 	progress: Progress[]
+	annotations?: Annotation[]
 	cursor: string
+	hasMore?: boolean
 }
 
 export interface AppDataPatch {
@@ -427,3 +429,43 @@ export interface SeriesEntry {
 }
 
 export type SeriesQuery = Omit<BookQuery, 'inSeries' | 'limit' | 'offset' | 'sort'> & { sort?: 'name' | 'added' }
+
+export type AnnotationType = 'highlight' | 'note' | 'bookmark'
+export type AnnotationColor = 'yellow' | 'green' | 'blue' | 'pink' | 'purple'
+
+/** Highlight, note or bookmark of a book (`GET /books/{fileId}/annotations`). Times are ms since epoch. */
+export interface Annotation {
+	uuid: string
+	fileId: number
+	type: AnnotationType
+	locator: Locator
+	/** selected text excerpt, max 2000 characters */
+	text: string | null
+	/** max 10000 characters */
+	note: string | null
+	color: AnnotationColor | null
+	createdAt: number
+	updatedAt: number
+	clientUpdatedAt: number
+	deleted: boolean
+}
+
+export interface AnnotationCreate {
+	uuid?: string
+	type: AnnotationType
+	locator: Locator
+	text?: string | null
+	note?: string | null
+	color?: AnnotationColor | null
+	clientUpdatedAt?: number
+	createdAt?: number
+}
+
+/** Empty string for `note` / `color` clears the value on the server. */
+export interface AnnotationPatch {
+	locator?: Locator
+	text?: string
+	note?: string
+	color?: AnnotationColor | ''
+	clientUpdatedAt?: number
+}

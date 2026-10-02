@@ -10,22 +10,24 @@ declare(strict_types=1);
 namespace OCA\EbookReader\Http;
 
 /**
- * Opaque sync cursor: base64url(JSON {"b":[updatedAt,id],"p":[updatedAt,id]}).
- * b = books table position, p = progress table position. An empty cursor means "from the start".
+ * Opaque sync cursor: base64url(JSON {"b":[updatedAt,id],"p":[updatedAt,id],"a":[updatedAt,id]}).
+ * b = books table position, p = progress table position, a = annotations table position (missing in older cursors = start). An empty cursor means "from the start".
  */
 final class SyncCursor {
 	/**
 	 * @param array{0: int, 1: int} $books
 	 * @param array{0: int, 1: int} $progress
+	 * @param array{0: int, 1: int} $annotations
 	 */
 	public function __construct(
 		public readonly array $books = [0, 0],
 		public readonly array $progress = [0, 0],
+		public readonly array $annotations = [0, 0],
 	) {
 	}
 
 	public function encode(): string {
-		$json = json_encode(['b' => $this->books, 'p' => $this->progress], JSON_THROW_ON_ERROR);
+		$json = json_encode(['b' => $this->books, 'p' => $this->progress, 'a' => $this->annotations], JSON_THROW_ON_ERROR);
 		return rtrim(strtr(base64_encode($json), '+/', '-_'), '=');
 	}
 
@@ -45,7 +47,7 @@ final class SyncCursor {
 		if (!is_array($data)) {
 			throw new \InvalidArgumentException('Invalid cursor');
 		}
-		return new self(self::pair($data['b'] ?? null), self::pair($data['p'] ?? null));
+		return new self(self::pair($data['b'] ?? null), self::pair($data['p'] ?? null), isset($data['a']) ? self::pair($data['a']) : [0, 0]);
 	}
 
 	/** @return array{0: int, 1: int} */
