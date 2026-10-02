@@ -5,21 +5,23 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
-### Geändert
-- Comic-Cover: Ist die erste Seite ein breiter Titel-Banner oder eine Doppelseite, nimmt die App die erste Seite im Hochformat unter den ersten vier Seiten als Cover (statt die Mitte des Banners auszuschneiden). Eine in ComicInfo.xml als `FrontCover` markierte Seite gilt weiterhin immer. Bereits eingelesene Comics bekommen das neue Cover mit `occ ebookreader:scan <user> --force --format=cbz`.
-
-### Dokumentation
-- README auf Englisch neu strukturiert (Voraussetzungen, Installation, Funktionen, Metadaten, OPDS, Administration, Datenablage, Sicherheitsmodell); die deutsche Fassung liegt unter `docs/translations/README.de.md`. Neu: `CONTRIBUTING.md` und `SECURITY.md`.
+## 0.6.1 – 2026-10-02
 
 ### Hinzugefügt
 - **Bilder optimieren** für Comics (optional, verlustbehaftet): Im Konvertieren-Dialog verkleinert „Bilder optimieren“ die Seitenbilder auf höchstens 2560 px (Tablet und Monitor) oder 1920 px Höhe (Handy und E-Ink), auf Wunsch werden PNG-Seiten ohne Transparenz zu JPEG (Qualität 85). Das Seitenverhältnis bleibt, es wird nie hochskaliert, Seiten innerhalb der Grenze und Formate, die GD nicht sicher verarbeitet (GIF, WebP, AVIF), werden unverändert übernommen, ebenso jede Seite, die nach dem Neukodieren nicht kleiner wäre. EXIF-Daten der neu kodierten Seiten entfallen. Dazu eine Größenschätzung („ca. 180 MB → 65 MB, 37 von 52 Seiten werden optimiert“), die nur Bildköpfe liest und höchstens drei Seiten wirklich neu kodiert (`GET /api/v1/books/{fileId}/convert/estimate`). Das Zielformat darf das aktuelle Format sein („Nur optimieren“, die Datei heißt dann „Name (optimized).cbz“); Bewertung, Status, App-Tags, Sidecar und Leseposition wandern wie bei jeder Konvertierung mit. Das Optimieren läuft immer als Hintergrund-Task mit Fortschritt („Optimizing page 3 of 52“), nur auf dem Server (CBR braucht dafür `bsdtar` oder `unrar`, GD mit JPEG-Unterstützung wird vorausgesetzt). Das Original kommt auf Wunsch in den Papierkorb und lässt sich von dort wiederherstellen.
 - Mehrfachauswahl: neue Aktion „Bilder optimieren…“ startet für alle markierten Comics je einen Task (`POST /api/v1/convert/optimize`, höchstens 100 Bücher; die Tasks laufen nacheinander). `POST /api/v1/books/{fileId}/convert` nimmt dafür das optionale Objekt `optimize` (`maxHeight` 0/2560/1920, `jpegQuality` 70 bis 95, `pngToJpeg`) an, `GET /api/v1/convert/capabilities` meldet `optimize.available`.
 - `occ ebookreader:scan --force` liest auch unveränderte Bücher neu ein, optional nur bestimmte Formate (`--format=cbr --format=cb7`). Nützlich, nachdem ein Archiv-Programm wie `bsdtar` installiert wurde: Bisher blieben Cover und Metadaten von CBRs leer, bis sich die Datei änderte.
 
+### Geändert
+- Comic-Cover: Ist die erste Seite ein breiter Titel-Banner oder eine Doppelseite, nimmt die App die erste Seite im Hochformat unter den ersten vier Seiten als Cover (statt die Mitte des Banners auszuschneiden). Eine in ComicInfo.xml als `FrontCover` markierte Seite gilt weiterhin immer. Bereits eingelesene Comics bekommen das neue Cover mit `occ ebookreader:scan <user> --force --format=cbz`.
+
 ### Behoben
 - Comic-Archive werden nach ihrem Inhalt statt nach der Dateiendung gelesen: Eine `.cbr`, die eigentlich ein ZIP ist (häufig), wird jetzt ohne Zusatzprogramm direkt in PHP gelesen; ebenso `.cbz`-Dateien, die in Wahrheit RAR oder 7z sind (dann über das Archiv-Programm). Vorher scheiterten Cover und Metadaten mit „sevenZip exited with 2“.
 - Konvertieren im Browser (z. B. CBR → CBZ ohne RAR-fähiges Programm auf dem Server) lädt das Ergebnis jetzt in Teilstücken hoch (Nextcloud-Chunking), wie der normale Upload. Ein großes Ergebnis (200 MB) in einem einzigen Request wurde sonst von Proxy- oder Zeitlimits abgebrochen („Erwartete Dateigröße … aber … gelesen“). Gilt auch für „In CBZ umwandeln“ im Editor.
 - Kann bei einer echten RAR-Datei nur 7-Zip ohne RAR-Unterstützung genutzt werden (z. B. das `7zip`-Paket von Alpine/AIO), nennt die Fehlermeldung jetzt die Lösung: `libarchive-tools` (bsdtar) oder `unrar` installieren.
+
+### Dokumentation
+- README auf Englisch neu strukturiert (Voraussetzungen, Installation, Funktionen, Metadaten, OPDS, Administration, Datenablage, Sicherheitsmodell); die deutsche Fassung liegt unter `docs/translations/README.de.md`. Neu: `CONTRIBUTING.md` und `SECURITY.md`.
 
 ## 0.6.0 – 2026-10-02
 
