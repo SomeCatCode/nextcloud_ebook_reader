@@ -261,6 +261,12 @@
 					</template>
 					{{ t('ebookreader', 'Rename / organise…') }}
 				</NcButton>
+				<NcButton :disabled="optimizable.eligible.length === 0" @click="showOptimize = true">
+					<template #icon>
+						<NcIconSvgWrapper :path="mdiImageSizeSelectLarge" />
+					</template>
+					{{ t('ebookreader', 'Optimize images�') }}
+				</NcButton>
 				<NcButton variant="primary" :disabled="store.selectedIds.length === 0" @click="showBulk = true">
 					<template #icon>
 						<NcIconSvgWrapper :path="mdiTagMultipleOutline" />
@@ -293,7 +299,7 @@
 
 			<UploadPanel />
 
-			<ActiveTasksBanner @finished="onTasksFinished" />
+			<ActiveTasksBanner :key="tasksBannerKey" @finished="onTasksFinished" />
 
 			<NcNoteCard v-if="store.error" type="error">
 				{{ store.error }}
@@ -385,6 +391,13 @@
 		@converted="onConverted" />
 
 	<BulkEditDialog v-if="showBulk" @close="showBulk = false" />
+	<OptimizeBooksDialog
+		v-if="showOptimize"
+		:fileIds="optimizable.eligible"
+		:ignored="optimizable.other.length"
+		:start="store.optimizeSelected"
+		@started="tasksBannerKey++"
+		@close="showOptimize = false" />
 	<AddToShelfDialog
 		v-if="shelfIds.length"
 		:fileIds="shelfIds"
@@ -426,6 +439,7 @@ import {
 	mdiFileOutline,
 	mdiFilterVariant,
 	mdiFolderMoveOutline,
+	mdiImageSizeSelectLarge,
 	mdiLibraryShelves,
 	mdiMinusCircleOutline,
 	mdiPlusCircleOutline,
@@ -458,6 +472,7 @@ import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 import ActiveTasksBanner from '../components/common/ActiveTasksBanner.vue'
+import OptimizeBooksDialog from '../components/convert/OptimizeBooksDialog.vue'
 import AddToShelfDialog from '../components/library/AddToShelfDialog.vue'
 import BookDetails from '../components/library/BookDetails.vue'
 import BookGrid from '../components/library/BookGrid.vue'
@@ -473,6 +488,7 @@ import TagTreeNav from '../components/library/TagTreeNav.vue'
 import UploadPanel from '../components/library/UploadPanel.vue'
 import OrganizeDialog from '../components/organize/OrganizeDialog.vue'
 import { MISSING_FIELDS, missingEntries, missingLabel } from '../components/library/missing.ts'
+import { splitOptimizable } from '../convert/optimize.ts'
 import { scan } from '../services/api.ts'
 import { buildTree } from '../services/hierarchy.ts'
 import { ALLOWED_EXTENSIONS } from '../services/upload.ts'
@@ -490,6 +506,10 @@ const route = useRoute()
 const router = useRouter()
 
 const showBulk = ref(false)
+const showOptimize = ref(false)
+/** Changing the key makes the tasks banner look for the tasks that were just started */
+const tasksBannerKey = ref(0)
+const optimizable = computed(() => splitOptimizable(store.books, store.selectedIds))
 /** Books in the "add to shelf" dialog; empty = closed */
 const shelfIds = ref<number[]>([])
 const organizeIds = ref<number[]>([])

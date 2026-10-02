@@ -6,6 +6,7 @@ import type { Book } from '../types.ts'
 
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { optimizeBooks } from '../convert/convertApi.ts'
 import * as api from '../services/api.ts'
 import { pollTask } from '../services/tasks.ts'
 import { PAGE_SIZE, queryToState, SEARCH_DEBOUNCE_MS, shelfTerm, smartQueryToState, stateToQuery, stateToSmartQuery, useLibraryStore } from './library.ts'
@@ -24,6 +25,7 @@ vi.mock('../services/api.ts', () => ({
 	listShelves: vi.fn(),
 }))
 vi.mock('../services/tasks.ts', () => ({ pollTask: vi.fn() }))
+vi.mock('../convert/convertApi.ts', () => ({ optimizeBooks: vi.fn() }))
 
 const mocked = vi.mocked(api)
 
@@ -275,6 +277,28 @@ describe('library store', () => {
 		expect(res.updated).toBe(3)
 		expect(mocked.bulkMetadata).toHaveBeenCalledWith(expect.objectContaining({ fileIds: [listOrder[0], listOrder[1], 999] }), false)
 		expect(store.selectedIds).toHaveLength(3)
+	})
+
+	it('starts the image optimization only for the selected comics', async () => {
+		const store = useLibraryStore()
+		mocked.listBooks.mockResolvedValue({ books: [book(1, { format: 'cbz' }), book(2, { format: 'epub' }), book(3, { format: 'cbr' })], total: 3 })
+		await store.reload()
+		store.toggleSelected(3)
+		store.toggleSelected(2)
+		store.toggleSelected(1)
+		vi.mocked(optimizeBooks).mockResolvedValueOnce({ tasks: [{ fileId: 3, taskId: 1 }], skipped: [{ fileId: 1, error: 'exists', status: 409 }] })
+		const res = await store.optimizeSelected({ maxHeight: 1920, pngToJpeg: true }, true)
+		expect(res).toEqual({ started: 1, skipped: 1 })
+		expect(optimizeBooks).toHaveBeenCalledWith([3, 1], { maxHeight: 1920, pngToJpeg: true }, true)
+		expect(store.selectedIds).toHaveLength(3)
+	})
+
+	it('does not call the server when no comic is selected', async () => {
+		const store = useLibraryStore()
+		await store.reload()
+		store.toggleSelected(1)
+		expect(await store.optimizeSelected({ maxHeight: 1920, pngToJpeg: false }, false)).toEqual({ started: 0, skipped: 0 })
+		expect(optimizeBooks).not.toHaveBeenCalled()
 	})
 
 	it('polls a bulk metadata task and reports its result', async () => {

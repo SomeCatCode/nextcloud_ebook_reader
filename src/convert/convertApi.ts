@@ -2,10 +2,12 @@
  * SPDX-FileCopyrightText: 2026 Felix Kurth
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
-import type { ConvertCapabilities, ConvertFormat, ConvertResult, ConvertTargets } from './types.ts'
+import type { OptimizeOptions } from './optimize.ts'
+import type { ConvertCapabilities, ConvertFormat, ConvertResult, ConvertTargets, OptimizeBulkResult, OptimizeEstimate } from './types.ts'
 
 import axios from '@nextcloud/axios'
 import { generateOcsUrl } from '@nextcloud/router'
+import { estimateQuery, optimizeBody } from './optimize.ts'
 
 const BASE = '/apps/ebookreader/api/v1'
 
@@ -68,7 +70,29 @@ export function getTargets(fileId: number): Promise<ConvertTargets> {
  * @param fileId
  * @param target
  * @param deleteOriginal
+ * @param optimize image optimization (runs as a task, answers 202; use convertAsync() from services/api.ts for that)
  */
-export function convertOnServer(fileId: number, target: ConvertFormat, deleteOriginal: boolean): Promise<ConvertResult> {
-	return call<ConvertResult>('post', `/books/${fileId}/convert`, { target, deleteOriginal })
+export function convertOnServer(fileId: number, target: ConvertFormat, deleteOriginal: boolean, optimize?: OptimizeOptions): Promise<ConvertResult> {
+	return call<ConvertResult>('post', `/books/${fileId}/convert`, { target, deleteOriginal, optimize: optimize ? optimizeBody(optimize) : undefined })
+}
+
+/**
+ * Estimated size of a comic after the image optimization (the server samples a few pages).
+ *
+ * @param fileId
+ * @param options
+ */
+export function getOptimizeEstimate(fileId: number, options: OptimizeOptions): Promise<OptimizeEstimate> {
+	return call<OptimizeEstimate>('get', `/books/${fileId}/convert/estimate?${estimateQuery(options)}`)
+}
+
+/**
+ * Optimizes the images of several comics: one server task per book, the format stays (CBR becomes CBZ).
+ *
+ * @param fileIds
+ * @param options
+ * @param deleteOriginal
+ */
+export function optimizeBooks(fileIds: number[], options: OptimizeOptions, deleteOriginal: boolean): Promise<OptimizeBulkResult> {
+	return call<OptimizeBulkResult>('post', '/convert/optimize', { fileIds, maxHeight: options.maxHeight, pngToJpeg: options.pngToJpeg, deleteOriginal })
 }

@@ -1,3 +1,4 @@
+import type { OptimizeOptions } from '../convert/optimize.ts'
 /**
  * SPDX-FileCopyrightText: 2026 Felix Kurth
  * SPDX-License-Identifier: AGPL-3.0-or-later
@@ -26,6 +27,8 @@ import { computed, ref } from 'vue'
 import { orderSelection } from '../components/library/bulkEdit.ts'
 import { EMBED_SYNC_MAX_BYTES } from '../components/library/metadataStorage.ts'
 import { emptyMissing, isMissingField } from '../components/library/missing.ts'
+import { optimizeBooks } from '../convert/convertApi.ts'
+import { splitOptimizable } from '../convert/optimize.ts'
 import * as api from '../services/api.ts'
 import { pollTask } from '../services/tasks.ts'
 import { useShelvesStore } from './shelves.ts'
@@ -950,6 +953,22 @@ export const useLibraryStore = defineStore('library', () => {
 	}
 
 	/**
+	 * Optimizes the images of the selected comics (one server task per book, the tasks run one after another).
+	 * Selected books that are not comics are left out. The selection stays.
+	 *
+	 * @param options
+	 * @param deleteOriginal
+	 */
+	async function optimizeSelected(options: OptimizeOptions, deleteOriginal: boolean): Promise<{ started: number, skipped: number }> {
+		const { eligible } = splitOptimizable(books.value, selectedIds.value)
+		if (eligible.length === 0) {
+			return { started: 0, skipped: 0 }
+		}
+		const res = await optimizeBooks(eligible, options, deleteOriginal)
+		return { started: res.tasks.length, skipped: res.skipped.length }
+	}
+
+	/**
 	 * Opens the details sidebar for a book (null closes it).
 	 *
 	 * @param fileId
@@ -1045,6 +1064,7 @@ export const useLibraryStore = defineStore('library', () => {
 		resetOverrides,
 		bulkTags,
 		bulkMetadata,
+		optimizeSelected,
 		orderedSelectedIds,
 		setActive,
 	}

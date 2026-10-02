@@ -7,21 +7,40 @@ import type { ConvertFormat, ConvertTarget } from './types.ts'
 import { RECOMMENDED_FORMAT } from './formats.ts'
 
 /**
+ * Whether a target can be picked right now. The same format ("optimize only") needs image optimization,
+ * and the browser cannot optimize images, so with optimization only server targets are possible.
+ *
+ * @param target
+ * @param optimizeActive whether an image optimization is selected
+ */
+export function isSelectable(target: ConvertTarget, optimizeActive = false): boolean {
+	if (target.mode === 'unavailable') {
+		return false
+	}
+	if (target.optimizeOnly === true && !optimizeActive) {
+		return false
+	}
+	return !(optimizeActive && target.mode !== 'server')
+}
+
+/**
  * Targets the user can pick (server or browser conversion).
  *
  * @param targets
+ * @param optimizeActive
  */
-export function selectableTargets(targets: ConvertTarget[]): ConvertTarget[] {
-	return targets.filter((t) => t.mode !== 'unavailable')
+export function selectableTargets(targets: ConvertTarget[], optimizeActive = false): ConvertTarget[] {
+	return targets.filter((t) => isSelectable(t, optimizeActive))
 }
 
 /**
  * The preselected target: CBZ when possible (best compatibility), otherwise the first one that works.
  *
  * @param targets
+ * @param optimizeActive
  */
-export function defaultTarget(targets: ConvertTarget[]): ConvertFormat | null {
-	const usable = selectableTargets(targets)
+export function defaultTarget(targets: ConvertTarget[], optimizeActive = false): ConvertFormat | null {
+	const usable = selectableTargets(targets, optimizeActive)
 	return usable.find((t) => t.format === RECOMMENDED_FORMAT)?.format ?? usable[0]?.format ?? null
 }
 

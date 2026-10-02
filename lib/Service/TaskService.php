@@ -56,7 +56,7 @@ class TaskService {
 	 * Creates a queued task and queues the RunTaskJob fallback.
 	 *
 	 * @param 'edit'|'convert'|'embed'|'bulk' $type
-	 * @param array<string, mixed> $request what the task will execute (edit: EditRequest array, convert: {target, deleteOriginal})
+	 * @param array<string, mixed> $request what the task will execute (edit: EditRequest array, convert: {target, deleteOriginal, optimize?})
 	 */
 	public function create(string $userId, int $fileId, string $type, array $request): Task {
 		$now = self::nowMs();
@@ -162,6 +162,7 @@ class TaskService {
 					strtolower(is_string($request['target'] ?? null) ? $request['target'] : ''),
 					(bool)($request['deleteOriginal'] ?? false),
 					$progress,
+					is_array($request['optimize'] ?? null) ? ImageOptimizer::normalise($request['optimize']) : null,
 				);
 				$result = [
 					'book' => $this->serializer->serializeWithProgress($userId, $res['book']),

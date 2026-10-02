@@ -46,6 +46,7 @@ Bibliothek, Reader und Editor für E-Books und Comics direkt in deiner Nextcloud
 - **Kapitel bzw. Seiten** entfernen und per Drag & Drop umsortieren, **Inhaltsverzeichnis** bearbeiten.
 - **Umbenennen und Einsortieren** nach Muster, z. B. `{author}/{series}/{series_index:2} - {title}`, mit Vorschau vor dem Ausführen.
 - **Konvertieren** zwischen CBZ, CB7, CBT und EPUB (Fixed Layout). Die Vor- und Nachteile jedes Formats werden erklärt. CBR lässt sich nicht als Ziel anlegen, weil RAR nur mit proprietärer Software geschrieben werden kann.
+- **Bilder optimieren** (optional, verlustbehaftet): Seitenbilder von Comics auf 2560 px oder 1920 px Höhe verkleinern und PNG-Seiten auf Wunsch in JPEG umwandeln, mit Größenschätzung vorab, auch für mehrere markierte Comics auf einmal. Die Dateien werden kleiner, Downloads und Offline-Nutzung schneller; das Verkleinern lässt sich nicht rückgängig machen, das Original landet auf Wunsch im Papierkorb.
 - Speichern oder „Als Kopie speichern“. Lange Vorgänge laufen auf dem Server mit Fortschrittsanzeige weiter.
 
 | | EPUB | CBZ | FB2 | CBR / CB7 / CBT | MOBI / AZW3 |
@@ -252,6 +253,7 @@ Ohne Docker genügt `command -v 7z bsdtar`. Im Konvertieren-Dialog der App siehs
 |---|---|
 | `occ ebookreader:scan <benutzer>` | Bibliothek eines Benutzers einlesen |
 | `occ ebookreader:scan --all` | alle Bibliotheken einlesen |
+| `occ ebookreader:scan <benutzer> --force --format=cbr` | auch unveränderte Bücher neu einlesen, z. B. nach der Installation von `bsdtar` (ohne `--format` alle Formate) |
 | `occ ebookreader:inspect <pfad>` | Metadaten einer Datei als JSON ausgeben (Fehlersuche) |
 
 ### Admin-Einstellungen

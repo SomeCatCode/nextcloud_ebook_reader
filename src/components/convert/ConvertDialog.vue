@@ -35,7 +35,7 @@
 							class="convert__card"
 							:class="{
 								'convert__card--selected': selected === target.format,
-								'convert__card--disabled': target.mode === 'unavailable',
+								'convert__card--disabled': !isSelectable(target, optimizeActive),
 							}">
 							<input
 								v-model="selected"
@@ -43,19 +43,22 @@
 								name="convert-target"
 								class="convert__radio"
 								:value="target.format"
-								:disabled="target.mode === 'unavailable' || busy">
+								:disabled="!isSelectable(target, optimizeActive) || busy">
 							<span class="convert__card-head">
 								<strong>{{ infoOf(target.format).name }}</strong>
 								<span v-if="isRecommended(target.format, source)" class="convert__badge convert__badge--good">
 									{{ t('ebookreader', 'Recommended') }}
+								</span>
+								<span v-if="target.optimizeOnly" class="convert__badge">
+									{{ t('ebookreader', 'Optimize only') }}
 								</span>
 								<span v-if="target.mode === 'client'" class="convert__badge" :title="t('ebookreader', 'The server cannot convert this, your browser does it')">
 									{{ t('ebookreader', 'In the browser') }}
 								</span>
 							</span>
 							<span class="convert__summary">{{ infoOf(target.format).summary }}</span>
-							<span v-if="target.mode === 'unavailable'" class="convert__reason">
-								{{ translateReason(target.reason) }}
+							<span v-if="!isSelectable(target, optimizeActive)" class="convert__reason">
+								{{ unselectableReason(target) }}
 							</span>
 							<template v-else>
 								<ul class="convert__list convert__list--pros">
@@ -95,6 +98,40 @@
 						</table>
 					</div>
 
+					<OptimizeOptionsForm
+						v-model="optimizeOptions"
+						name="optimize-single"
+						:unavailable="!optimizeInfo.available"
+						:reason="optimizeInfo.reason"
+						:disabled="busy">
+						<p
+							v-if="optimizeActive"
+							class="convert__estimate"
+							role="status"
+							aria-live="polite">
+							<template v-if="estimateLoading">
+								<NcLoadingIcon :size="16" />
+								{{ t('ebookreader', 'Estimating the size…') }}
+							</template>
+							<template v-else-if="estimateError">
+								{{ t('ebookreader', 'The size could not be estimated: {message}', { message: estimateError }) }}
+							</template>
+							<template v-else-if="estimate">
+								<template v-if="estimate.oversizedPages === 0">
+									{{ t('ebookreader', 'No page needs to be optimized, the comic would stay as it is.') }}
+								</template>
+								<template v-else>
+									{{ t('ebookreader', 'About {from} → {to}, {count} of {total} pages will be optimized', {
+										from: formatBytes(estimate.currentBytes),
+										to: formatBytes(estimate.estimatedBytes),
+										count: estimate.oversizedPages,
+										total: estimate.pages,
+									}) }}
+								</template>
+							</template>
+						</p>
+					</OptimizeOptionsForm>
+
 					<NcCheckboxRadioSwitch v-model="deleteOriginal" :disabled="busy">
 						{{ t('ebookreader', 'Delete the original after a successful conversion') }}
 					</NcCheckboxRadioSwitch>
@@ -107,7 +144,9 @@
 
 			<template v-else-if="phase === 'running'">
 				<p>
-					{{ t('ebookreader', 'Converting “{title}” to {format}', { title: book.title ?? book.path, format: selectedName }) }}
+					{{ optimizeOnly
+						? t('ebookreader', 'Optimizing the images of “{title}”', { title: book.title ?? book.path })
+						: t('ebookreader', 'Converting “{title}” to {format}', { title: book.title ?? book.path, format: selectedName }) }}
 				</p>
 				<template v-if="mode === 'client'">
 					<ol class="convert__steps">
@@ -142,7 +181,8 @@
 </template>
 
 <script setup lang="ts">
-import type { ConvertFormat, ConvertMode, ConvertStep, ConvertTarget } from '../../convert/types.ts'
+import type { OptimizeOptions } from '../../convert/optimize.ts'
+import type { ConvertFormat, ConvertMode, ConvertStep, ConvertTarget, OptimizeAvailability, OptimizeEstimate } from '../../convert/types.ts'
 import type { Book, Task } from '../../types.ts'
 
 import { mdiCheckCircle, mdiCircleOutline } from '@mdi/js'
@@ -158,10 +198,12 @@ import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcProgressBar from '@nextcloud/vue/components/NcProgressBar'
 import LargeDownloadDialog from '../common/LargeDownloadDialog.vue'
 import TaskProgress from '../common/TaskProgress.vue'
+import OptimizeOptionsForm from './OptimizeOptionsForm.vue'
 import { convertInBrowser } from '../../convert/clientConvert.ts'
-import { ConvertError, getTargets } from '../../convert/convertApi.ts'
+import { ConvertError, getOptimizeEstimate, getTargets } from '../../convert/convertApi.ts'
 import { comparisonRows, FORMAT_KEYS, formatInfo, isConvertFormat, translateReason } from '../../convert/formats.ts'
-import { defaultTarget, isRecommended } from '../../convert/targets.ts'
+import { formatBytes, isOptimizeActive, loadOptions, optimizeBody, saveOptions } from '../../convert/optimize.ts'
+import { defaultTarget, isRecommended, isSelectable } from '../../convert/targets.ts'
 import { ApiError, ConflictError, convertAsync } from '../../services/api.ts'
 import { DownloadDeclinedError, ensureDownloadConfirmed } from '../../services/largeDownload.ts'
 import { pollTask, TaskFailedError } from '../../services/tasks.ts'
@@ -199,6 +241,14 @@ function readDeleteOriginal(): boolean {
 	}
 }
 const showCompare = ref(false)
+const optimizeOptions = ref<OptimizeOptions>(loadOptions())
+const optimizeInfo = ref<OptimizeAvailability>({ available: true })
+const estimate = ref<OptimizeEstimate | null>(null)
+const estimateLoading = ref(false)
+const estimateError = ref('')
+const ESTIMATE_DEBOUNCE_MS = 400
+let estimateTimer: number | undefined
+let estimateSeq = 0
 const error = ref('')
 const mode = ref<ConvertMode>('server')
 const step = ref<ConvertStep | null>(null)
@@ -211,7 +261,14 @@ const busy = computed(() => phase.value === 'running')
 const current = computed(() => isConvertFormat(source.value) ? formatInfo(source.value) : null)
 const rows = computed(() => comparisonRows())
 const selectedName = computed(() => selected.value ? formatInfo(selected.value).name : '')
+/** An image optimization is selected and the server can do it */
+const optimizeActive = computed(() => optimizeInfo.value.available && isOptimizeActive(optimizeOptions.value))
 const selectedTarget = computed(() => targets.value.find((x) => x.format === selected.value) ?? null)
+/** Same format as the book: nothing is converted, only the images are optimized */
+const optimizeOnly = computed(() => selectedTarget.value?.optimizeOnly === true)
+const convertLabel = computed(() => optimizeOnly.value
+	? t('ebookreader', 'Optimize only')
+	: optimizeActive.value ? t('ebookreader', 'Convert and optimize') : t('ebookreader', 'Convert'))
 
 const steps = computed<{ key: ConvertStep, label: string }[]>(() => [
 	{ key: 'download', label: t('ebookreader', 'Downloading the comic') },
@@ -235,15 +292,70 @@ const buttons = computed(() => [
 		},
 	},
 	{
-		label: t('ebookreader', 'Convert'),
+		label: convertLabel.value,
 		variant: 'primary' as const,
-		disabled: busy.value || phase.value === 'loading' || selectedTarget.value === null || selectedTarget.value.mode === 'unavailable',
+		disabled: busy.value || phase.value === 'loading' || selectedTarget.value === null || !isSelectable(selectedTarget.value, optimizeActive.value),
 		callback: (): false => {
 			void run()
 			return false
 		},
 	},
 ])
+
+/**
+ * Why a target cannot be picked at the moment.
+ *
+ * @param target
+ */
+function unselectableReason(target: ConvertTarget): string {
+	if (target.mode === 'unavailable') {
+		return translateReason(target.reason)
+	}
+	if (target.optimizeOnly) {
+		return t('ebookreader', 'Choose an image optimization above to only optimize the images of this comic.')
+	}
+	return t('ebookreader', 'Your browser cannot optimize images, the server has to convert this.')
+}
+
+/** Loads the size estimate shortly after the options changed; answers that arrive late are ignored. */
+function scheduleEstimate(): void {
+	window.clearTimeout(estimateTimer)
+	estimateSeq++
+	estimate.value = null
+	estimateError.value = ''
+	if (!optimizeActive.value || phase.value === 'loading' || phase.value === 'running') {
+		estimateLoading.value = false
+		return
+	}
+	estimateLoading.value = true
+	const seq = estimateSeq
+	estimateTimer = window.setTimeout(async () => {
+		try {
+			const res = await getOptimizeEstimate(props.book.fileId, optimizeOptions.value)
+			if (seq === estimateSeq) {
+				estimate.value = res
+			}
+		} catch (e) {
+			if (seq === estimateSeq) {
+				estimateError.value = e instanceof Error && e.message ? e.message : t('ebookreader', 'Unknown error')
+			}
+		} finally {
+			if (seq === estimateSeq) {
+				estimateLoading.value = false
+			}
+		}
+	}, ESTIMATE_DEBOUNCE_MS)
+}
+
+watch(optimizeOptions, () => {
+	scheduleEstimate()
+}, { deep: true })
+watch(optimizeActive, (active) => {
+	// "optimize only" and the browser mode depend on it: keep a valid target selected
+	if (selectedTarget.value === null || !isSelectable(selectedTarget.value, active)) {
+		selected.value = defaultTarget(targets.value, active)
+	}
+})
 
 /**
  * @param key
@@ -298,7 +410,7 @@ function describe(e: unknown): string {
 /** Converts on the server or in the browser, depending on the mode of the chosen target. */
 async function run(): Promise<void> {
 	const target = selectedTarget.value
-	if (!target || target.mode === 'unavailable') {
+	if (!target || !isSelectable(target, optimizeActive.value)) {
 		return
 	}
 	error.value = ''
@@ -311,7 +423,8 @@ async function run(): Promise<void> {
 		let fileId: number
 		if (target.mode === 'server') {
 			task.value = null
-			const started = await convertAsync<{ fileId: number }>(props.book.fileId, { target: target.format, deleteOriginal: deleteOriginal.value })
+			const optimize = optimizeActive.value ? optimizeBody(optimizeOptions.value) : undefined
+			const started = await convertAsync<{ fileId: number }>(props.book.fileId, { target: target.format, deleteOriginal: deleteOriginal.value, ...(optimize ? { optimize } : {}) })
 			if ('sync' in started) {
 				// older server: converted synchronously
 				fileId = started.sync.fileId
@@ -343,7 +456,10 @@ async function run(): Promise<void> {
 				showWarning(t('ebookreader', 'The converted file was created, but it could not be confirmed in the library. The original was kept.'))
 			}
 		}
-		showSuccess(t('ebookreader', 'Converted to {format}', { format: selectedName.value }))
+		if (optimizeActive.value) {
+			saveOptions(optimizeOptions.value)
+		}
+		showSuccess(optimizeOnly.value ? t('ebookreader', 'Images optimized') : t('ebookreader', 'Converted to {format}', { format: selectedName.value }))
 		emit('converted', fileId)
 	} catch (e) {
 		if ((e as Error)?.name === 'AbortError' || e instanceof DownloadDeclinedError) {
@@ -363,8 +479,13 @@ onMounted(async () => {
 		const res = await getTargets(props.book.fileId)
 		source.value = res.source
 		targets.value = res.targets
-		selected.value = defaultTarget(res.targets)
+		optimizeInfo.value = res.optimize ?? { available: false }
+		if (!optimizeInfo.value.available) {
+			optimizeOptions.value = { maxHeight: 0, pngToJpeg: false }
+		}
+		selected.value = defaultTarget(res.targets, optimizeActive.value)
 		phase.value = 'choose'
+		scheduleEstimate()
 	} catch (e) {
 		error.value = describe(e)
 		phase.value = 'error'
@@ -372,6 +493,8 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+	window.clearTimeout(estimateTimer)
+	estimateSeq++
 	largeDownload.answer(false)
 	abort?.abort()
 })
@@ -399,6 +522,13 @@ onBeforeUnmount(() => {
 
 	&__muted {
 		color: var(--color-text-maxcontrast);
+	}
+
+	&__estimate {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-weight: 600;
 	}
 
 	&__cards {

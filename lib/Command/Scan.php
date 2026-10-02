@@ -34,7 +34,9 @@ class Scan extends Command {
 			->setDescription('Scan library folders and index e-books')
 			->addArgument('user_id', InputArgument::OPTIONAL, 'Only scan this user')
 			->addOption('all', null, InputOption::VALUE_NONE, 'Scan all users')
-			->addOption('queue', null, InputOption::VALUE_NONE, 'Only queue background jobs instead of indexing right away');
+			->addOption('queue', null, InputOption::VALUE_NONE, 'Only queue background jobs instead of indexing right away')
+			->addOption('force', null, InputOption::VALUE_NONE, 'Re-read unchanged books too (e.g. after installing bsdtar/unrar/7z); always inline')
+			->addOption('format', null, InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY, 'With --force: only these formats, e.g. --format=cbr --format=cb7');
 	}
 
 	#[\Override]
@@ -56,7 +58,10 @@ class Scan extends Command {
 			return Command::INVALID;
 		}
 
-		$inline = !$input->getOption('queue');
+		$force = (bool)$input->getOption('force');
+		/** @var list<string> $formats */
+		$formats = array_values(array_filter(array_map(static fn ($f): string => strtolower(trim((string)$f)), (array)$input->getOption('format')), static fn (string $f): bool => $f !== ''));
+		$inline = $force || !$input->getOption('queue');
 		$total = 0;
 		foreach ($userIds as $uid) {
 			$output->writeln('Scanning ' . $uid . ($inline ? '' : ' (queueing jobs)'));
@@ -72,7 +77,7 @@ class Scan extends Command {
 						$output->writeln('');
 						$output->writeln('  indexing ' . $file->getName());
 					}
-				});
+				}, $force, $formats === [] ? null : $formats);
 			} catch (\Throwable $e) {
 				$bar->clear();
 				$output->writeln('<error>' . $uid . ': ' . $e->getMessage() . '</error>');

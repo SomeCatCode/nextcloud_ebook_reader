@@ -175,6 +175,10 @@ export function translateReason(reason: string | undefined): string {
 			return t('ebookreader', 'A file with this name already exists')
 		case 'You cannot create files in this folder':
 			return t('ebookreader', 'You cannot create files in this folder')
+		case 'Image optimization is not available on this server':
+			return t('ebookreader', 'Image optimization is not available on this server')
+		case 'The server cannot read this format (bsdtar or unrar is required for CBR)':
+			return t('ebookreader', 'Optimizing images needs bsdtar or unrar on the server to read CBR files.')
 		default:
 			return reason
 	}
