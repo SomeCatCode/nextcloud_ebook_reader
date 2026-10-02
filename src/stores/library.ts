@@ -46,6 +46,7 @@ export interface Filters {
 const FILTER_TYPES: FilterType[] = ['genre', 'tag', 'author', 'series', 'format', 'shelf', 'missing']
 const SORT_KEYS: SortKey[] = ['title', 'author', 'series', 'rating', 'added', 'read', 'shelf']
 const GROUP_SERIES_KEY = 'ebookreader.groupSeries'
+const HIDE_FINISHED_KEY = 'ebookreader.hideFinished'
 const STATUSES: ReadStatus[] = ['unread', 'reading', 'finished']
 
 /**
@@ -238,6 +239,28 @@ function storeGroupSeries(on: boolean): void {
 }
 
 /**
+ * "Hide finished books" view option; on unless the viewer turned it off.
+ */
+function readHideFinished(): boolean {
+	try {
+		return localStorage.getItem(HIDE_FINISHED_KEY) !== '0'
+	} catch {
+		return true
+	}
+}
+
+/**
+ * @param on
+ */
+function storeHideFinished(on: boolean): void {
+	try {
+		localStorage.setItem(HIDE_FINISHED_KEY, on ? '1' : '0')
+	} catch {
+		// ignore
+	}
+}
+
+/**
  *
  */
 function readGroupSeries(): boolean {
@@ -265,6 +288,8 @@ export const useLibraryStore = defineStore('library', () => {
 	const facets = ref<Facets>(emptyFacets())
 
 	const groupSeries = ref(readGroupSeries())
+	/** view option, not a filter: not in the URL, not saved with smart shelves, ignored when a status filter is set */
+	const hideFinished = ref(readHideFinished())
 	/** series whose volumes are shown (back button returns to the cards) */
 	const drillSeries = ref<string | null>(null)
 	const seriesList = ref<SeriesEntry[]>([])
@@ -325,6 +350,7 @@ export const useLibraryStore = defineStore('library', () => {
 			exclude: f.exclude.length ? f.exclude : undefined,
 			match: include.length > 1 && drill === null ? f.match : undefined,
 			status: f.status ?? undefined,
+			hideFinished: f.status === null && hideFinished.value ? 1 : undefined,
 			sort: drill === null ? sort.value : 'series',
 			order: drill === null ? order.value : 'asc',
 			inSeries: seriesMode.value ? 0 : undefined,
@@ -345,6 +371,7 @@ export const useLibraryStore = defineStore('library', () => {
 			exclude: f.exclude.length ? f.exclude : undefined,
 			match: f.include.length > 1 ? f.match : undefined,
 			status: f.status ?? undefined,
+			hideFinished: f.status === null && hideFinished.value ? 1 : undefined,
 			sort: sort.value === 'added' ? 'added' : 'name',
 			order: bySort ? order.value : 'asc',
 		}
@@ -558,6 +585,18 @@ export const useLibraryStore = defineStore('library', () => {
 		drillSeries.value = state.drillSeries ?? null
 	}
 
+	/**
+	 * Shows or hides finished books (remembered in localStorage).
+	 *
+	 * @param on
+	 */
+	function setHideFinished(on: boolean): void {
+		hideFinished.value = on
+		storeHideFinished(on)
+		clearSelection()
+		void reload()
+	}
+
 	// ---- series view --------------------------------------------------
 
 	/**
@@ -746,6 +785,23 @@ export const useLibraryStore = defineStore('library', () => {
 	}
 
 	/**
+	 * A finished book is done: it leaves "continue reading" and, with "hide finished" on, the list.
+	 *
+	 * @param book
+	 */
+	function dropIfFinished(book: Book): void {
+		if (book.readStatus !== 'finished') {
+			return
+		}
+		recent.value = recent.value.filter((b) => b.fileId !== book.fileId)
+		if (hideFinished.value && filters.value.status === null) {
+			const before = books.value.length
+			books.value = books.value.filter((b) => b.fileId !== book.fileId)
+			total.value = Math.max(0, total.value - (before - books.value.length))
+		}
+	}
+
+	/**
 	 * Optimistic update of rating and/or read status; rolls back and rethrows on failure.
 	 *
 	 * @param fileId
@@ -763,6 +819,7 @@ export const useLibraryStore = defineStore('library', () => {
 		try {
 			const fresh = await api.patchAppData(fileId, patch)
 			applyBook(fresh)
+			dropIfFinished(fresh)
 		} catch (e) {
 			applyBook(snapshot)
 			throw e
@@ -925,6 +982,8 @@ export const useLibraryStore = defineStore('library', () => {
 	return {
 		removeBooks,
 		groupSeries,
+		hideFinished,
+		setHideFinished,
 		drillSeries,
 		seriesList,
 		seriesMode,

@@ -12,6 +12,12 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 - **Dashboard-Widget „Weiterlesen“:** zeigt die angefangenen Bücher (zuletzt gelesen zuerst, bis zu 7) mit Cover, Autor und Fortschritt, aktualisiert sich selbst und bietet einen Button zur Bibliothek.
 - Bücher mit fehlenden Metadaten finden: neuer Filter `missing:<Feld>` (Genre, Tags, Autor, Serie, Beschreibung, Cover, Sprache). In der Navigation zeigt die Gruppe „Nachpflegen“ („Needs attention“) die Felder mit Anzahl der betroffenen Bücher (Einträge mit 0 werden ausgeblendet). Ein Klick schaltet wie bei anderen Filtern zwischen enthalten, ausgeschlossen und aus um; Chips heißen z. B. „Ohne Genre“ bzw. „Hat Genre“. Funktioniert in Bibliothek, Serien und Smart-Regalen, mit „alle/beliebige“ und in der URL. `GET /facets` liefert dazu `missing` mit den Zählern.
 
+### Geändert
+- Gelesene Bücher werden in der Bibliothek standardmäßig ausgeblendet. Ein Schalter in der Werkzeugleiste („Gelesene ausblenden“) blendet sie wieder ein und wird im Browser gemerkt. Der Status-Filter „Gelesen“ zeigt sie weiterhin. Neuer Parameter `hideFinished=1` für `GET /books` und `GET /series`.
+
+### Behoben
+- „Weiterlesen“ zeigte auch Bücher, die bereits als gelesen markiert waren. Sie verschwinden jetzt sofort nach dem Markieren aus der Leiste.
+
 ### Dokumentation
 - README für das öffentliche Repository überarbeitet: interne Planungsdetails entfernt, Funktionen und Einstellungen aktualisiert, Beta-Hinweis statt Alpha-Warnung (im Produktiveinsatz erprobt).
 - Neue Anleitung „Archiv-Programme installieren (7-Zip)“: eigenes Image auf Basis des offiziellen Docker-Images und Nextcloud All-in-One über `NEXTCLOUD_ADDITIONAL_APKS`.

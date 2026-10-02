@@ -210,6 +210,17 @@
 				</NcButton>
 
 				<NcButton
+					:pressed="store.hideFinished"
+					:aria-label="t('ebookreader', 'Hide finished books')"
+					:title="t('ebookreader', 'Hide finished books')"
+					variant="tertiary"
+					@update:pressed="(v: boolean) => store.setHideFinished(v)">
+					<template #icon>
+						<NcIconSvgWrapper :path="mdiBookCheckOutline" />
+					</template>
+				</NcButton>
+
+				<NcButton
 					:pressed="store.selectMode"
 					:aria-label="t('ebookreader', 'Select multiple books')"
 					:title="t('ebookreader', 'Select multiple books')"

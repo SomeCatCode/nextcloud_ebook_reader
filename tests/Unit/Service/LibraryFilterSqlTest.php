@@ -150,6 +150,12 @@ class LibraryFilterSqlTest extends TestCase {
 		$this->assertStringContainsString("iLike(b.title,'%x%')", $c[1]);
 	}
 
+	public function testHideFinishedIsIgnoredWhenStatusIsSet(): void {
+		$this->assertSame(["neq(b.read_status,'finished')"], $this->conditions(BookQuery::fromRequestParams(['hideFinished' => 1])));
+		$this->assertSame(["eq(b.read_status,'finished')"], $this->conditions(BookQuery::fromRequestParams(['hideFinished' => 1, 'status' => 'finished'])));
+		$this->assertSame([], $this->conditions(BookQuery::fromRequestParams(['hideFinished' => 0])));
+	}
+
 	public function testSmartShelfExclusionNegatesWholeQuery(): void {
 		$this->addShelf(6, 'u', 'smart', json_encode(['include' => ['format:epub']]));
 		$c = $this->conditions(BookQuery::fromRequestParams(['exclude' => ['shelf:6']]));

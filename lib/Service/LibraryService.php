@@ -616,6 +616,8 @@ class LibraryService {
 		$out = [];
 		if ($q->status !== null) {
 			$out[] = $e->eq('b.read_status', $qb->createNamedParameter($q->status));
+		} elseif ($q->hideFinished) {
+			$out[] = $e->neq('b.read_status', $qb->createNamedParameter(Book::STATUS_FINISHED));
 		}
 		if ($q->inSeries !== null) {
 			$out[] = self::sql($q->inSeries

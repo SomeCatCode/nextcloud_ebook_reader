@@ -87,6 +87,8 @@ export interface BookQuery {
 	order?: 'asc' | 'desc'
 	/** 0: only books without a series, 1: only books with one */
 	inSeries?: 0 | 1
+	/** 1: leave out finished books (ignored when status is set) */
+	hideFinished?: 1
 	limit?: number
 	offset?: number
 }

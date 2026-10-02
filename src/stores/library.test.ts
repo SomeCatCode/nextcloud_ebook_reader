@@ -218,6 +218,33 @@ describe('library store', () => {
 		expect(store.books[0].readStatus).toBe('unread')
 	})
 
+	it('hides finished books by default unless a status filter is set', async () => {
+		localStorage.clear()
+		const store = useLibraryStore()
+		await store.reload()
+		expect(mocked.listBooks).toHaveBeenLastCalledWith(expect.objectContaining({ hideFinished: 1 }))
+		expect(store.hasFilters).toBe(false)
+		store.setStatus('finished')
+		expect(mocked.listBooks).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'finished', hideFinished: undefined }))
+		store.setStatus(null)
+		store.setHideFinished(false)
+		expect(mocked.listBooks).toHaveBeenLastCalledWith(expect.objectContaining({ hideFinished: undefined }))
+		expect(localStorage.getItem('ebookreader.hideFinished')).toBe('0')
+	})
+
+	it('drops a book marked finished from the list and continue reading', async () => {
+		localStorage.clear()
+		mocked.recentBooks.mockResolvedValue({ books: [book(1, { readStatus: 'reading' })] })
+		const store = useLibraryStore()
+		await store.reload()
+		store.recent = [book(1, { readStatus: 'reading' })]
+		mocked.patchAppData.mockResolvedValueOnce(book(1, { readStatus: 'finished' }))
+		await store.setReadStatus(1, 'finished')
+		expect(store.books.map((b) => b.fileId)).toEqual([2])
+		expect(store.recent).toEqual([])
+		expect(store.total).toBe(1)
+	})
+
 	it('manages selection and bulk tags', async () => {
 		const store = useLibraryStore()
 		await store.reload()

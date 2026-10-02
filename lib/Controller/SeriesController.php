@@ -40,6 +40,7 @@ class SeriesController extends AbstractOCSController {
 	 * @param string|null $tag Filter by tag
 	 * @param string|null $author Filter by author
 	 * @param string|null $status Filter by read status (unread|reading|finished)
+	 * @param int<0, 1> $hideFinished 1 = leave out finished books (ignored when status is given)
 	 * @param string $sort "added" sorts by the newest book of the series, everything else by name (natural order)
 	 * @param string $order Sort order (asc|desc)
 	 * @param list<string>|string|null $include Entries "genre:<name>", "tag:<name>", "author:<name>", "format:<fmt>" or "shelf:<id>" the book must match (see match)
@@ -59,6 +60,7 @@ class SeriesController extends AbstractOCSController {
 		?string $tag = null,
 		?string $author = null,
 		?string $status = null,
+		int $hideFinished = 0,
 		string $sort = 'title',
 		string $order = 'asc',
 		array|string|null $include = null,
@@ -68,7 +70,7 @@ class SeriesController extends AbstractOCSController {
 		$userId = $this->uid();
 		$query = BookQuery::fromRequestParams([
 			'search' => $search, 'format' => $format, 'genre' => $genre, 'tag' => $tag,
-			'author' => $author, 'status' => $status, 'sort' => $sort, 'order' => $order,
+			'author' => $author, 'status' => $status, 'hideFinished' => $hideFinished, 'sort' => $sort, 'order' => $order,
 			'include' => $include, 'exclude' => $exclude, 'match' => $match,
 		]);
 		return new DataResponse(['series' => $this->library->listSeries($userId, $query)]);

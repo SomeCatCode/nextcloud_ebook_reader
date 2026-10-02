@@ -43,6 +43,8 @@ final class BookQuery {
 		public readonly string $match = self::MATCH_ALL,
 		/** true: only books with a series, false: only books without one, null: no restriction */
 		public readonly ?bool $inSeries = null,
+		/** true: leave out finished books (ignored when $status is set) */
+		public readonly bool $hideFinished = false,
 	) {
 	}
 
@@ -166,6 +168,7 @@ final class BookQuery {
 			exclude: self::parseFilterEntries($params['exclude'] ?? null),
 			match: $match,
 			inSeries: self::parseInSeries($params['inSeries'] ?? null),
+			hideFinished: in_array($params['hideFinished'] ?? null, [1, '1', true, 'true'], true),
 		);
 	}
 }

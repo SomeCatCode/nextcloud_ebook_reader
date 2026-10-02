@@ -1863,6 +1863,18 @@
                         }
                     },
                     {
+                        "name": "hideFinished",
+                        "in": "query",
+                        "description": "1 = leave out finished books (ignored when status is given)",
+                        "schema": {
+                            "type": "integer",
+                            "format": "int64",
+                            "default": 0,
+                            "minimum": 0,
+                            "maximum": 1
+                        }
+                    },
+                    {
                         "name": "sort",
                         "in": "query",
                         "description": "Sort field (title|author|series|rating|added|read|shelf); shelf sorts by position inside a manual shelf (include shelf:<id>), series by series index",
@@ -7959,7 +7971,7 @@
         "/ocs/v2.php/apps/ebookreader/api/v1/progress/recent": {
             "get": {
                 "operationId": "progress-recent",
-                "summary": "Most recently read books (\"continue reading\")",
+                "summary": "Most recently read books that are not finished (\"continue reading\")",
                 "tags": [
                     "progress"
                 ],
@@ -8907,6 +8919,18 @@
                             "type": "string",
                             "nullable": true,
                             "default": null
+                        }
+                    },
+                    {
+                        "name": "hideFinished",
+                        "in": "query",
+                        "description": "1 = leave out finished books (ignored when status is given)",
+                        "schema": {
+                            "type": "integer",
+                            "format": "int64",
+                            "default": 0,
+                            "minimum": 0,
+                            "maximum": 1
                         }
                     },
                     {

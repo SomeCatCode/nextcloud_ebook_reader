@@ -57,6 +57,7 @@ class BooksController extends AbstractOCSController {
 	 * @param string|null $author Filter by author
 	 * @param string|null $series Filter by series
 	 * @param string|null $status Filter by read status (unread|reading|finished)
+	 * @param int<0, 1> $hideFinished 1 = leave out finished books (ignored when status is given)
 	 * @param string $sort Sort field (title|author|series|rating|added|read|shelf); shelf sorts by position inside a manual shelf (include shelf:<id>), series by series index
 	 * @param string $order Sort order (asc|desc)
 	 * @param int<1, 200> $limit Page size
@@ -80,6 +81,7 @@ class BooksController extends AbstractOCSController {
 		?string $author = null,
 		?string $series = null,
 		?string $status = null,
+		int $hideFinished = 0,
 		string $sort = 'title',
 		string $order = 'asc',
 		int $limit = BookQuery::DEFAULT_LIMIT,
@@ -92,7 +94,7 @@ class BooksController extends AbstractOCSController {
 		$userId = $this->uid();
 		$query = BookQuery::fromRequestParams([
 			'search' => $search, 'format' => $format, 'genre' => $genre, 'tag' => $tag,
-			'author' => $author, 'series' => $series, 'status' => $status,
+			'author' => $author, 'series' => $series, 'status' => $status, 'hideFinished' => $hideFinished,
 			'sort' => $sort, 'order' => $order, 'limit' => $limit, 'offset' => $offset,
 			'include' => $include, 'exclude' => $exclude, 'match' => $match,
 			'inSeries' => $inSeries,
