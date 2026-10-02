@@ -5,6 +5,8 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+## 0.6.0 – 2026-10-02
+
 ### Hinzugefügt
 - **Markierungen, Notizen und Lesezeichen** im Reader: Text in EPUB, MOBI, AZW3 und FB2 markieren und aus fünf Farben wählen, eine Notiz dazu schreiben oder den Text kopieren. Ein Klick auf eine Markierung öffnet sie zum Ändern (Farbe, Notiz, Löschen). Der Lesezeichen-Button in der Leiste markiert die aktuelle Seite, auch bei Comics (Seitenindex). Das neue Panel „Markierungen & Lesezeichen“ (Tab neben dem Inhaltsverzeichnis) listet alles nach Typ und Position, springt zur Stelle, bearbeitet Notizen und exportiert alles als Markdown-Datei (im Browser erzeugt). Markierungen werden als SVG-Overlay gezeichnet, Notiztexte erscheinen nur als Text und nie im Buch-HTML. Beim Anlegen, Ändern und Löschen aktualisiert sich die Oberfläche sofort, Fehler erscheinen als Hinweis.
 - **Annotations-API** für weitere Clients (z. B. die Android-App): `GET/POST /api/v1/books/{fileId}/annotations`, `PATCH/DELETE /api/v1/annotations/{uuid}`. Die UUID erzeugt der Client (Anlegen auch offline), der Server nimmt sie als Upsert an. Last-write-wins über `clientUpdatedAt` (älterer Stand: `409` mit dem aktuellen Eintrag), Löschen setzt einen Tombstone. `GET /api/v1/sync` liefert zusätzlich `annotations` (inklusive Tombstones, eigener Cursor-Anteil), die Capabilities melden `annotations: true`. Neue Tabelle `ebookreader_annotations` (Migration `Version1005`); beim Löschen eines Benutzers oder eines Buchs werden die Einträge entfernt, Tombstones nach 90 Tagen. Download-gesperrte Freigaben liefern keine Markierungen. Details in `docs/CONTRACTS-v4.md`.
