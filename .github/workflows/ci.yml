@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
   workflow_call:
 
@@ -38,3 +38,24 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+  # Installable test build for every push to dev (download from the run's artifacts, install manually).
+  dev-package:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    needs: [php, js]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: make appstore
+      - run: cd build/artifacts && sha256sum ebookreader.tar.gz > ebookreader.tar.gz.sha256
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ebookreader-dev-${{ github.sha }}
+          path: |
+            build/artifacts/ebookreader.tar.gz
+            build/artifacts/ebookreader.tar.gz.sha256
+          retention-days: 30

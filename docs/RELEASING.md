@@ -2,6 +2,14 @@
 
 Releases baut GitHub Actions automatisch ([release.yml](../.github/workflows/release.yml)), sobald ein Versions-Tag gepusht wird.
 
+## Branches und Testbuilds
+
+- Neue Arbeit kommt per Pull Request in den Branch **`dev`**, nicht direkt nach `main`.
+- Jeder Push auf `dev` läuft durch die CI und baut zusätzlich ein installierbares Paket: Im Actions-Lauf unter *Artifacts* liegt `ebookreader-dev-<commit>` mit `ebookreader.tar.gz` und `.sha256` (30 Tage). Zum Testen auf dem eigenen Server entpacken und den Ordner `ebookreader` in `apps/` (bzw. `custom_apps/`) ersetzen, danach `occ upgrade`, falls sich die Version erhöht hat.
+- Ist `dev` getestet, wird die Version auf `dev` vorbereitet (Schritte 1 und 2 unten), dann `dev` per Pull Request nach `main` gemergt und auf `main` getaggt.
+
+## Release
+
 1. **Changelog:** In `CHANGELOG.md` den Abschnitt `## [Unreleased]` in `## X.Y.Z – JJJJ-MM-TT` umbenennen und darüber einen leeren `## [Unreleased]` stehen lassen. Die Überschrift muss **ohne** eckige Klammern sein, weil der Nextcloud App Store nach `^## X.Y.Z` sucht.
 2. **Version:** in `appinfo/info.xml` und `package.json` setzen, z. B.:
    ```bash
