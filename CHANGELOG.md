@@ -5,6 +5,9 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+### Hinzugefügt
+- **Vollbildmodus** im Reader (Web): neuer Button „Vollbild“/„Vollbild beenden“ in der Leiste und die Taste `F` (nicht beim Tippen in Feldern oder Dialogen). Esc beendet das Vollbild wie gewohnt, ohne das Buch zu schließen; beim Schließen des Readers endet es automatisch. Vollbild gilt für die ganze Seite, die Nextcloud-Kopfzeile wird dabei ausgeblendet, sodass Inhaltsverzeichnis, Einstellungen, Markierungs-Popups und Dialoge sichtbar bleiben. Funktioniert auch im Dateien-Viewer und in Safari/iPadOS (webkit-Variante); wo der Browser kein Vollbild erlaubt (z. B. Safari auf dem iPhone), erscheint der Button nicht.
+
 ### Behoben
 - Echte RAR-Comics (CBR) ohne Cover, die sich nicht öffnen ließen, obwohl 7-Zip auf dem Server installiert ist: Manche 7-Zip-Builds (p7zip ohne `p7zip-rar`, 7-Zip-Pakete ohne den unfreien RAR-Codec) können ein RAR zwar auflisten, aber nicht entpacken („Unsupported Method“). Die Seitenliste kam dann vom Server, jede Seite und das Cover scheiterten, und der Reader wich nicht auf das Entpacken im Browser aus. Jetzt versucht der Server beim Entpacken die übrigen installierten Programme (`unrar`, `bsdtar`), und lässt sich die erste Seite gar nicht entpacken, lehnt er die Seitenliste ab, sodass der Reader die Datei im Browser öffnet (und dort das Cover erzeugt). Die Fehlermeldung im Log nennt jetzt die Ausgabe des Programms und die Lösung (`unrar` oder `bsdtar` aus `libarchive-tools` installieren).
 
