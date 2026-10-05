@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { optimizeBooks } from '../convert/convertApi.ts'
 import * as api from '../services/api.ts'
 import { pollTask } from '../services/tasks.ts'
-import { PAGE_SIZE, queryToState, SEARCH_DEBOUNCE_MS, shelfTerm, smartQueryToState, stateToQuery, stateToSmartQuery, useLibraryStore } from './library.ts'
+import { PAGE_SIZE, progressForStatus, queryToState, SEARCH_DEBOUNCE_MS, shelfTerm, smartQueryToState, stateToQuery, stateToSmartQuery, useLibraryStore } from './library.ts'
 
 vi.mock('../services/api.ts', () => ({
 	listBooks: vi.fn(),
@@ -245,6 +245,44 @@ describe('library store', () => {
 		expect(store.books.map((b) => b.fileId)).toEqual([2])
 		expect(store.recent).toEqual([])
 		expect(store.total).toBe(1)
+	})
+
+	it('couples the read status with the shown progress', async () => {
+		localStorage.clear()
+		const store = useLibraryStore()
+		await store.reload()
+		const half = { fileId: 2, locator: { href: 'a.xhtml', locations: { totalProgression: 0.5 } }, percentage: 0.5, device: null, clientUpdatedAt: 1, updatedAt: 1 }
+		store.books = [book(1), book(2, { readStatus: 'reading', progress: half })]
+		store.recent = [book(2, { readStatus: 'reading', progress: half })]
+
+		let resolve: (b: Book) => void = () => {}
+		mocked.patchAppData.mockImplementationOnce(() => new Promise((r) => {
+			resolve = r
+		}))
+		const p = store.setReadStatus(2, 'unread')
+		// optimistic: 0 % right away
+		expect(store.books[1].progress?.percentage).toBe(0)
+		const server = { ...half, locator: { href: '', locations: { position: 1, totalProgression: 0 } }, percentage: 0, updatedAt: 9 }
+		resolve(book(2, { readStatus: 'unread', progress: server }))
+		await p
+		expect(store.books[1].progress).toEqual(server)
+		// back at the start: no longer "continue reading"
+		expect(store.recent).toEqual([])
+
+		mocked.patchAppData.mockResolvedValueOnce(book(1, { readStatus: 'finished', progress: { ...server, fileId: 1, percentage: 1 } }))
+		const q = store.setReadStatus(1, 'finished')
+		expect(store.books[0].progress?.percentage).toBe(1)
+		await q
+		// hide finished is on by default
+		expect(store.books.map((b) => b.fileId)).toEqual([2])
+	})
+
+	it('derives the optimistic progress of a status', () => {
+		const half = { fileId: 1, locator: { href: 'a' }, percentage: 0.5, device: 'x', clientUpdatedAt: 1, updatedAt: 1 }
+		expect(progressForStatus(book(1, { progress: half }), 'reading')).toBe(half)
+		expect(progressForStatus(book(1), 'unread')).toBeNull()
+		expect(progressForStatus(book(1, { progress: half }), 'unread')?.percentage).toBe(0)
+		expect(progressForStatus(book(1), 'finished')).toMatchObject({ fileId: 1, percentage: 1, locator: { href: '', locations: { totalProgression: 1 } } })
 	})
 
 	it('manages selection and bulk tags', async () => {

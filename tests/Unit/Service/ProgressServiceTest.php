@@ -106,25 +106,106 @@ class ProgressServiceTest extends TestCase {
 	}
 
 	#[DataProvider('readStatusProvider')]
-	public function testReadStatus(float $pct, bool $manual, string $before, string $expected): void {
+	public function testReadStatus(float $pct, bool $manual, string $before, string $expected, bool $expectedManual): void {
 		$this->progressMapper->method('findByUserAndFile')->willThrowException(new DoesNotExistException(''));
 		$this->progressMapper->method('insert')->willReturnArgument(0);
 		$book = $this->book($manual, $before);
 		$this->bookMapper->method('findByUserAndFile')->willReturn($book);
+		$book->setUpdatedAt(1);
 		$this->service->put('u', 7, $this->locator($pct), $pct, null, 1000);
 		$this->assertSame($expected, $book->getReadStatus());
-		if ($expected !== $before) {
-			$this->assertSame(self::NOW_MS, $book->getUpdatedAt());
-		}
+		$this->assertSame($expectedManual, $book->getReadStatusManual());
+		$this->assertSame($expected !== $before ? self::NOW_MS : 1, $book->getUpdatedAt());
 	}
 
 	public static function readStatusProvider(): array {
 		return [
-			'reading' => [0.3, false, 'unread', 'reading'],
-			'finished' => [0.98, false, 'reading', 'finished'],
-			'manual stays' => [0.99, true, 'unread', 'unread'],
-			'zero stays unread' => [0.0, false, 'unread', 'unread'],
+			'reading' => [0.3, false, 'unread', 'reading', false],
+			'finished' => [0.98, false, 'reading', 'finished', false],
+			'zero stays unread' => [0.0, false, 'unread', 'unread', false],
+			'back to zero is unread' => [0.0, false, 'reading', 'unread', false],
+			'below 1 % of finished is reading' => [0.5, false, 'finished', 'reading', false],
+			'progress overrides manual unread' => [0.99, true, 'unread', 'finished', false],
+			'progress overrides manual finished' => [0.2, true, 'finished', 'reading', false],
+			'zero overrides manual finished' => [0.0, true, 'finished', 'unread', false],
+			'manual reading survives zero' => [0.0, true, 'reading', 'reading', true],
+			'manual reading ends with progress' => [0.4, true, 'reading', 'reading', false],
 		];
+	}
+
+	public function testConflictDoesNotChangeStatus(): void {
+		$this->progressMapper->method('findByUserAndFile')->willReturn($this->stored(3000, 0.5));
+		$this->bookMapper->expects($this->never())->method('findByUserAndFile');
+		$this->bookMapper->expects($this->never())->method('update');
+		$this->service->put('u', 7, $this->locator(1.0), 1.0, null, 2000);
+	}
+
+	public function testFinishedUpdatesExistingRow(): void {
+		$row = $this->stored(self::NOW_MS + 60_000, 0.4);
+		$this->progressMapper->method('findByUserAndFile')->willReturn($row);
+		$this->progressMapper->expects($this->once())->method('update')->willReturnArgument(0);
+		$this->progressMapper->expects($this->never())->method('insert');
+
+		$p = $this->service->applyReadStatus('u', 7, 'finished');
+
+		$this->assertSame($row, $p);
+		$this->assertSame(1.0, $row->getPercentage());
+		$this->assertSame(['href' => '', 'locations' => ['totalProgression' => 1]], $row->getLocatorArray());
+		// a client clock slightly ahead must not win over the explicit status change
+		$this->assertSame(self::NOW_MS + 60_001, $row->getClientUpdatedAt());
+		$this->assertSame(self::NOW_MS, $row->getUpdatedAt());
+		$this->assertNull($row->getDevice());
+	}
+
+	public function testFinishedCreatesRow(): void {
+		$this->progressMapper->method('findByUserAndFile')->willThrowException(new DoesNotExistException(''));
+		$this->progressMapper->expects($this->once())->method('insert')->willReturnArgument(0);
+
+		$p = $this->service->applyReadStatus('u', 7, 'finished');
+
+		$this->assertNotNull($p);
+		$this->assertSame('u', $p->getUserId());
+		$this->assertSame(7, $p->getFileId());
+		$this->assertSame(1.0, $p->getPercentage());
+		$this->assertSame(self::NOW_MS, $p->getClientUpdatedAt());
+		$this->assertSame(self::NOW_MS, $p->getUpdatedAt());
+	}
+
+	public function testUnreadResetsExistingRowToStart(): void {
+		$row = $this->stored(1000, 0.7);
+		$this->progressMapper->method('findByUserAndFile')->willReturn($row);
+		$this->progressMapper->expects($this->once())->method('update')->willReturnArgument(0);
+
+		$this->service->applyReadStatus('u', 7, 'unread');
+
+		$this->assertSame(0.0, $row->getPercentage());
+		$this->assertSame(['href' => '', 'locations' => ['position' => 1, 'totalProgression' => 0]], $row->getLocatorArray());
+		$this->assertSame(self::NOW_MS, $row->getClientUpdatedAt());
+		$this->assertSame(self::NOW_MS, $row->getUpdatedAt());
+	}
+
+	public function testUnreadWithoutRowCreatesNothing(): void {
+		$this->progressMapper->method('findByUserAndFile')->willThrowException(new DoesNotExistException(''));
+		$this->progressMapper->expects($this->never())->method('insert');
+		$this->assertNull($this->service->applyReadStatus('u', 7, 'unread'));
+	}
+
+	public function testReadingAndConsistentRowsStayUntouched(): void {
+		$row = $this->stored(1000, 0.4);
+		$done = $this->stored(1000, 1.0);
+		$this->progressMapper->method('findByUserAndFile')->willReturnOnConsecutiveCalls($row, $done);
+		$this->progressMapper->expects($this->never())->method('update');
+		$this->assertSame($row, $this->service->applyReadStatus('u', 7, 'reading'));
+		$this->assertSame($done, $this->service->applyReadStatus('u', 7, 'finished'));
+		$this->assertSame(1, $done->getUpdatedAt());
+	}
+
+	public function testLocatorWithEmptyHrefNeedsTotalProgression(): void {
+		$this->progressMapper->method('findByUserAndFile')->willThrowException(new DoesNotExistException(''));
+		$this->progressMapper->method('insert')->willReturnArgument(0);
+		$this->bookMapper->method('findByUserAndFile')->willThrowException(new DoesNotExistException(''));
+		$r = $this->service->put('u', 7, ['href' => '', 'locations' => ['totalProgression' => 1]], 1.0, null, 1000);
+		$this->assertSame('ok', $r['status']);
 	}
 
 	#[DataProvider('invalidLocatorProvider')]
@@ -136,6 +217,7 @@ class ProgressServiceTest extends TestCase {
 	public static function invalidLocatorProvider(): array {
 		return [
 			'no href' => [['locations' => []]],
+			'empty href without total' => [['href' => '', 'locations' => ['position' => 1]]],
 			'href not string' => [['href' => 5]],
 			'progression > 1' => [['href' => 'a', 'locations' => ['progression' => 1.5]]],
 			'negative total' => [['href' => 'a', 'locations' => ['totalProgression' => -0.1]]],

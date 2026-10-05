@@ -799,7 +799,7 @@ function handleKey(key: string, e?: KeyboardEvent, modified = false): void {
 			} else if (panel.value) {
 				panel.value = null
 			} else if (!embedded.value) {
-				close()
+				void close()
 			}
 			break
 		default:
@@ -816,10 +816,21 @@ function onWindowKey(e: KeyboardEvent): void {
 }
 
 /**
- *
+ * Writes the pending position, but does not keep the user waiting for a slow server (max 3 s;
+ * the write still completes in the background).
  */
-function close(): void {
-	void sync?.flush()
+async function flushBeforeLeave(): Promise<void> {
+	if (sync) {
+		await Promise.race([sync.flush(), new Promise((resolve) => setTimeout(resolve, 3000))])
+	}
+}
+
+/**
+ * Back to the library. The pending position is written first: the library reloads on mount and
+ * should already see the read status the server derives from it (100 % finished, 0 % unread).
+ */
+async function close(): Promise<void> {
+	await flushBeforeLeave()
 	if (window.history.state?.back) {
 		router.back()
 	} else {
@@ -830,8 +841,8 @@ function close(): void {
 /**
  *
  */
-function edit(): void {
-	void sync?.flush()
+async function edit(): Promise<void> {
+	await flushBeforeLeave()
 	void router.push(`/edit/${props.fileId}`)
 }
 

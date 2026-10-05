@@ -15,6 +15,7 @@ use OCA\EbookReader\Http\AbstractOCSController;
 use OCA\EbookReader\Http\BookSerializer;
 use OCA\EbookReader\Service\BookQuery;
 use OCA\EbookReader\Service\LibraryService;
+use OCA\EbookReader\Service\ProgressService;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\ApiRoute;
@@ -43,6 +44,7 @@ class BooksController extends AbstractOCSController {
 		private BookMapper $bookMapper,
 		private BookSerializer $serializer,
 		private ITimeFactory $time,
+		private ProgressService $progress,
 	) {
 		parent::__construct($request, $userId);
 	}
@@ -190,10 +192,14 @@ class BooksController extends AbstractOCSController {
 	 * Change app-only fields (rating, read status) without touching the file
 	 *
 	 * Absent fields stay unchanged, an explicit null rating clears the rating.
+	 * The read status also sets the reading progress: finished = 100 % (locator href "" with
+	 * totalProgression 1), unread = 0 % (href "", position 1, totalProgression 0; nothing is created
+	 * without stored progress), reading keeps it. The progress row gets clientUpdatedAt = server time,
+	 * so it wins over older positions of other devices; the returned book carries the new progress.
 	 *
 	 * @param int $fileId Nextcloud file id
 	 * @param int|null $rating Rating 0..5 or null
-	 * @param string|null $readStatus unread|reading|finished (sets a manual status)
+	 * @param string|null $readStatus unread|reading|finished (sets a manual status and the progress: finished 100 %, unread 0 %)
 	 * @return DataResponse<Http::STATUS_OK, EbookReaderBook, array{}>
 	 * @throws OCSBadRequestException Invalid value
 	 * @throws OCSNotFoundException Book not found
@@ -224,6 +230,7 @@ class BooksController extends AbstractOCSController {
 			$book->setReadStatus($readStatus);
 			$book->setReadStatusManual(true);
 			$changed = true;
+			$this->progress->applyReadStatus($userId, $fileId, $readStatus);
 		}
 		if ($changed) {
 			$book->setUpdatedAt((int)$this->time->now()->format('Uv'));

@@ -117,4 +117,31 @@ class ProgressControllerTest extends TestCase {
 		$this->expectException(OCSBadRequestException::class);
 		$this->controller->batch(array_fill(0, 101, ['fileId' => 1]));
 	}
+
+	public function testRecentSkipsFinishedAndUnstartedBooks(): void {
+		$rows = [];
+		foreach ([1 => 0.5, 2 => 0.0, 3 => 0.99, 4 => 0.1] as $id => $pct) {
+			$p = new Progress();
+			$p->setFileId($id);
+			$p->setPercentage($pct);
+			$rows[] = $p;
+		}
+		$progressMapper = $this->createMock(ProgressMapper::class);
+		$progressMapper->method('findRecent')->willReturn($rows);
+		$books = [];
+		foreach ([1 => 'reading', 2 => 'unread', 3 => 'finished', 4 => 'reading'] as $id => $status) {
+			$b = new \OCA\EbookReader\Db\Book();
+			$b->setFileId($id);
+			$b->setReadStatus($status);
+			$books[] = $b;
+		}
+		$bookMapper = $this->createMock(BookMapper::class);
+		$bookMapper->method('findByUserAndFiles')->willReturn($books);
+		$serializer = $this->createMock(BookSerializer::class);
+		$serializer->expects($this->once())->method('serializeMany')
+			->with('u', $this->callback(static fn (array $list): bool => array_map(static fn ($b): int => $b->getFileId(), $list) === [1, 4]))
+			->willReturn([]);
+		$controller = new ProgressController($this->createMock(IRequest::class), 'u', $this->service, $progressMapper, $bookMapper, $this->library, $serializer);
+		$controller->recent(10);
+	}
 }

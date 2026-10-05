@@ -14,6 +14,7 @@ use OCA\EbookReader\Db\Book;
 use OCA\EbookReader\Db\BookMapper;
 use OCA\EbookReader\Http\BookSerializer;
 use OCA\EbookReader\Service\LibraryService;
+use OCA\EbookReader\Service\ProgressService;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\OCS\OCSBadRequestException;
 use OCP\AppFramework\OCS\OCSNotFoundException;
@@ -27,6 +28,7 @@ class BooksControllerTest extends TestCase {
 	private BookMapper&MockObject $mapper;
 	private BookSerializer&MockObject $serializer;
 	private IRequest&MockObject $request;
+	private ProgressService&MockObject $progress;
 	private BooksController $controller;
 
 	protected function setUp(): void {
@@ -37,7 +39,8 @@ class BooksControllerTest extends TestCase {
 		$this->request = $this->createMock(IRequest::class);
 		$time = $this->createMock(ITimeFactory::class);
 		$time->method('now')->willReturn(\DateTimeImmutable::createFromFormat('U.u', '1800000000.500000'));
-		$this->controller = new BooksController($this->request, 'u', $this->library, $this->mapper, $this->serializer, $time);
+		$this->progress = $this->createMock(ProgressService::class);
+		$this->controller = new BooksController($this->request, 'u', $this->library, $this->mapper, $this->serializer, $time, $this->progress);
 	}
 
 	private function book(): Book {
@@ -93,6 +96,7 @@ class BooksControllerTest extends TestCase {
 		$this->library->method('getBook')->willReturn($book);
 		$this->request->method('getParams')->willReturn(['rating' => 4, 'readStatus' => 'finished']);
 		$this->mapper->expects($this->once())->method('update');
+		$this->progress->expects($this->once())->method('applyReadStatus')->with('u', 5, 'finished');
 
 		$this->controller->patchAppData(5, 4, 'finished');
 
@@ -100,6 +104,38 @@ class BooksControllerTest extends TestCase {
 		$this->assertSame('finished', $book->getReadStatus());
 		$this->assertTrue($book->getReadStatusManual());
 		$this->assertSame(1800000000500, $book->getUpdatedAt());
+	}
+
+	public function testPatchStatusReturnsBookSerializedAfterProgressChange(): void {
+		$book = $this->book();
+		$this->library->method('getBook')->willReturn($book);
+		$this->request->method('getParams')->willReturn(['readStatus' => 'unread']);
+		$order = [];
+		$this->progress->method('applyReadStatus')->willReturnCallback(function () use (&$order): null {
+			$order[] = 'progress';
+			return null;
+		});
+		$serializer = $this->createMock(BookSerializer::class);
+		$serializer->method('serializeWithProgress')->willReturnCallback(function () use (&$order): array {
+			$order[] = 'serialize';
+			return ['fileId' => 5, 'progress' => ['percentage' => 0.0]];
+		});
+		$time = $this->createMock(ITimeFactory::class);
+		$time->method('now')->willReturn(new \DateTimeImmutable());
+		$controller = new BooksController($this->request, 'u', $this->library, $this->mapper, $serializer, $time, $this->progress);
+
+		$data = $controller->patchAppData(5, null, 'unread')->getData();
+
+		$this->assertSame(['progress', 'serialize'], $order);
+		$this->assertSame(0.0, $data['progress']['percentage']);
+		$this->assertSame('unread', $book->getReadStatus());
+	}
+
+	public function testPatchRatingOnlyKeepsProgress(): void {
+		$this->library->method('getBook')->willReturn($this->book());
+		$this->request->method('getParams')->willReturn(['rating' => 2]);
+		$this->progress->expects($this->never())->method('applyReadStatus');
+		$this->controller->patchAppData(5, 2, null);
 	}
 
 	public function testPatchNullRatingClears(): void {
@@ -128,6 +164,7 @@ class BooksControllerTest extends TestCase {
 	public function testPatchRejectsBadStatus(): void {
 		$this->library->method('getBook')->willReturn($this->book());
 		$this->request->method('getParams')->willReturn(['readStatus' => 'done']);
+		$this->progress->expects($this->never())->method('applyReadStatus');
 		$this->expectException(OCSBadRequestException::class);
 		$this->controller->patchAppData(5, null, 'done');
 	}

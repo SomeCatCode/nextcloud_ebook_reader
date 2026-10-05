@@ -67,6 +67,18 @@ describe('planNavigation', () => {
 		expect(steps).toEqual([{ kind: 'section', index: 1, progression: 0 }])
 	})
 
+	it('opens status locators without href (marked unread / finished) by overall position', () => {
+		const unread = { href: '', locations: { position: 1, totalProgression: 0 } }
+		const finished = { href: '', locations: { totalProgression: 1 } }
+		expect(planNavigation(unread, { sectionIds: ids, isComic: false })).toEqual([{ kind: 'fraction', fraction: 0 }])
+		expect(planNavigation(finished, { sectionIds: ids, isComic: false })).toEqual([{ kind: 'fraction', fraction: 1 }])
+		expect(planNavigation(unread, { sectionIds: ['a.jpg', 'b.jpg'], isComic: true })).toEqual([
+			{ kind: 'section', index: 0, progression: 0 },
+			{ kind: 'fraction', fraction: 0 },
+		])
+		expect(planNavigation(finished, { sectionIds: ['a.jpg', 'b.jpg'], isComic: true })).toEqual([{ kind: 'fraction', fraction: 1 }])
+	})
+
 	it('rejects non-cfi strings in the cfi slot', () => {
 		const steps = planNavigation({ href: 'OEBPS/ch1.xhtml', locations: { cfi: 'javascript:alert(1)' } }, { sectionIds: ids, isComic: false })
 		expect(steps.map((s) => s.kind)).toEqual(['section'])

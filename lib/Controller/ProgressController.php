@@ -50,7 +50,7 @@ class ProgressController extends AbstractOCSController {
 	}
 
 	/**
-	 * Most recently read books that are not finished ("continue reading")
+	 * Most recently read books that are started and not finished ("continue reading")
 	 *
 	 * @param int<1, 50> $limit Maximum number of books
 	 * @return DataResponse<Http::STATUS_OK, array{books: list<EbookReaderBook>}, array{}>
@@ -63,7 +63,8 @@ class ProgressController extends AbstractOCSController {
 	public function recent(int $limit = 10): DataResponse {
 		$userId = $this->uid();
 		$limit = max(1, min(self::MAX_RECENT, $limit));
-		// finished books are done and do not belong in "continue reading"; read a few more rows to fill the list
+		// finished books are done and books at 0 % (e.g. marked unread) not started: neither belongs in
+		// "continue reading"; read a few more rows to fill the list
 		$rows = $this->progressMapper->findRecent($userId, min($limit * 4, 200));
 		$byFile = [];
 		foreach ($this->bookMapper->findByUserAndFiles($userId, array_map(static fn ($p): int => $p->getFileId(), $rows)) as $book) {
@@ -72,7 +73,7 @@ class ProgressController extends AbstractOCSController {
 		$books = [];
 		foreach ($rows as $row) {
 			$book = $byFile[$row->getFileId()] ?? null;
-			if ($book !== null && $book->getReadStatus() !== Book::STATUS_FINISHED) {
+			if ($book !== null && $book->getReadStatus() !== Book::STATUS_FINISHED && $row->getPercentage() > 0.0) {
 				$books[] = $book;
 				if (count($books) >= $limit) {
 					break;
@@ -100,6 +101,10 @@ class ProgressController extends AbstractOCSController {
 
 	/**
 	 * Store the reading progress of a book (last writer wins on clientUpdatedAt)
+	 *
+	 * A stored position also sets the read status: from 98 % finished, 0 % unread, otherwise reading
+	 * (a read status set by hand to "reading" is kept at 0 %). locator.href may be "" when
+	 * locations.totalProgression is given (only the overall position is known).
 	 *
 	 * @param int $fileId Nextcloud file id
 	 * @param EbookReaderLocator $locator Readium-like locator
@@ -133,6 +138,8 @@ class ProgressController extends AbstractOCSController {
 
 	/**
 	 * Store several progress entries at once (offline queue of a mobile client)
+	 *
+	 * Each entry follows the rules of the single PUT, including the derived read status.
 	 *
 	 * @param list<array{fileId: int, locator: EbookReaderLocator, percentage: float|int, device?: string, clientUpdatedAt: int}> $items Progress entries (max 100)
 	 * @return DataResponse<Http::STATUS_OK, array{results: list<EbookReaderProgressBatchResult>}, array{}>

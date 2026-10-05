@@ -2685,7 +2685,7 @@
             "patch": {
                 "operationId": "books-patch-app-data",
                 "summary": "Change app-only fields (rating, read status) without touching the file",
-                "description": "Absent fields stay unchanged, an explicit null rating clears the rating.",
+                "description": "Absent fields stay unchanged, an explicit null rating clears the rating. The read status also sets the reading progress: finished = 100 % (locator href \"\" with totalProgression 1), unread = 0 % (href \"\", position 1, totalProgression 0; nothing is created without stored progress), reading keeps it. The progress row gets clientUpdatedAt = server time, so it wins over older positions of other devices; the returned book carries the new progress.",
                 "tags": [
                     "books"
                 ],
@@ -2715,7 +2715,7 @@
                                         "type": "string",
                                         "nullable": true,
                                         "default": null,
-                                        "description": "unread|reading|finished (sets a manual status)"
+                                        "description": "unread|reading|finished (sets a manual status and the progress: finished 100 %, unread 0 %)"
                                     }
                                 }
                             }
@@ -8632,7 +8632,7 @@
         "/ocs/v2.php/apps/ebookreader/api/v1/progress/recent": {
             "get": {
                 "operationId": "progress-recent",
-                "summary": "Most recently read books that are not finished (\"continue reading\")",
+                "summary": "Most recently read books that are started and not finished (\"continue reading\")",
                 "tags": [
                     "progress"
                 ],
@@ -8903,6 +8903,7 @@
             "put": {
                 "operationId": "progress-put",
                 "summary": "Store the reading progress of a book (last writer wins on clientUpdatedAt)",
+                "description": "A stored position also sets the read status: from 98 % finished, 0 % unread, otherwise reading (a read status set by hand to \"reading\" is kept at 0 %). locator.href may be \"\" when locations.totalProgression is given (only the overall position is known).",
                 "tags": [
                     "progress"
                 ],
@@ -9161,6 +9162,7 @@
             "post": {
                 "operationId": "progress-batch",
                 "summary": "Store several progress entries at once (offline queue of a mobile client)",
+                "description": "Each entry follows the rules of the single PUT, including the derived read status.",
                 "tags": [
                     "progress"
                 ],
