@@ -43,8 +43,10 @@ class ArchiveTools {
 
 	/** @var array<string, ?string>|null */
 	private ?array $found = null;
-	/** @var array<string, string> archive path => tool that listed it successfully */
+	/** @var array<string, string> archive path => tool that listed (or last extracted from) it successfully */
 	private array $listedWith = [];
+	/** @var array<string, string> archive path => format it was listed as */
+	private array $listedAs = [];
 
 	/**
 	 * @param list<string>|null $searchDirs directories to search; null = PATH plus the usual bin directories
@@ -96,13 +98,14 @@ class ArchiveTools {
 		foreach ($tools as $tool) {
 			try {
 				$type = $tool === self::TOOL_SEVEN_ZIP ? self::sevenZipType($path) : null;
-				[$code, $out] = $this->run(self::commandFor($tool, 'list', $this->binary($tool), $path, null, $type));
+				[$code, $out, $err] = $this->run(self::commandFor($tool, 'list', $this->binary($tool), $path, null, $type));
 				if (!self::exitOk($tool, $code)) {
-					throw new \RuntimeException($tool . ' exited with ' . $code);
+					throw new \RuntimeException($tool . ' exited with ' . $code . self::errorDetail($err));
 				}
 				$entries = self::parseEntries($tool, $out);
 				self::checkLimits($entries);
 				$this->listedWith[$path] = $tool;
+				$this->listedAs[$path] = $format ?? 'cbr';
 				return array_map(static fn (array $e): string => $e['name'], $entries);
 			} catch (UnsafeArchiveException $e) {
 				throw $e;
@@ -119,7 +122,9 @@ class ArchiveTools {
 	}
 
 	/**
-	 * Content of a single entry.
+	 * Content of a single entry. Tried with the tool that listed the archive first, then with the other
+	 * installed tools for the format: a tool may list an archive it cannot unpack (p7zip or Debian's
+	 * 7zip without the non-free RAR codec answer "Unsupported Method").
 	 *
 	 * @throws \RuntimeException
 	 */
@@ -127,20 +132,32 @@ class ArchiveTools {
 		if (!self::isSafeEntryName($entry)) {
 			throw new \RuntimeException('Unsafe archive entry name');
 		}
-		$tool = $this->listedWith[$path] ?? null;
-		if ($tool === null) {
+		if (!isset($this->listedWith[$path])) {
 			$this->list($path);
-			$tool = $this->listedWith[$path] ?? null;
 		}
-		if ($tool === null) {
+		$first = $this->listedWith[$path] ?? null;
+		if ($first === null) {
 			throw new \RuntimeException('No archive tool available');
 		}
-		$type = $tool === self::TOOL_SEVEN_ZIP ? self::sevenZipType($path) : null;
-		[$code, $out] = $this->run(self::commandFor($tool, 'extract', $this->binary($tool), $path, $entry, $type));
-		if (!self::exitOk($tool, $code)) {
-			throw new \RuntimeException('Cannot extract entry (exit ' . $code . ')');
+		$format = $this->listedAs[$path] ?? 'cbr';
+		$errors = [];
+		foreach (array_values(array_unique([$first, ...$this->readTools($format)])) as $tool) {
+			try {
+				$type = $tool === self::TOOL_SEVEN_ZIP ? self::sevenZipType($path) : null;
+				[$code, $out, $err] = $this->run(self::commandFor($tool, 'extract', $this->binary($tool), $path, $entry, $type));
+			} catch (\RuntimeException $e) {
+				$errors[] = $tool . ': ' . $e->getMessage();
+				continue;
+			}
+			if (self::exitOk($tool, $code)) {
+				// the following entries of this archive go straight to the tool that worked
+				$this->listedWith[$path] = $tool;
+				return $out;
+			}
+			$errors[] = $tool . ' exit ' . $code . self::errorDetail($err);
 		}
-		return $out;
+		$hint = $format === 'cbr' ? ' (no installed tool can unpack this RAR: install unrar or bsdtar from libarchive-tools)' : '';
+		throw new \RuntimeException('Cannot extract entry (' . implode('; ', $errors) . ')' . $hint);
 	}
 
 	/**
@@ -363,6 +380,17 @@ class ArchiveTools {
 		return preg_match('/[*?\[\]\r\n]/', $name) !== 1 && $name[0] !== '@';
 	}
 
+	/** First non-empty line of a tool's error output for messages (": ERROR: Unsupported Method"), or ''. */
+	public static function errorDetail(string $stderr): string {
+		foreach (preg_split('/\r?\n/', $stderr) ?: [] as $line) {
+			$line = trim($line);
+			if ($line !== '') {
+				return ': ' . mb_strcut($line, 0, 200, 'UTF-8');
+			}
+		}
+		return '';
+	}
+
 	private static function exitOk(string $tool, int $code): bool {
 		// 7z: 1 = warning (e.g. a file could not be opened), the result is usable
 		return $code === 0 || ($tool === self::TOOL_SEVEN_ZIP && $code === 1);
@@ -448,7 +476,7 @@ class ArchiveTools {
 	 * is watched for the size limit while the process runs.
 	 *
 	 * @param list<string> $cmd
-	 * @return array{0: int, 1: string} exit code and stdout
+	 * @return array{0: int, 1: string, 2: string} exit code, stdout and (the start of) stderr
 	 * @throws \RuntimeException on timeout, size limit or start failure
 	 */
 	private function run(array $cmd, ?string $cwd = null, int $timeout = self::TIMEOUT_SECONDS): array {
@@ -490,7 +518,8 @@ class ArchiveTools {
 				throw new \RuntimeException('Archive tool output too large');
 			}
 			$data = file_get_contents($outFile);
-			return [$exit, $data === false ? '' : $data];
+			$err = @file_get_contents($errFile, false, null, 0, 4096);
+			return [$exit, $data === false ? '' : $data, $err === false ? '' : $err];
 		} finally {
 			@unlink($outFile);
 			@unlink($errFile);

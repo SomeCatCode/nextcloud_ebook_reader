@@ -77,7 +77,7 @@ class ComicController extends Controller {
 			return new JSONResponse([], Http::STATUS_FORBIDDEN);
 		}
 		try {
-			$pages = $this->pageList($file);
+			$pages = $this->pageList($file, true);
 		} catch (\Throwable $e) {
 			$this->logger->info('Cannot list comic pages of ' . $fileId . ': ' . $e->getMessage(), ['app' => Application::APP_ID]);
 			return new JSONResponse([], Http::STATUS_UNPROCESSABLE_ENTITY);
@@ -187,8 +187,11 @@ class ComicController extends Controller {
 		return 0;
 	}
 
-	/** @return list<array{name: string, size: int}> */
-	private function pageList(File $file): array {
+	/**
+	 * @param bool $probe also check that the first page of a CBR/CB7/CBT can be unpacked (not on a cache hit)
+	 * @return list<array{name: string, size: int}>
+	 */
+	private function pageList(File $file, bool $probe = false): array {
 		$cache = $this->cacheFactory->createDistributed('ebookreader-comic');
 		$key = $file->getId() . '-' . $file->getEtag();
 		$hit = $cache->get($key);
@@ -203,6 +206,11 @@ class ComicController extends Controller {
 				$archive = ComicArchive::open($path, $format, $this->archiveTools);
 				try {
 					$pages = array_map(static fn (string $name): array => ['name' => $name, 'size' => 0], $archive->pages());
+					// A tool may list a RAR it cannot unpack (7z without the RAR codec). Without a readable first page
+					// the list is refused, so the client unpacks the file itself instead of showing empty pages.
+					if ($probe && $pages !== [] && $archive->read($pages[0]['name'], self::MAX_PAGE) === null) {
+						throw new \RuntimeException('First page cannot be read');
+					}
 				} finally {
 					$archive->close();
 				}

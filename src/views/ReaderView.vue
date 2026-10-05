@@ -3,7 +3,7 @@
   - SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 <template>
-	<div class="ebr" :class="{ 'ebr--embedded': embedded }" :data-theme="effectiveTheme">
+	<div class="ebr" :class="{ 'ebr--embedded': embedded, 'ebr--fullscreen': fullscreen.active.value }" :data-theme="effectiveTheme">
 		<header v-show="chrome" class="ebr__bar ebr__bar--top">
 			<NcButton
 				v-if="!embedded"
@@ -64,6 +64,17 @@
 				</template>
 				<ReaderSettings :model="viewSettings" :isComic="isComic" @change="onSettingsChange" />
 			</NcPopover>
+			<NcButton
+				v-if="fullscreen.supported"
+				:aria-label="fullscreenLabel"
+				:title="fullscreenLabel"
+				:pressed="fullscreen.active.value"
+				variant="tertiary"
+				@click="fullscreen.toggle()">
+				<template #icon>
+					<ReaderIcon :name="fullscreen.active.value ? 'fullscreen-exit' : 'fullscreen'" />
+				</template>
+			</NcButton>
 			<NcButton
 				v-if="book?.editable"
 				:aria-label="t('ebookreader', 'Edit book')"
@@ -244,7 +255,7 @@ import type { Annotation, AnnotationColor, Book, Locator, Progress, ReaderSettin
 
 import { showError, showSuccess } from '@nextcloud/dialogs'
 import { translate as t } from '@nextcloud/l10n'
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
@@ -265,6 +276,7 @@ import { getBook, getSettings, putSettings } from '../services/api.ts'
 import { loadBookSource, needsClientCover, uploadClientCover } from '../services/bookSource.ts'
 import { DownloadDeclinedError } from '../services/largeDownload.ts'
 import { createProgressSync } from '../services/progressSync.ts'
+import { isTypingTarget, useFullscreen } from '../services/useFullscreen.ts'
 import { useLargeDownloadConfirm } from '../services/useLargeDownloadConfirm.ts'
 import { useAnnotationsStore } from '../stores/annotations.ts'
 
@@ -282,6 +294,11 @@ const router = useRouter()
 const embedded = computed(() => route.query.embedded === '1')
 
 const largeDownload = useLargeDownloadConfirm()
+/** Leaves fullscreen by itself when the reader is closed (scope dispose) */
+const fullscreen = useFullscreen()
+const fullscreenLabel = computed(() => fullscreen.active.value ? t('ebookreader', 'Exit fullscreen') : t('ebookreader', 'Fullscreen'))
+// The Nextcloud header lies outside the reader: hide it while the page is fullscreen (see .ebr--fullscreen)
+watchEffect(() => document.documentElement.classList.toggle('ebookreader-fullscreen', fullscreen.active.value))
 const stage = ref<HTMLElement | null>(null)
 const book = ref<Book | null>(null)
 const state = ref<'loading' | 'ready' | 'error'>('loading')
@@ -734,12 +751,21 @@ function onStageClick(e: MouseEvent): void {
 /**
  * @param key
  * @param e
+ * @param modified Ctrl/Alt/Meta held (keys from the book frame, which only reports this flag)
  */
-function handleKey(key: string, e?: KeyboardEvent): void {
+function handleKey(key: string, e?: KeyboardEvent, modified = false): void {
 	if (e && (e.target as HTMLElement)?.matches?.('input, textarea, select')) {
 		return
 	}
 	switch (key) {
+		case 'f':
+		case 'F':
+			if (modified || (e && (e.ctrlKey || e.altKey || e.metaKey || isTypingTarget(e.target)))
+				|| noteDialog.value || conflict.value || externalLink.value || largeDownload.pending.value) {
+				return
+			}
+			void fullscreen.toggle()
+			break
 		case 'ArrowLeft':
 			goLeft()
 			break
@@ -762,6 +788,10 @@ function handleKey(key: string, e?: KeyboardEvent): void {
 			void reader?.prev()
 			break
 		case 'Escape':
+			if (fullscreen.active.value) {
+				// the browser leaves fullscreen on Esc; never close the book with the same key press
+				return
+			}
 			if (popup.value) {
 				closePopup()
 			} else if (settingsOpen.value) {
@@ -916,7 +946,7 @@ onMounted(async () => {
 			}),
 			reader.on('annotation-click', ({ id, rect }) => onAnnotationClick(id, rect)),
 			reader.on('tap', ({ zone }) => onTap(zone)),
-			reader.on('key', ({ key }) => handleKey(key)),
+			reader.on('key', ({ key, modified }) => handleKey(key, undefined, modified)),
 			reader.on('external-link', ({ url }) => askExternalLink(url)),
 		)
 		reader.setAnnotations(annotations.drawable)
@@ -949,6 +979,7 @@ onBeforeUnmount(() => {
 	sync?.destroy()
 	reader?.destroy()
 	annotations.reset()
+	document.documentElement.classList.remove('ebookreader-fullscreen')
 })
 </script>
 
@@ -963,6 +994,11 @@ onBeforeUnmount(() => {
 .ebr[data-theme='dark'] { --ebr-bg: #1c1c1e; --ebr-fg: #d8d8d8; }
 /* Inside the Files viewer iframe: cover the embedded page completely, including its header */
 .ebr--embedded { inset: 0; z-index: 10000; }
+/*
+ * Fullscreen: the whole page (documentElement) is fullscreen so dialogs/popovers teleported to <body> stay visible.
+ * The reader covers the viewport but keeps its z-index, so those dialogs still stack above it as usual.
+ */
+.ebr--fullscreen { inset: 0; }
 .ebr__stage { position: relative; flex: 1 1 auto; min-height: 0; }
 .ebr__bar {
 	position: relative; flex: 0 0 auto; z-index: 2; display: flex; align-items: center; gap: 4px;
@@ -993,4 +1029,9 @@ onBeforeUnmount(() => {
 .ebr__group-label { font-weight: 600; padding: 8px 4px 4px; }
 .ebr__hit { display: block; width: 100%; text-align: start; background: none; border: 0; padding: 6px 4px; cursor: pointer; color: inherit; border-radius: 8px; }
 .ebr__hit:hover { background: var(--color-background-hover); }
+</style>
+
+<style>
+/* The Nextcloud header (stacked above the reader) would cover the toolbar in fullscreen */
+html.ebookreader-fullscreen #header { display: none !important; }
 </style>
