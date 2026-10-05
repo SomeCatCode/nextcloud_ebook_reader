@@ -5,6 +5,9 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+### Hinzugefügt
+- **Vollbildmodus** im Reader (Web): neuer Button „Vollbild“/„Vollbild beenden“ in der Leiste und die Taste `F` (nicht beim Tippen in Feldern oder Dialogen). Esc beendet das Vollbild wie gewohnt, ohne das Buch zu schließen; beim Schließen des Readers endet es automatisch. Vollbild gilt für die ganze Seite, die Nextcloud-Kopfzeile wird dabei ausgeblendet, sodass Inhaltsverzeichnis, Einstellungen, Markierungs-Popups und Dialoge sichtbar bleiben. Funktioniert auch im Dateien-Viewer und in Safari/iPadOS (webkit-Variante); wo der Browser kein Vollbild erlaubt (z. B. Safari auf dem iPhone), erscheint der Button nicht.
+
 ## 0.6.1 – 2026-10-02
 
 ### Hinzugefügt

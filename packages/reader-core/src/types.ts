@@ -112,7 +112,8 @@ export interface ReaderEvents {
 	error: Error
 	/** Emitted for a tap/click on the page */
 	tap: { zone: 'left' | 'center' | 'right' }
-	key: { key: string }
+	/** A key pressed inside the book. `modified`: Ctrl, Alt or Meta was held (browser shortcuts, not ours) */
+	key: { key: string, modified?: boolean }
 	/** The user selected text (reflowable books). The UI offers highlight/note/copy. */
 	selection: ReaderSelection
 	/** The selection is gone (collapsed, page turned) */

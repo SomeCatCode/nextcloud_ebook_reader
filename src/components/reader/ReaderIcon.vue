@@ -14,9 +14,9 @@
 </template>
 
 <script setup lang="ts">
-import { mdiBookmark, mdiBookmarkOutline, mdiContentCopy, mdiDelete, mdiDownload, mdiMarker, mdiNoteTextOutline } from '@mdi/js'
+import { mdiBookmark, mdiBookmarkOutline, mdiContentCopy, mdiDelete, mdiDownload, mdiFullscreen, mdiFullscreenExit, mdiMarker, mdiNoteTextOutline } from '@mdi/js'
 
-withDefaults(defineProps<{ name: 'menu' | 'search' | 'close' | 'edit' | 'text' | 'bookmark' | 'bookmark-outline' | 'notes' | 'highlight' | 'copy' | 'delete' | 'download', size?: number }>(), { size: 20 })
+withDefaults(defineProps<{ name: 'menu' | 'search' | 'close' | 'edit' | 'text' | 'bookmark' | 'bookmark-outline' | 'notes' | 'highlight' | 'copy' | 'delete' | 'download' | 'fullscreen' | 'fullscreen-exit', size?: number }>(), { size: 20 })
 
 const PATHS = {
 	menu: 'M3,6H21V8H3V6M3,11H21V13H3V11M3,16H21V18H3V16Z',
@@ -30,6 +30,8 @@ const PATHS = {
 	copy: mdiContentCopy,
 	delete: mdiDelete,
 	download: mdiDownload,
+	fullscreen: mdiFullscreen,
+	'fullscreen-exit': mdiFullscreenExit,
 	text: 'M9.6,14L12,7.7L14.4,14M11,5L5.5,19H7.7L8.8,16H15.2L16.3,19H18.5L13,5H11Z',
 }
 </script>

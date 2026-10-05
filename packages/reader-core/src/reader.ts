@@ -160,7 +160,7 @@ export function createReader(container: HTMLElement, options: ReaderOptions = {}
 		})
 		bindSelection(doc, index)
 		doc.addEventListener('keydown', (e: KeyboardEvent) => {
-			emit('key', { key: e.key })
+			emit('key', { key: e.key, modified: e.ctrlKey || e.altKey || e.metaKey })
 		})
 	}
 
