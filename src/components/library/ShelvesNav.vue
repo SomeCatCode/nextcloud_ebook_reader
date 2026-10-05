@@ -15,7 +15,7 @@
 	</NcAppNavigationCaption>
 
 	<NcAppNavigationItem
-		v-for="(shelf, index) in shelves.shelves"
+		v-for="(shelf, index) in shelves.own"
 		:key="shelf.id"
 		:name="shelf.name"
 		:active="isActive(shelf)"
@@ -28,16 +28,28 @@
 			<NcIconSvgWrapper :path="shelf.type === 'smart' ? mdiFilterVariant : mdiBookshelf" />
 		</template>
 		<template #counter>
+			<NcIconSvgWrapper
+				v-if="(shelf.shareCount ?? 0) > 0"
+				class="shelves-nav__shared"
+				:path="mdiShareVariant"
+				:size="16"
+				:title="n('ebookreader', 'Shared with %n user', 'Shared with %n users', shelf.shareCount ?? 0)" />
 			<NcCounterBubble :count="shelf.count" />
 		</template>
 		<template #actions>
+			<NcActionButton @click="sharing = { type: 'shelf', id: shelf.id, name: shelf.name }">
+				<template #icon>
+					<NcIconSvgWrapper :path="mdiShareVariant" />
+				</template>
+				{{ t('ebookreader', 'Share…') }}
+			</NcActionButton>
 			<NcActionButton :disabled="index === 0" @click="move(shelf, -1)">
 				<template #icon>
 					<NcIconSvgWrapper :path="mdiArrowUp" />
 				</template>
 				{{ t('ebookreader', 'Move up') }}
 			</NcActionButton>
-			<NcActionButton :disabled="index === shelves.shelves.length - 1" @click="move(shelf, 1)">
+			<NcActionButton :disabled="index === shelves.own.length - 1" @click="move(shelf, 1)">
 				<template #icon>
 					<NcIconSvgWrapper :path="mdiArrowDown" />
 				</template>
@@ -52,9 +64,44 @@
 		</template>
 	</NcAppNavigationItem>
 	<NcAppNavigationItem
+		v-for="shelf in shelves.incoming"
+		:key="`in-${shelf.id}`"
+		:name="shelf.name"
+		:title="t('ebookreader', 'Shared by {name} (read-only)', { name: shelf.ownerDisplayName ?? shelf.owner ?? '' })"
+		:active="library.activeManualShelfId === shelf.id"
+		@click="library.viewShelf(shelf)">
+		<template #icon>
+			<NcIconSvgWrapper :path="mdiBookshelf" />
+		</template>
+		<template #counter>
+			<NcIconSvgWrapper
+				class="shelves-nav__shared"
+				:path="mdiAccountArrowLeftOutline"
+				:size="16"
+				:title="t('ebookreader', 'Shared by {name}', { name: shelf.ownerDisplayName ?? shelf.owner ?? '' })" />
+			<NcCounterBubble :count="shelf.count" />
+		</template>
+		<template #actions>
+			<NcActionText>
+				<template #icon>
+					<NcIconSvgWrapper :path="mdiAccountArrowLeftOutline" />
+				</template>
+				{{ t('ebookreader', 'Shared by {name}', { name: shelf.ownerDisplayName ?? shelf.owner ?? '' }) }}
+			</NcActionText>
+			<NcActionButton @click="leave(shelf)">
+				<template #icon>
+					<NcIconSvgWrapper :path="mdiClose" />
+				</template>
+				{{ t('ebookreader', 'Remove shared shelf') }}
+			</NcActionButton>
+		</template>
+	</NcAppNavigationItem>
+	<NcAppNavigationItem
 		v-if="shelves.loaded && shelves.shelves.length === 0"
 		:name="t('ebookreader', 'No shelves yet')"
 		class="shelves-nav__empty" />
+
+	<ShareDialog v-if="sharing" :target="sharing" @close="sharing = null" />
 
 	<ShelfNameDialog
 		v-if="showNew"
@@ -74,26 +121,33 @@
 </template>
 
 <script setup lang="ts">
+import type { ShareTarget } from '../../stores/shares.ts'
 import type { Shelf } from '../../types.ts'
 
-import { mdiArrowDown, mdiArrowUp, mdiBookshelf, mdiDeleteOutline, mdiFilterVariant, mdiPlus } from '@mdi/js'
+import { mdiAccountArrowLeftOutline, mdiArrowDown, mdiArrowUp, mdiBookshelf, mdiClose, mdiDeleteOutline, mdiFilterVariant, mdiPlus, mdiShareVariant } from '@mdi/js'
 import { showError } from '@nextcloud/dialogs'
-import { t } from '@nextcloud/l10n'
+import { n, t } from '@nextcloud/l10n'
 import { computed, ref } from 'vue'
 import NcActionButton from '@nextcloud/vue/components/NcActionButton'
+import NcActionText from '@nextcloud/vue/components/NcActionText'
 import NcAppNavigationCaption from '@nextcloud/vue/components/NcAppNavigationCaption'
 import NcAppNavigationItem from '@nextcloud/vue/components/NcAppNavigationItem'
 import NcCounterBubble from '@nextcloud/vue/components/NcCounterBubble'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
+import ShareDialog from './ShareDialog.vue'
 import ShelfNameDialog from './ShelfNameDialog.vue'
 import { useLibraryStore } from '../../stores/library.ts'
+import { useSharesStore } from '../../stores/shares.ts'
 import { useShelvesStore } from '../../stores/shelves.ts'
 
 const library = useLibraryStore()
 const shelves = useShelvesStore()
+const shares = useSharesStore()
 const showNew = ref(false)
 const deleting = ref<Shelf | null>(null)
+/** shelf in the share dialog */
+const sharing = ref<ShareTarget | null>(null)
 
 const deleteButtons = computed(() => [
 	{
@@ -158,6 +212,34 @@ async function move(shelf: Shelf, delta: -1 | 1): Promise<void> {
 }
 
 /**
+ * Removes a shelf another user shares with the current user.
+ *
+ * @param shelf
+ */
+async function leave(shelf: Shelf): Promise<void> {
+	try {
+		const viewing = library.activeManualShelfId === shelf.id
+		await shares.leave({
+			type: 'shelf',
+			fileId: null,
+			shelfId: shelf.id,
+			name: shelf.name,
+			owner: shelf.owner ?? '',
+			ownerDisplayName: shelf.ownerDisplayName ?? '',
+			recipient: '',
+			recipientDisplayName: '',
+			createdAt: shelf.createdAt,
+			bookCount: shelf.count,
+		})
+		if (viewing) {
+			library.resetFilters()
+		}
+	} catch {
+		showError(t('ebookreader', 'Could not remove the shared shelf'))
+	}
+}
+
+/**
  *
  */
 async function confirmDelete(): Promise<void> {
@@ -180,4 +262,5 @@ async function confirmDelete(): Promise<void> {
 
 <style scoped>
 .shelves-nav__empty { opacity: .7; }
+.shelves-nav__shared { color: var(--color-text-maxcontrast); }
 </style>

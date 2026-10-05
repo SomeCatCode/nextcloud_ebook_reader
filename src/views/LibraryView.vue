@@ -17,6 +17,8 @@
 				</template>
 			</NcAppNavigationItem>
 
+			<SharedNav />
+
 			<ShelvesNav />
 
 			<NcAppNavigationCaption :name="t('ebookreader', 'Filter')" />
@@ -247,7 +249,7 @@
 					{{ t('ebookreader', 'Add to shelf…') }}
 				</NcButton>
 				<NcButton
-					v-if="store.activeManualShelfId !== null"
+					v-if="store.activeManualShelfId !== null && !shelves.byId(store.activeManualShelfId)?.readOnly"
 					:disabled="store.selectedIds.length === 0"
 					@click="removeFromShelf">
 					<template #icon>
@@ -483,6 +485,7 @@ import DeleteBooksDialog from '../components/library/DeleteBooksDialog.vue'
 import FilterBar from '../components/library/FilterBar.vue'
 import SeriesGrid from '../components/library/SeriesGrid.vue'
 import SettingsDialog from '../components/library/SettingsDialog.vue'
+import SharedNav from '../components/library/SharedNav.vue'
 import ShelvesNav from '../components/library/ShelvesNav.vue'
 import TagTreeNav from '../components/library/TagTreeNav.vue'
 import UploadPanel from '../components/library/UploadPanel.vue'

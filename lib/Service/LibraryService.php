@@ -41,6 +41,8 @@ class LibraryService {
 	private const TAGS = 'ebookreader_tags';
 	private const PROGRESS = 'ebookreader_progress';
 	private const SHELF_BOOKS = 'ebookreader_shelf_books';
+	private const SHELF_SHARES = 'ebookreader_shelf_shares';
+	private const FILE_SHARES = 'ebookreader_file_shares';
 	/** Interactive scans index inline only files up to this size; larger ones are queued as jobs */
 	public const INTERACTIVE_MAX_BYTES = 50 * 1024 * 1024;
 
@@ -85,7 +87,8 @@ class LibraryService {
 		}
 
 		if ($existing !== null && !$force && $existing->getDeletedAt() === null
-			&& $existing->getFileMtime() === $mtime && $existing->getFileEtag() === $etag && $existing->getSidecarEtag() === $sidecarEtag) {
+			&& $existing->getFileMtime() === $mtime && $existing->getFileEtag() === $etag && $existing->getSidecarEtag() === $sidecarEtag
+			&& !$this->sharedOwnerChangedSince($userId, $fileId, $existing->getUpdatedAt())) {
 			if ($existing->getPath() !== $path || $existing->getFormat() !== $format) {
 				$existing->setPath($path);
 				$existing->setFormat($format);
@@ -101,6 +104,9 @@ class LibraryService {
 		if ($sidecarData !== null) {
 			$meta = self::applySidecar($meta, $sidecarData);
 		}
+		// a book shared through the app shows the metadata of the sharing user's library (their sidecar and app edits
+		// are not visible to the recipient otherwise)
+		$meta = $this->applySharedMetadata($userId, $fileId, $meta);
 		$now = self::nowMs();
 
 		// metadata edits waiting to be written into the file (WriteMetadataJob) must not be overwritten by the old file content
@@ -208,6 +214,138 @@ class LibraryService {
 			$this->replaceFileTags($userId, $book, $meta->genres, $meta->tags, $meta->subjects);
 		}
 		return $book;
+	}
+
+	/**
+	 * Metadata of a book the app shared with the user: taken from the owner's library row (descriptive fields, genres and
+	 * the tags read from the file or sidecar; never the owner's rating, status, app-only tags or progress).
+	 */
+	private function applySharedMetadata(string $userId, int $fileId, BookMetadata $meta): BookMetadata {
+		try {
+			$owners = $this->sharedOwners($userId, $fileId);
+		} catch (\Throwable) {
+			return $meta;
+		}
+		foreach ($owners as $owner) {
+			try {
+				$source = $this->bookMapper->findByUserAndFile($owner, $fileId);
+			} catch (DoesNotExistException) {
+				continue;
+			}
+			$genres = [];
+			$tags = [];
+			foreach ($this->tagMapper->findByBook($source->getId()) as $tag) {
+				if ($tag->getType() === Tag::TYPE_GENRE) {
+					$genres[] = $tag->getName();
+				} elseif ($tag->getSource() === Tag::SOURCE_FILE) {
+					$tags[] = $tag->getName();
+				}
+			}
+			return $meta->with([
+				'title' => $source->getTitle() ?? $meta->title,
+				'authors' => $source->getAuthorsArray(),
+				'series' => $source->getSeries(),
+				'seriesIndex' => $source->getSeriesIndex(),
+				'description' => $source->getDescription(),
+				'language' => $source->getLanguage(),
+				'publisher' => $source->getPublisher(),
+				'isbn' => $source->getIsbn(),
+				'publishedAt' => $source->getPublishedAt(),
+				'genres' => $genres,
+				'tags' => $tags,
+				'subjects' => [],
+			]);
+		}
+		return $meta;
+	}
+
+	/**
+	 * Users who shared the file with $userId through the app (direct book share or shared shelf).
+	 * @return list<string>
+	 */
+	private function sharedOwners(string $userId, int $fileId): array {
+		$qb = $this->db->getQueryBuilder();
+		$qb->selectDistinct('owner_id')->from(self::FILE_SHARES)
+			->where($qb->expr()->eq('recipient_id', $qb->createNamedParameter($userId)))
+			->andWhere($qb->expr()->eq('file_id', $qb->createNamedParameter($fileId, IQueryBuilder::PARAM_INT)))
+			->andWhere($qb->expr()->neq('owner_id', $qb->createNamedParameter($userId)));
+		$res = $qb->executeQuery();
+		$out = array_map('strval', $res->fetchAll(\PDO::FETCH_COLUMN));
+		$res->closeCursor();
+		return $out;
+	}
+
+	/**
+	 * File ids the app shared with the user (they belong to the library wherever the share is mounted).
+	 * @return list<int>
+	 */
+	public function sharedFileIds(string $userId): array {
+		try {
+			$qb = $this->db->getQueryBuilder();
+			$qb->selectDistinct('file_id')->from(self::FILE_SHARES)
+				->where($qb->expr()->eq('recipient_id', $qb->createNamedParameter($userId)));
+			$res = $qb->executeQuery();
+			$out = array_map('intval', $res->fetchAll(\PDO::FETCH_COLUMN));
+			$res->closeCursor();
+			return $out;
+		} catch (\Throwable $e) {
+			// table missing before the migration ran
+			$this->logger->debug('Shared files unavailable: ' . $e->getMessage(), ['app' => 'ebookreader']);
+			return [];
+		}
+	}
+
+	/** Whether a user who shared the file with $userId through the app changed their book row after $sinceMs. */
+	private function sharedOwnerChangedSince(string $userId, int $fileId, int $sinceMs): bool {
+		try {
+			$qb = $this->db->getQueryBuilder();
+			$qb->select('ob.id')
+				->from(self::FILE_SHARES, 'fs')
+				->innerJoin('fs', self::BOOKS, 'ob', $qb->expr()->andX(
+					$qb->expr()->eq('ob.user_id', 'fs.owner_id'),
+					$qb->expr()->eq('ob.file_id', 'fs.file_id'),
+				))
+				->where($qb->expr()->eq('fs.recipient_id', $qb->createNamedParameter($userId)))
+				->andWhere($qb->expr()->eq('fs.file_id', $qb->createNamedParameter($fileId, IQueryBuilder::PARAM_INT)))
+				->andWhere($qb->expr()->isNull('ob.deleted_at'))
+				->andWhere($qb->expr()->gt('ob.updated_at', $qb->createNamedParameter($sinceMs, IQueryBuilder::PARAM_INT)))
+				->setMaxResults(1);
+			$res = $qb->executeQuery();
+			$found = $res->fetchOne();
+			$res->closeCursor();
+			return $found !== false && $found !== null;
+		} catch (\Throwable) {
+			return false;
+		}
+	}
+
+	/**
+	 * Newest change of the sharing users' rows per shared file, to re-index the recipient's copy when the owner edited it.
+	 * @return array<int, int> file id => updated_at (ms)
+	 */
+	private function sharedOwnerStamps(string $userId): array {
+		try {
+			$qb = $this->db->getQueryBuilder();
+			$qb->select('fs.file_id')
+				->selectAlias($qb->func()->max('ob.updated_at'), 'stamp')
+				->from(self::FILE_SHARES, 'fs')
+				->innerJoin('fs', self::BOOKS, 'ob', $qb->expr()->andX(
+					$qb->expr()->eq('ob.user_id', 'fs.owner_id'),
+					$qb->expr()->eq('ob.file_id', 'fs.file_id'),
+				))
+				->where($qb->expr()->eq('fs.recipient_id', $qb->createNamedParameter($userId)))
+				->andWhere($qb->expr()->isNull('ob.deleted_at'))
+				->groupBy('fs.file_id');
+			$res = $qb->executeQuery();
+			$out = [];
+			while ($row = $res->fetch()) {
+				$out[(int)$row['file_id']] = (int)$row['stamp'];
+			}
+			$res->closeCursor();
+			return $out;
+		} catch (\Throwable) {
+			return [];
+		}
 	}
 
 	/**
@@ -337,13 +475,17 @@ class LibraryService {
 		}
 	}
 
+	/** Whether a node belongs to the user's library: below a library folder, or a book the app shared with the user. */
 	public function isInLibrary(string $userId, Node $node): bool {
 		try {
 			$rel = $this->rootFolder->getUserFolder($userId)->getRelativePath($node->getPath());
 		} catch (\Throwable) {
 			return false;
 		}
-		return $rel !== null && $this->isPathInLibrary($userId, (string)$rel);
+		if ($rel !== null && $this->isPathInLibrary($userId, (string)$rel)) {
+			return true;
+		}
+		return $rel !== null && $node instanceof File && in_array($node->getId(), $this->sharedFileIds($userId), true);
 	}
 
 	/** Whether a user-relative path lies below one of the user's library folders. */
@@ -408,6 +550,27 @@ class LibraryService {
 			}
 			if ($root instanceof Folder && !$this->walkFolder($root, $onFile, $seen)) {
 				$complete = false;
+			}
+		}
+		// books shared with the user through the app, wherever Nextcloud mounted them (share folder)
+		foreach ($this->sharedFileIds($userId) as $id) {
+			if (isset($seen[$id])) {
+				continue;
+			}
+			try {
+				$node = $userFolder->getFirstNodeById($id);
+			} catch (\Throwable $e) {
+				$this->logger->info('Shared book ' . $id . ' not accessible: ' . $e->getMessage(), ['app' => 'ebookreader']);
+				$complete = false;
+				continue;
+			}
+			if (!$node instanceof File || SidecarService::isSidecarName($node->getName())) {
+				continue; // not mounted (share pending or removed): the book is tombstoned
+			}
+			$format = $this->metadata->detectFormat($node->getName(), $node->getMimeType());
+			if ($format !== null) {
+				$seen[$id] = true;
+				$onFile($node, $format, $this->sidecar->etagOf($node));
 			}
 		}
 		return $complete;
@@ -498,7 +661,8 @@ class LibraryService {
 		$deadline = $inlineSeconds === null ? INF : microtime(true) + $inlineSeconds;
 		$found = [];
 		$stats = ['found' => 0, 'indexed' => 0, 'queued' => 0];
-		$complete = $this->walkLibrary($userId, function (File $file, string $format, ?string $sidecarEtag = null) use ($userId, $existing, &$found, &$stats, $deadline, $progress, $inlineMaxBytes, $forceFormats): void {
+		$ownerStamps = $this->sharedOwnerStamps($userId);
+		$complete = $this->walkLibrary($userId, function (File $file, string $format, ?string $sidecarEtag = null) use ($userId, $existing, &$found, &$stats, $deadline, $progress, $inlineMaxBytes, $forceFormats, $ownerStamps): void {
 			$id = $file->getId();
 			$found[$id] = true;
 			$stats['found']++;
@@ -506,6 +670,8 @@ class LibraryService {
 			$stale = $b === null || $b->getDeletedAt() !== null || $b->getFileMtime() !== $file->getMTime()
 				|| $b->getFileEtag() !== (string)$file->getEtag() || $b->getFormat() !== $format
 				|| $b->getSidecarEtag() !== $sidecarEtag;
+			// a shared book whose owner changed the metadata since the recipient's copy was indexed (indexFile sees it too)
+			$stale = $stale || ($b !== null && isset($ownerStamps[$id]) && $ownerStamps[$id] > $b->getUpdatedAt());
 			$forced = $forceFormats !== null && ($forceFormats === [] || in_array($format, $forceFormats, true));
 			$stale = $stale || $forced;
 			if ($progress !== null) {
@@ -744,7 +910,17 @@ class LibraryService {
 	private function shelfCondition(IQueryBuilder $qb, string $userId, string $name, bool $negate): ?string {
 		$shelf = $this->findShelf($userId, FilterTerms::shelfId($name));
 		if ($shelf === null) {
-			return $negate ? null : '1 = 0';
+			$incoming = $this->incomingShelf($userId, FilterTerms::shelfId($name));
+			if ($incoming === null) {
+				return $negate ? null : '1 = 0';
+			}
+			// a shelf shared with the user: the files shared for it (the owner's query/assignments are not evaluated here)
+			$sub = $this->db->getQueryBuilder();
+			$sub->select('fsm.file_id')->from(self::FILE_SHARES, 'fsm')
+				->where($sub->expr()->eq('fsm.shelf_share_id', $qb->createNamedParameter($incoming['shareId'], IQueryBuilder::PARAM_INT)))
+				->andWhere($sub->expr()->eq('fsm.recipient_id', $qb->createNamedParameter($userId)));
+			$fn = $qb->createFunction('(' . $sub->getSQL() . ')');
+			return $negate ? $qb->expr()->notIn('b.file_id', $fn) : $qb->expr()->in('b.file_id', $fn);
 		}
 		$e = $qb->expr();
 		if ($shelf->isSmart()) {
@@ -766,6 +942,41 @@ class LibraryService {
 	private static function sql(string|\OCP\DB\QueryBuilder\ICompositeExpression $condition): string {
 		/** @psalm-suppress InvalidCast */
 		return (string)$condition;
+	}
+
+	/** @var array<string, ?array{shareId: int, type: string}> */
+	private array $incomingShelfCache = [];
+
+	/**
+	 * A shelf of another user shared with $userId.
+	 * @return ?array{shareId: int, type: string}
+	 */
+	private function incomingShelf(string $userId, ?int $shelfId): ?array {
+		if ($shelfId === null || $userId === '') {
+			return null;
+		}
+		$key = $userId . '|' . $shelfId;
+		if (array_key_exists($key, $this->incomingShelfCache)) {
+			return $this->incomingShelfCache[$key];
+		}
+		$found = null;
+		try {
+			$qb = $this->db->getQueryBuilder();
+			$qb->select('ss.id', 's.type')->from(self::SHELF_SHARES, 'ss')
+				->innerJoin('ss', 'ebookreader_shelves', 's', $qb->expr()->eq('s.id', 'ss.shelf_id'))
+				->where($qb->expr()->eq('ss.shelf_id', $qb->createNamedParameter($shelfId, IQueryBuilder::PARAM_INT)))
+				->andWhere($qb->expr()->eq('ss.recipient_id', $qb->createNamedParameter($userId)))
+				->setMaxResults(1);
+			$res = $qb->executeQuery();
+			$row = $res->fetch();
+			$res->closeCursor();
+			if (is_array($row)) {
+				$found = ['shareId' => (int)$row['id'], 'type' => (string)$row['type']];
+			}
+		} catch (\Throwable) {
+			$found = null;
+		}
+		return $this->incomingShelfCache[$key] = $found;
 	}
 
 	private function findShelf(string $userId, ?int $id): ?Shelf {
@@ -852,9 +1063,14 @@ class LibraryService {
 			if ($entry['type'] !== 'shelf') {
 				continue;
 			}
-			$shelf = $this->findShelf($userId, FilterTerms::shelfId($entry['name']));
+			$id = FilterTerms::shelfId($entry['name']);
+			$shelf = $this->findShelf($userId, $id);
 			if ($shelf !== null && !$shelf->isSmart()) {
 				return $shelf->getId();
+			}
+			// a manual shelf shared with the user keeps the owner's order
+			if ($shelf === null && $id !== null && ($this->incomingShelf($userId, $id)['type'] ?? null) === Shelf::TYPE_MANUAL) {
+				return $id;
 			}
 		}
 		return null;

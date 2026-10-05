@@ -30,6 +30,7 @@
 	<background-jobs>
 		<job>OCA\EbookReader\BackgroundJob\RescanJob</job>
 		<job>OCA\EbookReader\BackgroundJob\CleanupTombstonesJob</job>
+		<job>OCA\EbookReader\BackgroundJob\SyncSharedShelvesJob</job>
 	</background-jobs>
 	<commands>
 		<command>OCA\EbookReader\Command\Scan</command>

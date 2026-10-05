@@ -43,6 +43,12 @@
 						</template>
 						{{ t('ebookreader', 'Add to shelf…') }}
 					</NcButton>
+					<NcButton @click="showShare = true">
+						<template #icon>
+							<NcIconSvgWrapper :path="mdiShareVariant" />
+						</template>
+						{{ t('ebookreader', 'Share…') }}
+					</NcButton>
 					<NcButton @click="$emit('organize', book.fileId)">
 						<template #icon>
 							<NcIconSvgWrapper :path="mdiFolderMoveOutline" />
@@ -166,6 +172,11 @@
 		:fileIds="[book.fileId]"
 		@close="showShelf = false" />
 
+	<ShareDialog
+		v-if="showShare"
+		:target="{ type: 'book', id: book.fileId, name: title }"
+		@close="showShare = false" />
+
 	<ConvertDialog
 		v-if="showConvert"
 		:book="book"
@@ -176,7 +187,7 @@
 <script setup lang="ts">
 import type { Book, FilterTerm, MetadataOverrideField, ReadStatus } from '../../types.ts'
 
-import { mdiBookOpenPageVariant, mdiBookOpenVariant, mdiBookshelf, mdiDeleteOutline, mdiFileReplaceOutline, mdiFolderMoveOutline, mdiFolderOutline, mdiPencil, mdiSwapHorizontal } from '@mdi/js'
+import { mdiBookOpenPageVariant, mdiBookOpenVariant, mdiBookshelf, mdiDeleteOutline, mdiFileReplaceOutline, mdiFolderMoveOutline, mdiFolderOutline, mdiPencil, mdiShareVariant, mdiSwapHorizontal } from '@mdi/js'
 import { showError, showSuccess } from '@nextcloud/dialogs'
 import { t } from '@nextcloud/l10n'
 import { generateUrl } from '@nextcloud/router'
@@ -192,6 +203,7 @@ import NcSelect from '@nextcloud/vue/components/NcSelect'
 import ConvertDialog from '../convert/ConvertDialog.vue'
 import AddToShelfDialog from './AddToShelfDialog.vue'
 import BookCover from './BookCover.vue'
+import ShareDialog from './ShareDialog.vue'
 import StarRating from './StarRating.vue'
 import TagEditor from './TagEditor.vue'
 import { sanitizeDescription } from '../../editor/sanitize.ts'
@@ -216,6 +228,7 @@ const settings = useSettingsStore()
 
 const showConvert = ref(false)
 const showShelf = ref(false)
+const showShare = ref(false)
 const warnings = ref<string[]>([])
 const writeQueued = ref(false)
 const embedding = ref(false)
@@ -267,6 +280,7 @@ const resettingOverride = ref(false)
 watch(() => props.book.fileId, () => {
 	showConvert.value = false
 	showShelf.value = false
+	showShare.value = false
 	writeQueued.value = false
 	warnings.value = []
 	resettingOverride.value = false

@@ -74,4 +74,20 @@ class EntityInsertFieldsTest extends TestCase {
 		$entity = $class::fromRow(['id' => 7]);
 		$this->assertSame([], $entity->getUpdatedFields());
 	}
+
+	public function testNewShareEntitiesInsertEveryColumn(): void {
+		$row = new \OCA\EbookReader\Db\FileShare();
+		$row->setShelfShareId(\OCA\EbookReader\Db\FileShare::DIRECT);
+		$row->setShareId(null);
+		$fields = array_keys($row->getUpdatedFields());
+		foreach (['ownerId', 'recipientId', 'fileId', 'shelfShareId', 'shareId', 'createdAt'] as $f) {
+			$this->assertContains($f, $fields);
+		}
+		$share = new \OCA\EbookReader\Db\ShelfShare();
+		$share->setSyncedAt(0);
+		$fields = array_keys($share->getUpdatedFields());
+		foreach (['shelfId', 'ownerId', 'recipientId', 'createdAt', 'syncedAt'] as $f) {
+			$this->assertContains($f, $fields);
+		}
+	}
 }

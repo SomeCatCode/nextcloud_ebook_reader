@@ -231,4 +231,29 @@ class LibraryFilterSqlTest extends TestCase {
 		$empty = LibraryService::buildMissingCounts([], []);
 		$this->assertSame(0, array_sum($empty));
 	}
+
+	public function testShelfSharedWithTheUserResolvesToTheFilesSharedForIt(): void {
+		// shelf 7 belongs to another user and is shared with "u" (shelf share 5)
+		$this->addShelf(7, 'owner', Shelf::TYPE_SMART, '{"include":["tag:Private"]}');
+		$cache = new \ReflectionProperty(LibraryService::class, 'incomingShelfCache');
+		$cache->setValue($this->service, ['u|7' => ['shareId' => 5, 'type' => Shelf::TYPE_SMART]]);
+		$c = $this->conditions(BookQuery::fromRequestParams(['include' => ['shelf:7']]));
+		$this->assertCount(1, $c);
+		$this->assertStringContainsString('in(b.file_id,', $c[0]);
+		$this->assertStringContainsString("eq(fsm.shelf_share_id,'5')", $c[0]);
+		$this->assertStringContainsString("eq(fsm.recipient_id,'u')", $c[0]);
+		// the owner's saved query is never evaluated against the recipient's library
+		$this->assertStringNotContainsString('Private', $c[0]);
+
+		$c = $this->conditions(BookQuery::fromRequestParams(['exclude' => ['shelf:7']]));
+		$this->assertStringStartsWith('notIn(b.file_id,', $c[0]);
+	}
+
+	public function testForeignShelfThatIsNotSharedMatchesNothing(): void {
+		$this->addShelf(8, 'owner', Shelf::TYPE_MANUAL);
+		$cache = new \ReflectionProperty(LibraryService::class, 'incomingShelfCache');
+		$cache->setValue($this->service, ['u|8' => null]);
+		$c = $this->conditions(BookQuery::fromRequestParams(['include' => ['shelf:8']]));
+		$this->assertSame(['(1 = 0)'], $c);
+	}
 }

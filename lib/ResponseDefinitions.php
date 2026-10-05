@@ -131,6 +131,10 @@ namespace OCA\EbookReader;
  *     sortOrder: int,
  *     createdAt: int,
  *     updatedAt: int,
+ *     owner: string,
+ *     ownerDisplayName: string,
+ *     readOnly: bool,
+ *     shareCount: int,
  * }
  *
  * @psalm-type EbookReaderSeries = array{
@@ -189,6 +193,29 @@ namespace OCA\EbookReader;
  * @psalm-type EbookReaderOptimizeResult = array{
  *     tasks: list<EbookReaderOptimizeTask>,
  *     skipped: list<EbookReaderOptimizeSkipped>,
+ * }
+ *
+ * @psalm-type EbookReaderShare = array{
+ *     type: 'book'|'shelf',
+ *     fileId: ?int,
+ *     shelfId: ?int,
+ *     name: string,
+ *     owner: string,
+ *     ownerDisplayName: string,
+ *     recipient: string,
+ *     recipientDisplayName: string,
+ *     createdAt: int,
+ *     bookCount: int,
+ * }
+ *
+ * @psalm-type EbookReaderShareOverview = array{
+ *     outgoing: list<EbookReaderShare>,
+ *     incoming: list<EbookReaderShare>,
+ * }
+ *
+ * @psalm-type EbookReaderShareCreated = array{
+ *     share: EbookReaderShare,
+ *     skipped: int,
  * }
  */
 class ResponseDefinitions {

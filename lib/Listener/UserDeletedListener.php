@@ -17,6 +17,7 @@ use OCA\EbookReader\Db\ShelfMapper;
 use OCA\EbookReader\Db\TagMapper;
 use OCA\EbookReader\Db\TaskMapper;
 use OCA\EbookReader\Service\CoverService;
+use OCA\EbookReader\Service\ShareService;
 use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
 use OCP\Files\IAppData;
@@ -40,6 +41,7 @@ class UserDeletedListener implements IEventListener {
 		private ShelfMapper $shelfMapper,
 		private ShelfBookMapper $shelfBookMapper,
 		private AnnotationMapper $annotationMapper,
+		private ?ShareService $sharing = null,
 	) {
 	}
 
@@ -62,6 +64,9 @@ class UserDeletedListener implements IEventListener {
 		$this->step($userId, 'delete progress', fn () => $this->progressMapper->deleteByUser($userId));
 		$this->step($userId, 'delete annotations', fn () => $this->annotationMapper->deleteByUser($userId));
 		$this->step($userId, 'delete tasks', fn () => $this->taskMapper->deleteByUser($userId));
+		if ($this->sharing !== null) {
+			$this->step($userId, 'delete share records', fn () => $this->sharing?->deleteAllForUser($userId));
+		}
 		$this->step($userId, 'delete shelves', function () use ($userId): void {
 			$ids = $this->shelfMapper->findIdsByUser($userId);
 			if ($ids !== []) {

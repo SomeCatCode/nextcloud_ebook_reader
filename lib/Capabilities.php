@@ -13,7 +13,7 @@ use OCP\Capabilities\ICapability;
 
 class Capabilities implements ICapability {
 	/**
-	 * @return array{ebookreader: array{apiVersion: int, apiStable: bool, formats: list<string>, editor: bool, annotations: bool}}
+	 * @return array{ebookreader: array{apiVersion: int, apiStable: bool, formats: list<string>, editor: bool, annotations: bool, sharing: bool}}
 	 */
 	public function getCapabilities(): array {
 		return [
@@ -23,6 +23,7 @@ class Capabilities implements ICapability {
 				'formats' => ['epub', 'mobi', 'azw3', 'fb2', 'fbz', 'cbz', 'cbr', 'cb7', 'cbt'],
 				'editor' => true,
 				'annotations' => true,
+				'sharing' => true,
 			],
 		];
 	}

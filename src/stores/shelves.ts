@@ -12,8 +12,11 @@ export const useShelvesStore = defineStore('shelves', () => {
 	const shelves = ref<Shelf[]>([])
 	const loaded = ref(false)
 
-	const manual = computed(() => shelves.value.filter((s) => s.type === 'manual'))
-	const smart = computed(() => shelves.value.filter((s) => s.type === 'smart'))
+	/** own shelves (shelves shared with the user are read-only and listed in `incoming`) */
+	const own = computed(() => shelves.value.filter((s) => !s.readOnly))
+	const incoming = computed(() => shelves.value.filter((s) => s.readOnly === true))
+	const manual = computed(() => own.value.filter((s) => s.type === 'manual'))
+	const smart = computed(() => own.value.filter((s) => s.type === 'smart'))
 
 	/**
 	 * @param id
@@ -82,7 +85,8 @@ export const useShelvesStore = defineStore('shelves', () => {
 	 * @param delta -1 up, +1 down
 	 */
 	async function move(id: number, delta: -1 | 1): Promise<void> {
-		const list = [...shelves.value]
+		// only own shelves have an order; shared ones always follow them
+		const list = [...own.value]
 		const from = list.findIndex((s) => s.id === id)
 		const to = from + delta
 		if (from < 0 || to < 0 || to >= list.length) {
@@ -91,9 +95,10 @@ export const useShelvesStore = defineStore('shelves', () => {
 		const snapshot = shelves.value
 		const [item] = list.splice(from, 1)
 		list.splice(to, 0, item!)
-		shelves.value = list.map((s, i) => ({ ...s, sortOrder: i }))
+		const ordered = list.map((s, i) => ({ ...s, sortOrder: i }))
+		shelves.value = [...ordered, ...incoming.value]
 		try {
-			await Promise.all(shelves.value.filter((s, i) => s.sortOrder !== snapshot[i]?.sortOrder || s.id !== snapshot[i]?.id)
+			await Promise.all(ordered.filter((s, i) => s.sortOrder !== snapshot[i]?.sortOrder || s.id !== snapshot[i]?.id)
 				.map((s) => api.patchShelf(s.id, { sortOrder: s.sortOrder })))
 		} catch (e) {
 			shelves.value = snapshot
@@ -135,5 +140,5 @@ export const useShelvesStore = defineStore('shelves', () => {
 		shelves.value = shelves.value.map((s) => (s.id === shelf.id ? shelf : s))
 	}
 
-	return { shelves, loaded, manual, smart, byId, load, create, rename, updateQuery, remove, move, addBooks, removeBooks }
+	return { shelves, loaded, own, incoming, manual, smart, byId, load, create, rename, updateQuery, remove, move, addBooks, removeBooks }
 })
