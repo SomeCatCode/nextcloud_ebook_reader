@@ -2,7 +2,7 @@
  * SPDX-FileCopyrightText: 2026 Felix Kurth
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
-import type { BulkAuthorsMode, BulkIndexMode, BulkMetadataRequest } from '../../types.ts'
+import type { AgeRating, BulkAppDataRequest, BulkAppDataResult, BulkAuthorsMode, BulkIndexMode, BulkMetadataRequest, BulkMetadataResult, Completion } from '../../types.ts'
 
 export const MAX_NAME_LENGTH = 512
 export const MAX_AUTHORS = 50
@@ -19,6 +19,10 @@ export interface BulkEditForm {
 	publisher: { change: boolean, mode: 'set' | 'clear', value: string }
 	language: { change: boolean, mode: 'set' | 'clear', value: string }
 	tags: { change: boolean, addGenres: string[], removeGenres: string[], addTags: string[], removeTags: string[] }
+	/** app data (PATCH /books/app-data); null = unknown */
+	completion: { change: boolean, value: Completion | null }
+	/** set: manual value (null = no rating); reset: use the value from the file again */
+	age: { change: boolean, mode: 'set' | 'reset', value: AgeRating | null }
 }
 
 export type BulkEditError
@@ -53,7 +57,38 @@ export function emptyForm(): BulkEditForm {
 		publisher: { change: false, mode: 'set', value: '' },
 		language: { change: false, mode: 'set', value: '' },
 		tags: { change: false, addGenres: [], removeGenres: [], addTags: [], removeTags: [] },
+		completion: { change: false, value: null },
+		age: { change: false, mode: 'set', value: null },
 	}
+}
+
+/**
+ * Whether any section of the metadata request (POST /books/bulk-metadata) is ticked.
+ *
+ * @param form
+ */
+export function hasMetadataChanges(form: BulkEditForm): boolean {
+	return form.authors.change || form.series.change || form.publisher.change || form.language.change || form.tags.change
+}
+
+/**
+ * The completion / age rating part (PATCH /books/app-data), null when neither section is ticked.
+ *
+ * @param form
+ */
+export function buildAppDataRequest(form: BulkEditForm): Omit<BulkAppDataRequest, 'fileIds'> | null {
+	const req: Omit<BulkAppDataRequest, 'fileIds'> = {}
+	if (form.completion.change) {
+		req.completion = form.completion.value
+	}
+	if (form.age.change) {
+		if (form.age.mode === 'reset') {
+			req.resetAgeRating = true
+		} else {
+			req.ageRating = form.age.value
+		}
+	}
+	return Object.keys(req).length > 0 ? req : null
 }
 
 /**
@@ -111,7 +146,7 @@ export function validateForm(form: BulkEditForm, bookCount: number): BulkEditErr
 	if (bookCount > MAX_FILES) {
 		errors.push('tooManyBooks')
 	}
-	if (!form.authors.change && !form.series.change && !form.publisher.change && !form.language.change && !form.tags.change) {
+	if (!hasMetadataChanges(form) && !form.completion.change && !form.age.change) {
 		errors.push('nothing')
 	}
 	if (form.authors.change) {
@@ -210,6 +245,26 @@ export function buildRequest(form: BulkEditForm, fileIds: number[]): BulkMetadat
 		}
 	}
 	return req
+}
+
+/**
+ * One result for the dialog when metadata and app data were sent: the higher counts, all failures (one per book).
+ *
+ * @param metadata result of the metadata request (null = not sent)
+ * @param appData result of the completion / age rating request (null = not sent)
+ */
+export function mergeBulkResults(metadata: BulkMetadataResult | null, appData: BulkAppDataResult | null): BulkMetadataResult {
+	const failed = [...(metadata?.failed ?? [])]
+	for (const f of appData?.failed ?? []) {
+		if (!failed.some((x) => x.fileId === f.fileId)) {
+			failed.push(f)
+		}
+	}
+	const updated = Math.max(metadata?.updated ?? 0, appData?.updated ?? 0)
+	const unchanged = metadata && appData
+		? Math.min(metadata.unchanged, appData.unchanged)
+		: (metadata?.unchanged ?? appData?.unchanged ?? 0)
+	return { updated, unchanged, failed, writeQueued: metadata?.writeQueued === true }
 }
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })

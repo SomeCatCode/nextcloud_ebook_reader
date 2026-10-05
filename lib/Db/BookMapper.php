@@ -72,6 +72,26 @@ class BookMapper extends QBMapper {
 	}
 
 	/**
+	 * Non-deleted books of a user in the given series (case-insensitive, exact names).
+	 * @param list<string> $series
+	 * @return list<Book>
+	 */
+	public function findBySeries(string $userId, array $series): array {
+		$series = array_values(array_unique(array_filter(array_map('trim', $series), static fn (string $s): bool => $s !== '')));
+		$result = [];
+		foreach (array_chunk($series, 50) as $chunk) {
+			$qb = $this->db->getQueryBuilder();
+			$names = array_map(fn (string $s): string => $qb->expr()->iLike('series', $qb->createNamedParameter($this->db->escapeLikeParameter($s))), $chunk);
+			$qb->select('*')->from($this->getTableName())
+				->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
+				->andWhere($qb->expr()->isNull('deleted_at'))
+				->andWhere($qb->expr()->orX(...$names));
+			array_push($result, ...$this->findEntities($qb));
+		}
+		return $result;
+	}
+
+	/**
 	 * All non-deleted books of a user.
 	 * @return list<Book>
 	 */

@@ -147,6 +147,8 @@ class LibraryService {
 		if ($take('publishedAt')) {
 			$book->setPublishedAt($meta->publishedAt !== null ? substr($meta->publishedAt, 0, 10) : null);
 		}
+		// the age rating is never written into the file: always take the file's value (a manual one stays in effect)
+		$book->applyFileAgeRating($meta->ageRating);
 		$book->setFileMtime($mtime);
 		$book->setFileEtag($etag);
 		$book->setSidecarEtag($sidecarEtag);
@@ -191,6 +193,7 @@ class LibraryService {
 				$other->setPublisher($book->getPublisher());
 				$other->setIsbn($book->getIsbn());
 				$other->setPublishedAt($book->getPublishedAt());
+				$other->applyFileAgeRating($meta->ageRating);
 				$other->setHasCover($book->getHasCover());
 				$other->setCoverEtag($book->getCoverEtag());
 				$other->setFileMtime($mtime);
@@ -698,6 +701,10 @@ class LibraryService {
 				return $allowShelf ? $this->shelfCondition($qb, $userId, $name, $negate) : null;
 			case 'missing':
 				return $this->missingCondition($qb, $name, $negate);
+			case 'completion':
+				return $this->completionCondition($qb, $name, $negate);
+			case 'age':
+				return $this->ageCondition($qb, $name, $negate);
 			default:
 				$p = $qb->createNamedParameter(strtolower($name));
 				return $negate ? $e->neq($qb->createFunction('LOWER(b.format)'), $p) : $e->eq($qb->createFunction('LOWER(b.format)'), $p);
@@ -735,6 +742,39 @@ class LibraryService {
 		}
 		$empty = self::sql($empty);
 		return $negate ? 'NOT ' . $empty : $empty;
+	}
+
+	/**
+	 * `completion:ongoing|completed|unknown` (unknown = not set). $negate builds the opposite; NULL counts as "not ongoing".
+	 */
+	private function completionCondition(IQueryBuilder $qb, string $name, bool $negate): ?string {
+		$e = $qb->expr();
+		if ($name === 'unknown') {
+			return $negate ? $e->isNotNull('b.completion') : $e->isNull('b.completion');
+		}
+		if (!in_array($name, Book::COMPLETIONS, true)) {
+			return null;
+		}
+		$cond = $e->eq('b.completion', $qb->createNamedParameter($name));
+		return $negate ? '(' . $e->isNull('b.completion') . ' OR NOT (' . $cond . '))' : $cond;
+	}
+
+	/**
+	 * `age:N` (exactly N), `age:none` (no rating) or `age:<=N` (rated N or lower, unrated books excluded).
+	 * $negate builds the opposite; unrated books count as "not N" and "not <=N".
+	 */
+	private function ageCondition(IQueryBuilder $qb, string $name, bool $negate): ?string {
+		$term = FilterTerms::parseAge($name);
+		if ($term === null) {
+			return null;
+		}
+		$e = $qb->expr();
+		if ($term['op'] === 'none') {
+			return $negate ? $e->isNotNull('b.age_rating') : $e->isNull('b.age_rating');
+		}
+		$p = $qb->createNamedParameter((int)$term['value'], IQueryBuilder::PARAM_INT);
+		$cond = $term['op'] === 'lte' ? $e->lte('b.age_rating', $p) : $e->eq('b.age_rating', $p);
+		return $negate ? '(' . $e->isNull('b.age_rating') . ' OR NOT (' . $cond . '))' : $cond;
 	}
 
 	/**
@@ -880,6 +920,32 @@ class LibraryService {
 		return $this->indexFile($userId, $file, true) ?? $book;
 	}
 
+	/**
+	 * All volumes of the given series, grouped by SeriesOrder::key() (one query per 50 series).
+	 * @param list<string> $series
+	 * @return array<string, list<Book>>
+	 */
+	public function volumesOfSeries(string $userId, array $series): array {
+		$out = [];
+		foreach ($this->bookMapper->findBySeries($userId, $series) as $book) {
+			$key = SeriesOrder::key($book->getSeries());
+			if ($key !== '') {
+				$out[$key][] = $book;
+			}
+		}
+		return $out;
+	}
+
+	/** The next volume of the book's series in reading order (see SeriesOrder), null for the last volume or without a series. */
+	public function nextVolume(string $userId, Book $book): ?Book {
+		$series = $book->getSeries();
+		if (SeriesOrder::key($series) === '') {
+			return null;
+		}
+		$volumes = $this->volumesOfSeries($userId, [(string)$series])[SeriesOrder::key($series)] ?? [];
+		return SeriesOrder::next($volumes, $book);
+	}
+
 	/** @throws DoesNotExistException */
 	public function getBook(string $userId, int $fileId): Book {
 		return $this->bookMapper->findByUserAndFile($userId, $fileId);
@@ -888,14 +954,20 @@ class LibraryService {
 	/** @return array<string, mixed> */
 	public function getFacets(string $userId): array {
 		$qb = $this->db->getQueryBuilder();
-		$qb->select('authors', 'series', 'format')->from(self::BOOKS)
+		$qb->select('authors', 'series', 'format', 'completion', 'age_rating')->from(self::BOOKS)
 			->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
 			->andWhere($qb->expr()->isNull('deleted_at'));
 		$res = $qb->executeQuery();
 		$authors = [];
 		$series = [];
 		$formats = [];
+		$completion = [];
+		$ages = [];
 		while ($row = $res->fetch()) {
+			$c = is_string($row['completion'] ?? null) ? $row['completion'] : 'unknown';
+			$completion[$c] = ($completion[$c] ?? 0) + 1;
+			$a = is_numeric($row['age_rating'] ?? null) ? (string)(int)$row['age_rating'] : FilterTerms::AGE_NONE;
+			$ages[$a] = ($ages[$a] ?? 0) + 1;
 			$raw = $row['authors'] ?? null;
 			$list = is_string($raw) && $raw !== '' ? json_decode($raw, true) : [];
 			foreach (is_array($list) ? $list : [] as $a) {
@@ -925,7 +997,43 @@ class LibraryService {
 			'series' => $toList($series),
 			'formats' => $toList($formats),
 			'missing' => $this->missingCounts($userId),
+			'completion' => self::buildCompletionFacets($completion),
+			'ageRatings' => self::buildAgeFacets($ages),
 		];
+	}
+
+	/**
+	 * Completion facet in fixed order (ongoing, completed, unknown), zeros included; unexpected stored values count as unknown.
+	 * @param array<string, int> $counts stored value (or "unknown") => number of books
+	 * @return list<array{name: string, count: int}>
+	 */
+	public static function buildCompletionFacets(array $counts): array {
+		$out = [];
+		$known = 0;
+		foreach (Book::COMPLETIONS as $name) {
+			$n = $counts[$name] ?? 0;
+			$known += $n;
+			$out[] = ['name' => $name, 'count' => $n];
+		}
+		$out[] = ['name' => 'unknown', 'count' => array_sum($counts) - $known];
+		return $out;
+	}
+
+	/**
+	 * Age rating facet in fixed order (0, 6, 12, 16, 18, none), zeros included; names are `age:` term names.
+	 * @param array<array-key, int> $counts 0..18 or "none" => number of books
+	 * @return list<array{name: string, count: int}>
+	 */
+	public static function buildAgeFacets(array $counts): array {
+		$out = [];
+		$known = 0;
+		foreach (Book::AGE_RATINGS as $level) {
+			$n = $counts[$level] ?? 0;
+			$known += $n;
+			$out[] = ['name' => (string)$level, 'count' => $n];
+		}
+		$out[] = ['name' => FilterTerms::AGE_NONE, 'count' => array_sum($counts) - $known];
+		return $out;
 	}
 
 	/**

@@ -165,3 +165,41 @@ For the web reader and the Android app. Same rules as above (OCS, `#[NoAdminRequ
 **Sync:** `GET /sync` gains `annotations: Annotation[]` (with tombstones, `deleted: true`, ordered by `updatedAt`, `id`; max 500 per call, `hasMore` covers it). The cursor has a third part `a` (older cursors without it start the annotations from the beginning). Clients apply rows by `uuid`: `deleted: true` removes the local row, otherwise they replace it unless their own `clientUpdatedAt` is newer. Capability flag: `ebookreader.annotations: true` in `/ocs/v2.php/cloud/capabilities`.
 
 **Cleanup:** deleting a user removes all annotations. When a book tombstone is finally purged (`CleanupTombstonesJob`, 30 days) its annotations for that user go with it. Annotation tombstones are purged after 90 days; an offline client that comes back later than that can recreate its annotations with the same uuid.
+
+## 5. Book flags and "continue the series" (round 6)
+
+For the web UI and the Android app. Same rules as above. Timestamps are milliseconds.
+
+**Migration `Version1006Date20261005150000`:** nullable columns on `ebookreader_books`: `completion` string(12), `age_rating` smallint, `age_rating_file` smallint, `age_rating_manual` bool (default false). Existing rows keep NULL (unknown / no rating).
+
+**Book JSON** (every endpoint returning `Book`, including `GET /sync`) gains:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `completion` | `'ongoing' \| 'completed' \| null` | app data per book, never written into the file; null = unknown |
+| `ageRating` | `0 \| 6 \| 12 \| 16 \| 18 \| null` | effective rating ("from N years"): the manual value if `ageRatingManual`, else the one read from the file; null = none |
+| `ageRatingManual` | bool | the rating was set in the app (also an explicit "none") and survives re-indexing |
+
+**Age rating from the file** (on every (re-)index, stored in `age_rating_file`): ComicInfo.xml `AgeRating` (CBZ/CBR/CB7/CBT) and EPUB 3 `<meta property="schema:typicalAgeRange">`. Named ComicInfo values map by a table: Everyone, Early Childhood, G, E → 0; Kids to Adults → 6; Everyone 10+/E10+, PG, Teen → 12; T+, M, MA15+ → 16; Mature 17+, Adults Only 18+, R18+, X18+ → 18; Unknown, Rating Pending → null. Other text with a number ("16+", "FSK 12", "PEGI 7", "Ages 10-14") and `typicalAgeRange` ("12-", "7-12", "16+") use the (lower) age rounded UP to the next level (13 → 16, 17 → 18, > 18 → 18). Anything else → null.
+
+**`PATCH /books/{fileId}/app-data`** new optional fields (absent = unchanged):
+- `completion`: `"ongoing"`, `"completed"` or `null` (clears).
+- `ageRating`: `0|6|12|16|18` or `null`. Any value given here is manual (`ageRatingManual = true`), `null` means "explicitly no rating" and also overrides the file.
+- `resetAgeRating: true`: drops the manual value, the file's value applies again. Not together with `ageRating` (400).
+- Invalid values → 400. A real change bumps `updatedAt` (so `/sync` delivers it); sending the current value again changes nothing.
+
+**`PATCH /books/app-data`** (bulk, max 500): body `{fileIds: int[], completion?, ageRating?, resetAgeRating?}` with the same semantics; at least one field (400 otherwise). Returns `{updated, unchanged, failed: [{fileId, error: 'not_found'|'failed'}]}`.
+
+**Filter terms** (include/exclude of `GET /books`, `GET /series`, smart shelf queries; `type:name` like the others):
+- `completion:ongoing`, `completion:completed`, `completion:unknown` (= not set). Excluding `ongoing` keeps unknown books.
+- `age:0|6|12|16|18`: exactly this rating. `age:none`: no rating. `age:<=N` (N one of the levels; spaces are dropped, `age:<= 12` becomes `age:<=12`): rated N or lower, **unrated books do not match**; excluding it keeps unrated books. Other names are ignored (dropped by the parser).
+
+**`GET /facets`** gains `completion: FacetEntry[]` (names `ongoing`, `completed`, `unknown`) and `ageRatings: FacetEntry[]` (names `0`, `6`, `12`, `16`, `18`, `none`), always in this order with zeros included. Counts for `age:<=N` are the sum of the levels up to N (computed by the client).
+
+**Reading order of a series** (shared by the endpoints below): volumes with the same series name (case-insensitive, trimmed), ordered by `seriesIndex` ascending (no index last), then title in natural order (file name without a title), then `fileId`. "Next" skips other copies of the same volume (same non-null index, e.g. EPUB and CBZ of volume 3).
+
+**`GET /books/{fileId}/next`** returns `{book: Book|null}`: the volume after this one in reading order (regardless of its read status); null for the last volume or without a series. 404 for an unknown book.
+
+**`GET /progress/recent`** gains `upNext: [{previousFileId, book}]`: for every series whose most recently read volume (by progress `updatedAt`, among the rows the endpoint reads anyway) is finished, the next volume after it that is not finished, if its status is `unread`. Series whose latest volume is still being read are skipped (that volume is in `books`), as are books already in `books`. At most `limit` entries, most recent first. Costs one extra query (all volumes of the affected series).
+
+**Conversion** carries `completion` and a manual age rating to the new book.

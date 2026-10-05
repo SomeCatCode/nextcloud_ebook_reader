@@ -82,8 +82,32 @@ class BookSerializer {
 			'downloadable' => $downloadable,
 			'overrides' => $book->getOverridesArray(),
 			'hasSidecar' => $book->getSidecarEtag() !== null,
+			'completion' => self::completionOf($book),
+			'ageRating' => self::ageRatingOf($book),
+			'ageRatingManual' => $book->getAgeRatingManual(),
 			'progress' => $progress?->toApi(),
 		];
+	}
+
+	/** @return 'ongoing'|'completed'|null */
+	private static function completionOf(Book $book): ?string {
+		return match ($book->getCompletion()) {
+			Book::COMPLETION_ONGOING => Book::COMPLETION_ONGOING,
+			Book::COMPLETION_COMPLETED => Book::COMPLETION_COMPLETED,
+			default => null,
+		};
+	}
+
+	/** @return 0|6|12|16|18|null */
+	private static function ageRatingOf(Book $book): ?int {
+		return match ($book->getAgeRating()) {
+			0 => 0,
+			6 => 6,
+			12 => 12,
+			16 => 16,
+			18 => 18,
+			default => null,
+		};
 	}
 
 	/**

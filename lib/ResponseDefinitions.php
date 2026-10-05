@@ -74,6 +74,9 @@ namespace OCA\EbookReader;
  *     downloadable: bool,
  *     overrides: list<string>,
  *     hasSidecar: bool,
+ *     completion: 'ongoing'|'completed'|null,
+ *     ageRating: 0|6|12|16|18|null,
+ *     ageRatingManual: bool,
  *     progress: ?EbookReaderProgress,
  * }
  *
@@ -86,6 +89,8 @@ namespace OCA\EbookReader;
  *     series: list<EbookReaderFacetEntry>,
  *     formats: list<EbookReaderFacetEntry>,
  *     missing: array{genre: int, tag: int, author: int, series: int, description: int, cover: int, language: int},
+ *     completion: list<EbookReaderFacetEntry>,
+ *     ageRatings: list<EbookReaderFacetEntry>,
  * }
  *
  * @psalm-type EbookReaderSettings = array{
@@ -104,6 +109,11 @@ namespace OCA\EbookReader;
  *     annotations: list<EbookReaderAnnotation>,
  *     cursor: string,
  *     hasMore: bool,
+ * }
+ *
+ * @psalm-type EbookReaderUpNext = array{
+ *     previousFileId: int,
+ *     book: EbookReaderBook,
  * }
  *
  * @psalm-type EbookReaderBookList = array{

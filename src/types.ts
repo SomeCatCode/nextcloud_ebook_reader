@@ -5,6 +5,10 @@
 
 export type BookFormat = 'epub' | 'mobi' | 'azw3' | 'fb2' | 'fbz' | 'cbz' | 'cbr' | 'cb7' | 'cbt'
 export type ReadStatus = 'unread' | 'reading' | 'finished'
+/** Whether a book (or comic) is still being continued or finished; null = unknown */
+export type Completion = 'ongoing' | 'completed'
+/** Age rating "from N years" */
+export type AgeRating = 0 | 6 | 12 | 16 | 18
 
 /** Readium-compatible locator. */
 export interface Locator {
@@ -61,6 +65,12 @@ export interface Book {
 	overrides: MetadataOverrideField[]
 	/** A hidden sidecar file ".<book>.opf" next to the book holds (part of) the metadata */
 	hasSidecar: boolean
+	/** app data; null = unknown */
+	completion: Completion | null
+	/** effective age rating (manual value, else the one from the file); null = none */
+	ageRating: AgeRating | null
+	/** the age rating was set in the app and survives re-indexing */
+	ageRatingManual: boolean
 	progress: Progress | null
 }
 
@@ -68,7 +78,10 @@ export type MetadataOverrideField = 'title' | 'authors' | 'series' | 'seriesInde
 
 export type SortKey = 'title' | 'author' | 'series' | 'rating' | 'added' | 'read' | 'shelf'
 
-export type FilterType = 'genre' | 'tag' | 'author' | 'series' | 'format' | 'shelf' | 'missing'
+/**
+ * `completion:ongoing|completed|unknown`; `age:0|6|12|16|18` (exactly), `age:none` (no rating), `age:<=N` (rated N or lower)
+ */
+export type FilterType = 'genre' | 'tag' | 'author' | 'series' | 'format' | 'shelf' | 'missing' | 'completion' | 'age'
 
 export interface FilterTerm {
 	type: FilterType
@@ -111,6 +124,10 @@ export interface Facets {
 	formats: FacetEntry[]
 	/** number of books lacking each maintainable field */
 	missing: MissingCounts
+	/** names ongoing, completed, unknown (fixed order, zeros included) */
+	completion?: FacetEntry[]
+	/** names "0", "6", "12", "16", "18", "none" (fixed order, zeros included) */
+	ageRatings?: FacetEntry[]
 }
 
 export type MissingField = 'genre' | 'tag' | 'author' | 'series' | 'description' | 'cover' | 'language'
@@ -130,6 +147,38 @@ export interface SyncResult {
 export interface AppDataPatch {
 	rating?: number | null
 	readStatus?: ReadStatus
+	/** null clears (unknown) */
+	completion?: Completion | null
+	/** manual value; null = explicitly no rating */
+	ageRating?: AgeRating | null
+	/** use the age rating from the file again (not together with ageRating) */
+	resetAgeRating?: true
+}
+
+/** PATCH /books/app-data: the same flag fields for several books (max. 500) */
+export interface BulkAppDataRequest {
+	fileIds: number[]
+	completion?: Completion | null
+	ageRating?: AgeRating | null
+	resetAgeRating?: true
+}
+
+export interface BulkAppDataResult {
+	updated: number
+	unchanged: number
+	failed: { fileId: number, error: string }[]
+}
+
+/** Next volume of a series whose latest read volume is finished (GET /progress/recent) */
+export interface UpNext {
+	/** the finished volume */
+	previousFileId: number
+	book: Book
+}
+
+export interface RecentResult {
+	books: Book[]
+	upNext?: UpNext[]
 }
 
 export interface BookMetadata {
