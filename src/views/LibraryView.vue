@@ -126,7 +126,7 @@
 		</template>
 	</NcAppNavigation>
 
-	<NcAppContent :pageHeading="t('ebookreader', 'E-book library')">
+	<NcAppContent :pageHeading="t('ebookreader', 'E-book library')" :pageTitle="pageTitle">
 		<div
 			class="library"
 			@dragenter="onDragEnter"
@@ -491,12 +491,16 @@ import { MISSING_FIELDS, missingEntries, missingLabel } from '../components/libr
 import { splitOptimizable } from '../convert/optimize.ts'
 import { scan } from '../services/api.ts'
 import { buildTree } from '../services/hierarchy.ts'
+import { appPageTitle } from '../services/pageTitle.ts'
 import { ALLOWED_EXTENSIONS } from '../services/upload.ts'
 import { queryToState, useLibraryStore } from '../stores/library.ts'
 import { useShelvesStore } from '../stores/shelves.ts'
 import { useUploadStore } from '../stores/upload.ts'
 
 const VIEW_KEY = 'ebookreader.libraryView'
+
+/** Browser tab title (see services/pageTitle.ts) */
+const pageTitle = appPageTitle(t('ebookreader', 'E-book library'))
 
 const store = useLibraryStore()
 const shelves = useShelvesStore()
