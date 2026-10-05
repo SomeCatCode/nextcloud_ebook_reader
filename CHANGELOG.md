@@ -5,6 +5,13 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+### Hinzugefügt
+- **Übersetzungen**: Deutsch (du und Sie), Spanisch, Japanisch. Die ganze Weboberfläche (Bibliothek, Reader, Editor, Konvertieren, Einstellungen, Dateien-Aktionen), das Dashboard-Widget „Weiterlesen“, die Titel und Beschreibungen des OPDS-Katalogs, der Eintrag in der Navigation sowie Name, Kurzbeschreibung und Beschreibung im App Store. Nextcloud wählt die Sprache nach der Benutzereinstellung: „Deutsch (Persönlich: Du)“ nutzt `de`, „Deutsch (Förmlich: Sie)“ `de_DE`; ohne passende Übersetzung bleibt es Englisch. Meldungen, die der Server als Fehlertext liefert, sind weiterhin englisch.
+- Werkzeug für Übersetzungen: `npm run l10n:extract` sammelt alle Texte aus `src/`, `lib/` und `appinfo/info.xml` in `translationfiles/source.json` und erzeugt `l10n/<lang>.js` aus `l10n/<lang>.json`, `npm run l10n:check` prüft Platzhalter (`{name}`, `%s`, `%n`), Pluralformen und listet fehlende und veraltete Texte je Sprache auf, `npm run l10n:missing <lang>` gibt die fehlenden Texte als JSON aus. Die CI bricht nur bei kaputten Dateien und falschen Platzhaltern ab, fehlende Übersetzungen sind Warnungen (siehe CONTRIBUTING.md).
+
+### Behoben
+- Der Menüpunkt „Optimize images…“ der Mehrfachauswahl zeigte statt der Auslassungspunkte ein Ersatzzeichen (�).
+
 ## 0.7.0 – 2026-10-05
 
 ### Hinzugefügt
