@@ -276,6 +276,31 @@ function readGroupSeries(): boolean {
 
 const emptyFacets = (): Facets => ({ genres: [], tags: [], authors: [], series: [], formats: [], missing: emptyMissing() })
 
+/**
+ * Progress the server stores for a read status set by hand (optimistic copy):
+ * finished = 100 %, unread = 0 % (no stored progress stays none), reading keeps it.
+ *
+ * @param book
+ * @param status
+ */
+export function progressForStatus(book: Book, status: ReadStatus): Book['progress'] {
+	if (status === 'reading' || (status === 'unread' && !book.progress)) {
+		return book.progress
+	}
+	const percentage = status === 'finished' ? 1 : 0
+	const now = Date.now()
+	return {
+		fileId: book.fileId,
+		locator: status === 'finished'
+			? { href: '', locations: { totalProgression: 1 } }
+			: { href: '', locations: { position: 1, totalProgression: 0 } },
+		percentage,
+		device: null,
+		clientUpdatedAt: now,
+		updatedAt: now,
+	}
+}
+
 export const useLibraryStore = defineStore('library', () => {
 	const books = ref<Book[]>([])
 	const total = ref(0)
@@ -789,10 +814,15 @@ export const useLibraryStore = defineStore('library', () => {
 
 	/**
 	 * A finished book is done: it leaves "continue reading" and, with "hide finished" on, the list.
+	 * A book marked unread is back at 0 % and leaves "continue reading" as well.
 	 *
 	 * @param book
 	 */
-	function dropIfFinished(book: Book): void {
+	function dropByStatus(book: Book): void {
+		if (book.readStatus === 'unread') {
+			recent.value = recent.value.filter((b) => b.fileId !== book.fileId)
+			return
+		}
 		if (book.readStatus !== 'finished') {
 			return
 		}
@@ -806,6 +836,8 @@ export const useLibraryStore = defineStore('library', () => {
 
 	/**
 	 * Optimistic update of rating and/or read status; rolls back and rethrows on failure.
+	 * The server couples the status with the progress (finished = 100 %, unread = 0 %); the
+	 * optimistic copy shows that right away, the server copy (with its progress) replaces it.
 	 *
 	 * @param fileId
 	 * @param patch
@@ -818,11 +850,11 @@ export const useLibraryStore = defineStore('library', () => {
 			return
 		}
 		const snapshot = { ...previous }
-		applyBook({ ...previous, ...patch })
+		applyBook({ ...previous, ...patch, progress: patch.readStatus ? progressForStatus(previous, patch.readStatus) : previous.progress })
 		try {
 			const fresh = await api.patchAppData(fileId, patch)
 			applyBook(fresh)
-			dropIfFinished(fresh)
+			dropByStatus(fresh)
 		} catch (e) {
 			applyBook(snapshot)
 			throw e

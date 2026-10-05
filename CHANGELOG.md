@@ -5,6 +5,10 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+### Geändert
+- Lesestatus und Lesefortschritt hängen jetzt in beide Richtungen zusammen. Gelesen (`finished`) setzt den Fortschritt auf 100 %, Ungelesen (`unread`) auf 0 % (das Buch öffnet wieder am Anfang), Lese gerade (`reading`) lässt ihn unverändert. Umgekehrt setzt ein gespeicherter Fortschritt den Status: ab 98 % `finished`, bei 0 % `unread`, dazwischen `reading`; das gilt jetzt auch, wenn der Status vorher von Hand gesetzt war (Ausnahme: ein von Hand gesetztes `reading` bleibt bei 0 % stehen). Die Bibliothek zeigt den neuen Prozentwert sofort, ein als ungelesen markiertes Buch verschwindet aus „Weiterlesen“.
+- API: `PATCH /api/v1/books/{fileId}/app-data` mit `readStatus` schreibt den Fortschritt mit `clientUpdatedAt` = Serverzeit (gewinnt also gegen ältere Positionen anderer Geräte und kommt über `GET /api/v1/sync` an); der Locator enthält dann nur die Gesamtposition (`href: ""`, `totalProgression` 0 bzw. 1). `PUT /api/v1/progress/{fileId}` und `POST /api/v1/progress/batch` akzeptieren deshalb `href: ""`, wenn `locations.totalProgression` gesetzt ist. `GET /api/v1/progress/recent` lässt Bücher bei 0 % weg. Der Reader speichert die Position beim Schließen, bevor die Bibliothek neu lädt.
+
 ## 0.6.1 – 2026-10-02
 
 ### Hinzugefügt
