@@ -93,6 +93,73 @@ class ArchiveToolsTest extends TestCase {
 		}
 	}
 
+	public function testErrorDetailIsFirstNonEmptyLine(): void {
+		$this->assertSame(': ERROR: Unsupported Method : 001.jpg', ArchiveTools::errorDetail("\n  ERROR: Unsupported Method : 001.jpg\r\nSub items Errors: 1\n"));
+		$this->assertSame('', ArchiveTools::errorDetail(" \n\n"));
+		$this->assertSame(202, strlen(ArchiveTools::errorDetail(str_repeat('x', 500))));
+	}
+
+	/**
+	 * Fake tools in a temp dir: a 7z that lists the RAR but cannot unpack it (like p7zip without the
+	 * RAR codec), optionally a bsdtar that can. Shell scripts, so not on Windows.
+	 *
+	 * @return array{0: string, 1: string} bin dir, archive path
+	 */
+	private function fakeRarSetup(bool $withBsdtar): array {
+		if (PHP_OS_FAMILY === 'Windows') {
+			$this->markTestSkipped('fake tools are shell scripts');
+		}
+		$dir = sys_get_temp_dir() . '/ebr-fake-' . bin2hex(random_bytes(4));
+		mkdir($dir);
+		// a RAR 1.5-4.x signature is all the tool selection looks at
+		$archive = $dir . '/book.cbr';
+		file_put_contents($archive, "Rar!\x1A\x07\x00" . str_repeat("\0", 32));
+		$sevenZip = "#!/bin/sh\n"
+			. "if [ \"\$1\" = l ]; then printf 'Path = 001.jpg\\nFolder = -\\nSize = 9\\n\\nPath = ComicInfo.xml\\nFolder = -\\nSize = 12\\n'; exit 0; fi\n"
+			. "echo 'ERROR: Unsupported Method : 001.jpg' >&2\nexit 2\n";
+		file_put_contents($dir . '/7z', $sevenZip);
+		chmod($dir . '/7z', 0755);
+		if ($withBsdtar) {
+			file_put_contents($dir . '/bsdtar', "#!/bin/sh\nprintf 'page data'\n");
+			chmod($dir . '/bsdtar', 0755);
+		}
+		return [$dir, $archive];
+	}
+
+	private function removeDir(string $dir): void {
+		array_map('unlink', glob($dir . '/*') ?: []);
+		rmdir($dir);
+	}
+
+	public function testExtractFallsBackToAnotherToolWhenTheListingToolCannotUnpack(): void {
+		[$dir, $archive] = $this->fakeRarSetup(true);
+		try {
+			$tools = new ArchiveTools([$dir]);
+			$this->assertSame(['001.jpg', 'ComicInfo.xml'], $tools->list($archive, 'cbr'));
+			$this->assertSame('page data', $tools->extract($archive, '001.jpg'));
+			$this->assertSame('page data', $tools->extract($archive, 'ComicInfo.xml'));
+		} finally {
+			$this->removeDir($dir);
+		}
+	}
+
+	public function testExtractFailureNamesTheToolError(): void {
+		[$dir, $archive] = $this->fakeRarSetup(false);
+		try {
+			$tools = new ArchiveTools([$dir]);
+			$this->assertSame(['001.jpg', 'ComicInfo.xml'], $tools->list($archive, 'cbr'));
+			try {
+				$tools->extract($archive, '001.jpg');
+				$this->fail('expected exception');
+			} catch (\RuntimeException $e) {
+				$this->assertStringContainsString('Unsupported Method', $e->getMessage());
+				$this->assertStringContainsString('install unrar or bsdtar', $e->getMessage());
+			}
+		} finally {
+			$this->removeDir($dir);
+		}
+	}
+
 	public function testRealSevenZipRoundtripIfInstalled(): void {
 		$tools = new ArchiveTools();
 		if (!$tools->available()['sevenZip']) {

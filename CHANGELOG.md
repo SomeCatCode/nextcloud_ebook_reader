@@ -5,6 +5,9 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+### Behoben
+- Echte RAR-Comics (CBR) ohne Cover, die sich nicht öffnen ließen, obwohl 7-Zip auf dem Server installiert ist: Manche 7-Zip-Builds (p7zip ohne `p7zip-rar`, 7-Zip-Pakete ohne den unfreien RAR-Codec) können ein RAR zwar auflisten, aber nicht entpacken („Unsupported Method“). Die Seitenliste kam dann vom Server, jede Seite und das Cover scheiterten, und der Reader wich nicht auf das Entpacken im Browser aus. Jetzt versucht der Server beim Entpacken die übrigen installierten Programme (`unrar`, `bsdtar`), und lässt sich die erste Seite gar nicht entpacken, lehnt er die Seitenliste ab, sodass der Reader die Datei im Browser öffnet (und dort das Cover erzeugt). Die Fehlermeldung im Log nennt jetzt die Ausgabe des Programms und die Lösung (`unrar` oder `bsdtar` aus `libarchive-tools` installieren).
+
 ## 0.6.1 – 2026-10-02
 
 ### Hinzugefügt

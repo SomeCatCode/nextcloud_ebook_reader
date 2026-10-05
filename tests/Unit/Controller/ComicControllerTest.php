@@ -50,7 +50,7 @@ class ComicControllerTest extends TestCase {
 		}
 	}
 
-	private function controller(): ComicController {
+	private function controller(?ArchiveTools $tools = null): ComicController {
 		$user = $this->createMock(IUser::class);
 		$user->method('getUID')->willReturn('u');
 		$session = $this->createMock(IUserSession::class);
@@ -64,7 +64,7 @@ class ComicControllerTest extends TestCase {
 		$request = $this->createMock(IRequest::class);
 		$request->method('getHeader')->willReturn('');
 		return new ComicController($request, $session, $this->library, new ArchiveCache($this->createMock(ITempManager::class), $this->createMock(IAppConfig::class), $this->createMock(LoggerInterface::class)),
-			$appData, $cacheFactory, $this->createMock(LoggerInterface::class), new ArchiveTools([]));
+			$appData, $cacheFactory, $this->createMock(LoggerInterface::class), $tools ?? new ArchiveTools([]));
 	}
 
 	private function fileFor(string $localPath, string $name): File&MockObject {
@@ -128,6 +128,29 @@ class ComicControllerTest extends TestCase {
 		$this->assertInstanceOf(DataDisplayResponse::class, $response);
 		$size = getimagesizefromstring($response->getData());
 		$this->assertSame(['image/jpeg', 800, 1200], [$size['mime'], $size[0], $size[1]]);
+	}
+
+	public function testCbrThatTheToolCanListButNotUnpackIsRefusedSoTheClientTakesOver(): void {
+		if (PHP_OS_FAMILY === 'Windows') {
+			$this->markTestSkipped('fake tool is a shell script');
+		}
+		$dir = sys_get_temp_dir() . '/ebr-fake-' . bin2hex(random_bytes(4));
+		mkdir($dir);
+		$archive = $dir . '/book.cbr';
+		file_put_contents($archive, "Rar!\x1A\x07\x00" . str_repeat("\0", 32));
+		// like p7zip without the RAR codec: lists the archive, "Unsupported Method" on extraction
+		file_put_contents($dir . '/7z', "#!/bin/sh\n"
+			. "if [ \"\$1\" = l ]; then printf 'Path = 001.jpg\\nFolder = -\\nSize = 9\\n'; exit 0; fi\n"
+			. "echo 'ERROR: Unsupported Method' >&2\nexit 2\n");
+		chmod($dir . '/7z', 0755);
+		try {
+			$this->library->method('getFileForUser')->willReturn($this->fileFor($archive, 'book.cbr'));
+			$response = $this->controller(new ArchiveTools([$dir]))->pages(42);
+			$this->assertSame(Http::STATUS_UNPROCESSABLE_ENTITY, $response->getStatus());
+		} finally {
+			array_map('unlink', glob($dir . '/*') ?: []);
+			rmdir($dir);
+		}
 	}
 
 	public function testUnknownPageAndNonComicAre404(): void {
