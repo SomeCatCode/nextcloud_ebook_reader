@@ -272,6 +272,7 @@
                     "ebookreader": {
                         "type": "object",
                         "required": [
+                            "version",
                             "apiVersion",
                             "apiStable",
                             "formats",
@@ -279,6 +280,9 @@
                             "annotations"
                         ],
                         "properties": {
+                            "version": {
+                                "type": "string"
+                            },
                             "apiVersion": {
                                 "type": "integer",
                                 "format": "int64"
