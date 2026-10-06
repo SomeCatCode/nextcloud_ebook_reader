@@ -189,6 +189,22 @@
 			<span class="ebr__pct">{{ progressLabel }}</span>
 		</footer>
 
+		<div v-if="nextPrompt && state === 'ready'" class="ebr__next" role="status">
+			<span class="ebr__next-text">{{ t('ebookreader', 'Continue with {title}', { title: nextPromptLabel }) }}</span>
+			<NcButton variant="primary" size="small" @click="openNext">
+				{{ t('ebookreader', 'Open') }}
+			</NcButton>
+			<NcButton
+				variant="tertiary"
+				size="small"
+				:aria-label="t('ebookreader', 'Dismiss')"
+				@click="dismissNext">
+				<template #icon>
+					<ReaderIcon name="close" />
+				</template>
+			</NcButton>
+		</div>
+
 		<AnnotationPopup
 			v-if="popup && stage"
 			:mode="popup.mode"
@@ -270,9 +286,11 @@ import ReaderIcon from '../components/reader/ReaderIcon.vue'
 import ReaderSettings from '../components/reader/ReaderSettings.vue'
 import ReaderToc from '../components/reader/ReaderToc.vue'
 import { createReader, ReaderError } from '../../packages/reader-core/index.ts'
+import { offersNextVolume, volumeLabel } from '../components/library/bookFlags.ts'
+import { bookTitle } from '../components/library/utils.ts'
 import { loadLibarchive } from '../components/reader/libarchive.ts'
 import { annotationsToMarkdown } from '../services/annotationExport.ts'
-import { getBook, getSettings, putSettings } from '../services/api.ts'
+import { getBook, getSettings, nextVolume, putSettings } from '../services/api.ts'
 import { loadBookSource, needsClientCover, uploadClientCover } from '../services/bookSource.ts'
 import { DownloadDeclinedError } from '../services/largeDownload.ts'
 import { createProgressSync } from '../services/progressSync.ts'
@@ -315,6 +333,50 @@ const isComic = ref(false)
 const isRtl = ref(false)
 const prefersDark = ref(globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false)
 const conflict = ref<Progress | null>(null)
+/** "Continue with volume n+1" at the end of a book in a series; looked up once per book */
+const nextPrompt = ref<Book | null>(null)
+const nextPromptLabel = computed(() => (nextPrompt.value ? volumeLabel(nextPrompt.value, bookTitle(nextPrompt.value)) : ''))
+let nextLookedUp = false
+
+/**
+ * Called on every position change: near the end of a book in a series the next volume is offered.
+ *
+ * @param p reading position 0..1
+ */
+function checkNextVolume(p: number): void {
+	if (nextLookedUp || !offersNextVolume(book.value, p) || !book.value) {
+		return
+	}
+	nextLookedUp = true
+	const fileId = book.value.fileId
+	nextVolume(fileId).then((next) => {
+		if (next && book.value?.fileId === fileId) {
+			nextPrompt.value = next
+		}
+	}).catch(() => {
+		// no prompt then
+	})
+}
+
+/**
+ * Opens the next volume (the current position is saved first).
+ */
+async function openNext(): Promise<void> {
+	const next = nextPrompt.value
+	if (!next) {
+		return
+	}
+	await flushBeforeLeave()
+	// replace: closing the next volume goes back to where the first one was opened from
+	void router.replace({ path: `/read/${next.fileId}`, query: route.query })
+}
+
+/**
+ *
+ */
+function dismissNext(): void {
+	nextPrompt.value = null
+}
 
 const viewSettings = reactive<ViewSettings>({
 	theme: 'auto',
@@ -932,6 +994,7 @@ onMounted(async () => {
 		unsubs.push(
 			reader.on('relocate', ({ locator, percentage: p, page }) => {
 				percentage.value = p
+				checkNextVolume(p)
 				pageInfo.value = page ?? null
 				currentHref.value = locator.href
 				pageTick.value++
@@ -1009,6 +1072,12 @@ onBeforeUnmount(() => {
 .ebr__title { flex: 1 1 auto; margin: 0; font-size: 1rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
 .ebr__seek { flex: 1 1 auto; }
 .ebr__pct { min-width: 90px; text-align: end; font-variant-numeric: tabular-nums; }
+.ebr__next {
+	position: absolute; z-index: 3; inset-inline-end: 16px; bottom: 64px; max-width: min(420px, calc(100% - 32px));
+	display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 14px; border-radius: var(--border-radius-large);
+	background: var(--color-main-background); color: var(--color-main-text); box-shadow: 0 2px 10px rgba(0, 0, 0, .3);
+}
+.ebr__next-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ebr__overlay { position: absolute; inset: 0; z-index: 3; display: flex; align-items: center; justify-content: center; background: var(--ebr-bg); }
 .ebr__panel {
 	position: absolute; top: 52px; bottom: 0; inset-inline-start: 0; z-index: 4; width: min(380px, 100%);

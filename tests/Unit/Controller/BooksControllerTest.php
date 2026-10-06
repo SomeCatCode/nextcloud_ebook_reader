@@ -177,4 +177,121 @@ class BooksControllerTest extends TestCase {
 		$this->serializer->method('serializeMany')->willReturn([]);
 		$this->controller->index(include: ['genre:Krimi'], exclude: 'tag:Horror', match: 'any');
 	}
+
+	public function testPatchCompletionAndAgeRating(): void {
+		$book = $this->book();
+		$book->applyFileAgeRating(12);
+		$this->library->method('getBook')->willReturn($book);
+		$this->request->method('getParams')->willReturn(['completion' => 'ongoing', 'ageRating' => 16]);
+		$this->mapper->expects($this->once())->method('update');
+		$this->progress->expects($this->never())->method('applyReadStatus');
+
+		$this->controller->patchAppData(5, completion: 'ongoing', ageRating: 16);
+
+		$this->assertSame('ongoing', $book->getCompletion());
+		$this->assertSame(16, $book->getAgeRating());
+		$this->assertTrue($book->getAgeRatingManual());
+		$this->assertSame(12, $book->getAgeRatingFile());
+		$this->assertSame(1800000000500, $book->getUpdatedAt());
+	}
+
+	public function testPatchExplicitNullClearsCompletionAndSetsManualNoAgeRating(): void {
+		$book = $this->book();
+		$book->setCompletion('completed');
+		$book->applyFileAgeRating(18);
+		$this->library->method('getBook')->willReturn($book);
+		$this->request->method('getParams')->willReturn(['completion' => null, 'ageRating' => null]);
+		$this->mapper->expects($this->once())->method('update');
+
+		$this->controller->patchAppData(5);
+
+		$this->assertNull($book->getCompletion());
+		$this->assertNull($book->getAgeRating());
+		$this->assertTrue($book->getAgeRatingManual());
+	}
+
+	public function testPatchResetAgeRatingUsesTheFileValue(): void {
+		$book = $this->book();
+		$book->applyFileAgeRating(6);
+		$book->setManualAgeRating(18);
+		$this->library->method('getBook')->willReturn($book);
+		$this->request->method('getParams')->willReturn(['resetAgeRating' => true]);
+		$this->mapper->expects($this->once())->method('update');
+
+		$this->controller->patchAppData(5, resetAgeRating: true);
+
+		$this->assertSame(6, $book->getAgeRating());
+		$this->assertFalse($book->getAgeRatingManual());
+	}
+
+	public function testPatchSameCompletionDoesNotBumpUpdatedAt(): void {
+		$book = $this->book();
+		$book->setCompletion('ongoing');
+		$this->library->method('getBook')->willReturn($book);
+		$this->request->method('getParams')->willReturn(['completion' => 'ongoing']);
+		$this->mapper->expects($this->never())->method('update');
+		$this->controller->patchAppData(5, completion: 'ongoing');
+		$this->assertSame(1, $book->getUpdatedAt());
+	}
+
+	/** @return array<string, array{array<string, mixed>}> */
+	public static function badFlags(): array {
+		return [
+			'completion' => [['completion' => 'finished']],
+			'age' => [['ageRating' => 15]],
+			'age and reset' => [['ageRating' => 12, 'resetAgeRating' => true]],
+		];
+	}
+
+	/** @param array<string, mixed> $params */
+	#[\PHPUnit\Framework\Attributes\DataProvider('badFlags')]
+	public function testPatchRejectsBadFlags(array $params): void {
+		$this->library->method('getBook')->willReturn($this->book());
+		$this->request->method('getParams')->willReturn($params);
+		$this->mapper->expects($this->never())->method('update');
+		$this->expectException(OCSBadRequestException::class);
+		$this->controller->patchAppData(5, completion: $params['completion'] ?? null, ageRating: $params['ageRating'] ?? null, resetAgeRating: $params['resetAgeRating'] ?? false);
+	}
+
+	public function testBulkAppDataReportsPerFileResults(): void {
+		$a = $this->book();
+		$b = new Book();
+		$b->setFileId(6);
+		$b->setCompletion('completed');
+		$this->mapper->method('findByUserAndFiles')->willReturn([$a, $b]);
+		$this->request->method('getParams')->willReturn(['fileIds' => [5, 6, 7], 'completion' => 'completed']);
+		$this->mapper->expects($this->once())->method('update')->with($a);
+
+		$data = $this->controller->patchAppDataMany([5, 6, 7, 5], completion: 'completed')->getData();
+
+		$this->assertSame(['updated' => 1, 'unchanged' => 1, 'failed' => [['fileId' => 7, 'error' => 'not_found']]], $data);
+		$this->assertSame('completed', $a->getCompletion());
+		$this->assertSame(1800000000500, $a->getUpdatedAt());
+	}
+
+	public function testBulkAppDataNeedsAField(): void {
+		$this->request->method('getParams')->willReturn(['fileIds' => [5]]);
+		$this->expectException(OCSBadRequestException::class);
+		$this->controller->patchAppDataMany([5]);
+	}
+
+	public function testBulkAppDataRejectsTooManyFiles(): void {
+		$this->request->method('getParams')->willReturn(['completion' => 'ongoing']);
+		$this->expectException(OCSBadRequestException::class);
+		$this->controller->patchAppDataMany(range(1, 501), completion: 'ongoing');
+	}
+
+	public function testNextReturnsTheNextVolumeOrNull(): void {
+		$book = $this->book();
+		$next = new Book();
+		$next->setFileId(9);
+		$this->library->method('getBook')->willReturn($book);
+		$this->library->method('nextVolume')->willReturnOnConsecutiveCalls($next, null);
+		$serializer = $this->createMock(BookSerializer::class);
+		$serializer->method('serializeWithProgress')->willReturnCallback(static fn (string $u, Book $b): array => ['fileId' => $b->getFileId()]);
+		$controller = new BooksController($this->request, 'u', $this->library, $this->mapper, $serializer, $this->createMock(ITimeFactory::class), $this->progress);
+
+		$this->assertSame(['book' => ['fileId' => 9]], $controller->next(5)->getData());
+		$this->assertSame(['book' => null], $controller->next(5)->getData());
+	}
 }

@@ -58,6 +58,20 @@ class BookQueryTest extends TestCase {
 		$this->assertSame([['type' => 'missing', 'name' => 'language']], $q->exclude);
 	}
 
+	public function testCompletionAndAgeTermsAreValidatedAndNormalised(): void {
+		$q = BookQuery::fromRequestParams([
+			'include' => ['completion:Ongoing', 'completion:done', 'age:<= 12', 'age:16', 'age:15', 'age:<=7', 'age:NONE', 'age:'],
+			'exclude' => 'completion:unknown,age:18',
+		]);
+		$this->assertSame([
+			['type' => 'completion', 'name' => 'ongoing'],
+			['type' => 'age', 'name' => '<=12'],
+			['type' => 'age', 'name' => '16'],
+			['type' => 'age', 'name' => 'none'],
+		], $q->include);
+		$this->assertSame([['type' => 'completion', 'name' => 'unknown'], ['type' => 'age', 'name' => '18']], $q->exclude);
+	}
+
 	public function testShelfTermAndSort(): void {
 		$q = BookQuery::fromRequestParams(['include' => ['shelf:12', 'tag:Fantasy/*'], 'exclude' => ['shelf:3'], 'sort' => 'shelf']);
 		$this->assertSame([['type' => 'shelf', 'name' => '12'], ['type' => 'tag', 'name' => 'Fantasy/*']], $q->include);

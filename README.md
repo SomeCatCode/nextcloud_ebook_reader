@@ -136,6 +136,8 @@ sudo -u www-data php occ ebookreader:scan <user> --force --format=cbr
 - Bulk editing of authors, series (with automatic numbering), publisher, language, genres and tags; bulk shelving, renaming and deleting (to the trash)
 - Drag-and-drop upload, including very large files
 - Star ratings and read status
+- Completion status per book (ongoing or completed) and an optional age rating (0, 6, 12, 16, 18; read from ComicInfo.xml `AgeRating` or EPUB `schema:typicalAgeRange`, or set by hand), both shown on the cards and filterable
+- "Continue the series": the next volume appears in "Continue reading" once a volume is finished, and the reader offers it at the end of a book
 - "Continue reading" dashboard widget and an [OPDS catalog](#opds-catalog) for e-reader apps
 
 **Editing**

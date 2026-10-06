@@ -17,7 +17,9 @@ final class BookQuery {
 	public const STATUSES = ['unread', 'reading', 'finished'];
 	public const DEFAULT_LIMIT = 50;
 	public const MAX_LIMIT = 200;
-	public const FILTER_TYPES = ['genre', 'tag', 'author', 'series', 'format', 'shelf', 'missing'];
+	public const FILTER_TYPES = ['genre', 'tag', 'author', 'series', 'format', 'shelf', 'missing', 'completion', 'age'];
+	/** names a `completion:<name>` term can use (unknown = not set) */
+	public const COMPLETION_TERMS = ['ongoing', 'completed', 'unknown'];
 	/** fields a `missing:<field>` term can ask for */
 	public const MISSING_FIELDS = ['genre', 'tag', 'author', 'series', 'description', 'cover', 'language'];
 	public const MATCH_ALL = 'all';
@@ -92,6 +94,16 @@ final class BookQuery {
 			if ($type === 'missing') {
 				$name = strtolower($name);
 				if (!in_array($name, self::MISSING_FIELDS, true)) {
+					continue;
+				}
+			} elseif ($type === 'completion') {
+				$name = strtolower($name);
+				if (!in_array($name, self::COMPLETION_TERMS, true)) {
+					continue;
+				}
+			} elseif ($type === 'age') {
+				$name = FilterTerms::normalizeAge($name);
+				if ($name === null) {
 					continue;
 				}
 			}

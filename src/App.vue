@@ -8,7 +8,8 @@
 			<!-- The library brings its own NcAppNavigation + NcAppContent (+ sidebar) -->
 			<component :is="Component" v-if="route.name === 'library'" />
 			<NcAppContent v-else>
-				<component :is="Component" />
+				<!-- keyed by path: "next volume" in the reader goes from /read/1 to /read/2 and needs a fresh reader -->
+				<component :is="Component" :key="route.path" />
 			</NcAppContent>
 		</RouterView>
 	</NcContent>

@@ -74,6 +74,9 @@ namespace OCA\EbookReader;
  *     downloadable: bool,
  *     overrides: list<string>,
  *     hasSidecar: bool,
+ *     completion: 'ongoing'|'completed'|null,
+ *     ageRating: 0|6|12|16|18|null,
+ *     ageRatingManual: bool,
  *     progress: ?EbookReaderProgress,
  * }
  *
@@ -86,6 +89,8 @@ namespace OCA\EbookReader;
  *     series: list<EbookReaderFacetEntry>,
  *     formats: list<EbookReaderFacetEntry>,
  *     missing: array{genre: int, tag: int, author: int, series: int, description: int, cover: int, language: int},
+ *     completion: list<EbookReaderFacetEntry>,
+ *     ageRatings: list<EbookReaderFacetEntry>,
  * }
  *
  * @psalm-type EbookReaderSettings = array{
@@ -104,6 +109,11 @@ namespace OCA\EbookReader;
  *     annotations: list<EbookReaderAnnotation>,
  *     cursor: string,
  *     hasMore: bool,
+ * }
+ *
+ * @psalm-type EbookReaderUpNext = array{
+ *     previousFileId: int,
+ *     book: EbookReaderBook,
  * }
  *
  * @psalm-type EbookReaderBookList = array{
@@ -131,6 +141,10 @@ namespace OCA\EbookReader;
  *     sortOrder: int,
  *     createdAt: int,
  *     updatedAt: int,
+ *     owner: string,
+ *     ownerDisplayName: string,
+ *     readOnly: bool,
+ *     shareCount: int,
  * }
  *
  * @psalm-type EbookReaderSeries = array{
@@ -189,6 +203,29 @@ namespace OCA\EbookReader;
  * @psalm-type EbookReaderOptimizeResult = array{
  *     tasks: list<EbookReaderOptimizeTask>,
  *     skipped: list<EbookReaderOptimizeSkipped>,
+ * }
+ *
+ * @psalm-type EbookReaderShare = array{
+ *     type: 'book'|'shelf',
+ *     fileId: ?int,
+ *     shelfId: ?int,
+ *     name: string,
+ *     owner: string,
+ *     ownerDisplayName: string,
+ *     recipient: string,
+ *     recipientDisplayName: string,
+ *     createdAt: int,
+ *     bookCount: int,
+ * }
+ *
+ * @psalm-type EbookReaderShareOverview = array{
+ *     outgoing: list<EbookReaderShare>,
+ *     incoming: list<EbookReaderShare>,
+ * }
+ *
+ * @psalm-type EbookReaderShareCreated = array{
+ *     share: EbookReaderShare,
+ *     skipped: int,
  * }
  */
 class ResponseDefinitions {

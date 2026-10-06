@@ -17,6 +17,8 @@
 				</template>
 			</NcAppNavigationItem>
 
+			<SharedNav />
+
 			<ShelvesNav />
 
 			<NcAppNavigationCaption :name="t('ebookreader', 'Filter')" />
@@ -75,6 +77,32 @@
 					class="library-nav__empty" />
 			</NcAppNavigationItem>
 			<NcAppNavigationItem
+				v-for="group in flagGroups"
+				:key="group.key"
+				:name="group.name"
+				:allowCollapse="true"
+				:open="openGroups[group.key]"
+				@click="openGroups[group.key] = !openGroups[group.key]"
+				@update:open="(v: boolean) => (openGroups[group.key] = v)">
+				<template #icon>
+					<NcIconSvgWrapper :path="group.icon" />
+				</template>
+				<NcAppNavigationItem
+					v-for="entry in group.entries"
+					:key="entry.name"
+					:name="entry.label"
+					:active="store.termState({ type: group.filter, name: entry.name }) === 'include'"
+					:class="{ 'library-nav__excluded': store.termState({ type: group.filter, name: entry.name }) === 'exclude' }"
+					@click="store.cycleTerm({ type: group.filter, name: entry.name })">
+					<template v-if="store.termState({ type: group.filter, name: entry.name }) === 'exclude'" #icon>
+						<NcIconSvgWrapper :path="mdiMinusCircleOutline" />
+					</template>
+					<template #counter>
+						<NcCounterBubble :count="entry.count" />
+					</template>
+				</NcAppNavigationItem>
+			</NcAppNavigationItem>
+			<NcAppNavigationItem
 				v-if="attentionEntries.length > 0"
 				:name="t('ebookreader', 'Needs attention')"
 				:allowCollapse="true"
@@ -126,7 +154,7 @@
 		</template>
 	</NcAppNavigation>
 
-	<NcAppContent :pageHeading="t('ebookreader', 'E-book library')">
+	<NcAppContent :pageHeading="t('ebookreader', 'E-book library')" :pageTitle="pageTitle">
 		<div
 			class="library"
 			@dragenter="onDragEnter"
@@ -247,7 +275,7 @@
 					{{ t('ebookreader', 'Add to shelf…') }}
 				</NcButton>
 				<NcButton
-					v-if="store.activeManualShelfId !== null"
+					v-if="store.activeManualShelfId !== null && !shelves.byId(store.activeManualShelfId)?.readOnly"
 					:disabled="store.selectedIds.length === 0"
 					@click="removeFromShelf">
 					<template #icon>
@@ -265,7 +293,7 @@
 					<template #icon>
 						<NcIconSvgWrapper :path="mdiImageSizeSelectLarge" />
 					</template>
-					{{ t('ebookreader', 'Optimize images�') }}
+					{{ t('ebookreader', 'Optimize images…') }}
 				</NcButton>
 				<NcButton variant="primary" :disabled="store.selectedIds.length === 0" @click="showBulk = true">
 					<template #icon>
@@ -347,6 +375,7 @@
 				<ContinueReading
 					v-if="showContinue"
 					:books="store.recent"
+					:upNext="store.upNext"
 					:activeFileId="store.activeFileId"
 					@click="onBookClick" />
 
@@ -417,9 +446,11 @@
 </template>
 
 <script setup lang="ts">
+import type { FlagNavEntry } from '../components/library/bookFlags.ts'
 import type { Book, FacetEntry, FilterTerm, SeriesEntry, SortKey } from '../types.ts'
 
 import {
+	mdiAccountChildOutline,
 	mdiAccountOutline,
 	mdiAlertCircleOutline,
 	mdiArrowLeft,
@@ -443,6 +474,7 @@ import {
 	mdiLibraryShelves,
 	mdiMinusCircleOutline,
 	mdiPlusCircleOutline,
+	mdiProgressCheck,
 	mdiRefresh,
 	mdiSort,
 	mdiSortAscending,
@@ -483,20 +515,26 @@ import DeleteBooksDialog from '../components/library/DeleteBooksDialog.vue'
 import FilterBar from '../components/library/FilterBar.vue'
 import SeriesGrid from '../components/library/SeriesGrid.vue'
 import SettingsDialog from '../components/library/SettingsDialog.vue'
+import SharedNav from '../components/library/SharedNav.vue'
 import ShelvesNav from '../components/library/ShelvesNav.vue'
 import TagTreeNav from '../components/library/TagTreeNav.vue'
 import UploadPanel from '../components/library/UploadPanel.vue'
 import OrganizeDialog from '../components/organize/OrganizeDialog.vue'
+import { ageEntries, ageTermLabel, completionEntries, completionTermLabel } from '../components/library/bookFlags.ts'
 import { MISSING_FIELDS, missingEntries, missingLabel } from '../components/library/missing.ts'
 import { splitOptimizable } from '../convert/optimize.ts'
 import { scan } from '../services/api.ts'
 import { buildTree } from '../services/hierarchy.ts'
+import { appPageTitle } from '../services/pageTitle.ts'
 import { ALLOWED_EXTENSIONS } from '../services/upload.ts'
 import { queryToState, useLibraryStore } from '../stores/library.ts'
 import { useShelvesStore } from '../stores/shelves.ts'
 import { useUploadStore } from '../stores/upload.ts'
 
 const VIEW_KEY = 'ebookreader.libraryView'
+
+/** Browser tab title (see services/pageTitle.ts) */
+const pageTitle = appPageTitle(t('ebookreader', 'E-book library'))
 
 const store = useLibraryStore()
 const shelves = useShelvesStore()
@@ -597,7 +635,29 @@ const openGroups = reactive<Record<string, boolean>>({
 	authors: false,
 	series: false,
 	formats: false,
+	completion: false,
+	age: false,
 	attention: false,
+})
+
+/**
+ * Completion status and age rating groups; a group without books is hidden, an active term stays visible (count 0).
+ */
+const flagGroups = computed(() => {
+	const withActive = (filter: 'completion' | 'age', entries: FlagNavEntry[]): FlagNavEntry[] => {
+		const shown = new Set(entries.map((e) => e.name))
+		const active = [...store.filters.include, ...store.filters.exclude]
+			.filter((x) => x.type === filter && !shown.has(x.name))
+			.map((x) => ({ name: x.name, label: filter === 'age' ? ageTermLabel(x.name) : completionTermLabel(x.name), count: 0 }))
+		return entries.concat(active)
+	}
+	const completion = withActive('completion', completionEntries(store.facets.completion))
+	const age = withActive('age', ageEntries(store.facets.ageRatings))
+	return [
+		// "unknown" alone is no useful filter: show the group once a book has a status
+		{ key: 'completion', filter: 'completion' as const, name: t('ebookreader', 'Completion status'), icon: mdiProgressCheck, entries: completion, visible: completion.some((e) => e.name !== 'unknown') },
+		{ key: 'age', filter: 'age' as const, name: t('ebookreader', 'Age rating'), icon: mdiAccountChildOutline, entries: age, visible: age.length > 0 },
+	].filter((g) => g.visible)
 })
 
 /** "Needs attention": fields lacking in at least one book (an active term stays visible even at 0) */
@@ -634,7 +694,7 @@ const shelfHeading = computed(() => {
 
 const acceptExtensions = ALLOWED_EXTENSIONS.map((e) => '.' + e).join(',')
 
-const showContinue = computed(() => !store.hasFilters && store.recent.length > 0)
+const showContinue = computed(() => !store.hasFilters && (store.recent.length > 0 || store.upNext.length > 0))
 
 const emptyDescription = computed(() => t('ebookreader', 'Books are found in your library folders (default: /Books). Put e-books there or choose other folders in the settings, then scan the library.'))
 

@@ -9,13 +9,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { optimizeBooks } from '../convert/convertApi.ts'
 import * as api from '../services/api.ts'
 import { pollTask } from '../services/tasks.ts'
-import { PAGE_SIZE, progressForStatus, queryToState, SEARCH_DEBOUNCE_MS, shelfTerm, smartQueryToState, stateToQuery, stateToSmartQuery, useLibraryStore } from './library.ts'
+import { optimisticAppData, PAGE_SIZE, progressForStatus, queryToState, SEARCH_DEBOUNCE_MS, shelfTerm, smartQueryToState, stateToQuery, stateToSmartQuery, useLibraryStore } from './library.ts'
 
 vi.mock('../services/api.ts', () => ({
 	listBooks: vi.fn(),
 	getFacets: vi.fn(),
 	recentBooks: vi.fn(),
 	patchAppData: vi.fn(),
+	bulkAppData: vi.fn(),
 	bulkTags: vi.fn(),
 	bulkMetadata: vi.fn(),
 	patchMetadata: vi.fn(),
@@ -61,6 +62,9 @@ function book(fileId: number, extra: Partial<Book> = {}): Book {
 		downloadable: true,
 		overrides: [],
 		hasSidecar: false,
+		completion: null,
+		ageRating: null,
+		ageRatingManual: false,
 		progress: null,
 		...extra,
 	}
@@ -399,6 +403,90 @@ describe('library store', () => {
 		await store.reload()
 		mocked.patchMetadata.mockResolvedValueOnce({ book: book(1, { tags: ['a'] }), warnings: [], writeQueued: true })
 		expect(await store.saveBookTags(1, { genres: [], tags: ['a'] })).toEqual({ warnings: [], writeQueued: true })
+	})
+
+	it('sets completion and age rating optimistically and refreshes the facets', async () => {
+		mocked.getFacets.mockResolvedValue({ genres: [], tags: [], authors: [], series: [], formats: [], missing: { genre: 0, tag: 0, author: 0, series: 0, description: 0, cover: 0, language: 0 } })
+		const store = useLibraryStore()
+		await store.reload()
+		let resolve: (b: Book) => void = () => {}
+		mocked.patchAppData.mockImplementationOnce(() => new Promise((r) => {
+			resolve = r
+		}))
+		const p = store.setAgeRating(1, 16)
+		expect(store.books[0].ageRating).toBe(16)
+		expect(store.books[0].ageRatingManual).toBe(true)
+		resolve(book(1, { ageRating: 16, ageRatingManual: true }))
+		await p
+		expect(mocked.patchAppData).toHaveBeenLastCalledWith(1, { ageRating: 16 })
+		expect(mocked.getFacets).toHaveBeenCalled()
+
+		mocked.patchAppData.mockResolvedValueOnce(book(1, { completion: 'ongoing' }))
+		await store.setCompletion(1, 'ongoing')
+		expect(mocked.patchAppData).toHaveBeenLastCalledWith(1, { completion: 'ongoing' })
+		expect(store.books[0].completion).toBe('ongoing')
+
+		mocked.patchAppData.mockRejectedValueOnce(new Error('nope'))
+		await expect(store.setCompletion(1, null)).rejects.toThrow('nope')
+		expect(store.books[0].completion).toBe('ongoing')
+
+		// reset: no optimistic value, the server copy carries the file's rating
+		mocked.patchAppData.mockResolvedValueOnce(book(1, { ageRating: 12, ageRatingManual: false }))
+		await store.resetAgeRating(1)
+		expect(mocked.patchAppData).toHaveBeenLastCalledWith(1, { resetAgeRating: true })
+		expect(store.books[0].ageRating).toBe(12)
+		expect(store.books[0].ageRatingManual).toBe(false)
+	})
+
+	it('loads "up next" volumes with continue reading and drops a started one', async () => {
+		const next = book(7, { series: 'Saga', seriesIndex: 2 })
+		mocked.recentBooks.mockResolvedValue({ books: [book(3, { readStatus: 'reading' })], upNext: [{ previousFileId: 6, book: next }] })
+		const store = useLibraryStore()
+		await store.loadRecent()
+		expect(store.upNext.map((u) => u.book.fileId)).toEqual([7])
+		store.setActive(7)
+		expect(store.activeBook?.fileId).toBe(7)
+
+		mocked.patchAppData.mockResolvedValueOnce(book(7, { readStatus: 'reading', series: 'Saga' }))
+		await store.setReadStatus(7, 'reading')
+		expect(store.upNext).toEqual([])
+	})
+
+	it('reloads continue reading when a volume of a series is marked finished', async () => {
+		mocked.recentBooks.mockResolvedValue({ books: [] })
+		const store = useLibraryStore()
+		store.books = [book(1, { series: 'Saga', readStatus: 'reading' })]
+		mocked.patchAppData.mockResolvedValueOnce(book(1, { series: 'Saga', readStatus: 'finished' }))
+		await store.setReadStatus(1, 'finished')
+		expect(mocked.recentBooks).toHaveBeenCalled()
+	})
+
+	it('sends completion and age rating of the selection in one request', async () => {
+		mocked.bulkAppData.mockResolvedValueOnce({ updated: 2, unchanged: 0, failed: [] })
+		mocked.recentBooks.mockResolvedValue({ books: [] })
+		const store = useLibraryStore()
+		await store.reload()
+		store.setSelectMode(true)
+		store.toggleSelected(2)
+		store.toggleSelected(1)
+		const res = await store.bulkAppData({ completion: 'completed', ageRating: null })
+		expect(mocked.bulkAppData).toHaveBeenCalledWith({ completion: 'completed', ageRating: null, fileIds: [1, 2] })
+		expect(res.updated).toBe(2)
+		expect(store.selectedIds).toHaveLength(2)
+	})
+
+	it('accepts completion and age terms from the URL and drops invalid ones', () => {
+		const state = queryToState({ include: ['completion:ongoing', 'age:<= 12', 'age:15', 'completion:nope'], exclude: 'age:none' })
+		expect(state.filters.include).toEqual([{ type: 'completion', name: 'ongoing' }, { type: 'age', name: '<=12' }])
+		expect(state.filters.exclude).toEqual([{ type: 'age', name: 'none' }])
+		expect(stateToQuery(state.filters, 'title', 'asc')).toEqual({ include: ['completion:ongoing', 'age:<=12'], exclude: ['age:none'] })
+	})
+
+	it('builds the optimistic copy of an app-data patch', () => {
+		const b = book(1, { rating: 3, completion: 'ongoing', ageRating: 12 })
+		expect(optimisticAppData(b, { completion: null })).toMatchObject({ completion: null, rating: 3, ageRating: 12, ageRatingManual: false })
+		expect(optimisticAppData(b, { ageRating: null })).toMatchObject({ ageRating: null, ageRatingManual: true })
+		expect(optimisticAppData(b, { resetAgeRating: true })).toEqual(b)
 	})
 })
 

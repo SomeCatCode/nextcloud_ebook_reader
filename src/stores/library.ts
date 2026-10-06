@@ -4,8 +4,12 @@ import type { OptimizeOptions } from '../convert/optimize.ts'
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 import type {
+	AgeRating,
+	AppDataPatch,
 	Book,
 	BookQuery,
+	BulkAppDataRequest,
+	BulkAppDataResult,
 	BulkMetadataRequest,
 	BulkMetadataResult,
 	BulkTagResult,
@@ -20,10 +24,12 @@ import type {
 	SmartQuery,
 	SortKey,
 	Task,
+	UpNext,
 } from '../types.ts'
 
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
+import { isCompletionTerm, normalizeAgeTerm } from '../components/library/bookFlags.ts'
 import { orderSelection } from '../components/library/bulkEdit.ts'
 import { EMBED_SYNC_MAX_BYTES } from '../components/library/metadataStorage.ts'
 import { emptyMissing, isMissingField } from '../components/library/missing.ts'
@@ -46,7 +52,7 @@ export interface Filters {
 	status: ReadStatus | null
 }
 
-const FILTER_TYPES: FilterType[] = ['genre', 'tag', 'author', 'series', 'format', 'shelf', 'missing']
+const FILTER_TYPES: FilterType[] = ['genre', 'tag', 'author', 'series', 'format', 'shelf', 'missing', 'completion', 'age']
 const SORT_KEYS: SortKey[] = ['title', 'author', 'series', 'rating', 'added', 'read', 'shelf']
 const GROUP_SERIES_KEY = 'ebookreader.groupSeries'
 const HIDE_FINISHED_KEY = 'ebookreader.hideFinished'
@@ -90,12 +96,22 @@ export function parseTerm(raw: string): FilterTerm | null {
 		return null
 	}
 	const type = raw.slice(0, i) as FilterType
-	const name = raw.slice(i + 1)
+	let name = raw.slice(i + 1)
 	if (!FILTER_TYPES.includes(type) || name === '') {
 		return null
 	}
 	if (type === 'missing' && !isMissingField(name)) {
 		return null
+	}
+	if (type === 'completion' && !isCompletionTerm(name)) {
+		return null
+	}
+	if (type === 'age') {
+		const normalized = normalizeAgeTerm(name)
+		if (normalized === null) {
+			return null
+		}
+		name = normalized
 	}
 	return { type, name }
 }
@@ -274,7 +290,7 @@ function readGroupSeries(): boolean {
 	}
 }
 
-const emptyFacets = (): Facets => ({ genres: [], tags: [], authors: [], series: [], formats: [], missing: emptyMissing() })
+const emptyFacets = (): Facets => ({ genres: [], tags: [], authors: [], series: [], formats: [], missing: emptyMissing(), completion: [], ageRatings: [] })
 
 /**
  * Progress the server stores for a read status set by hand (optimistic copy):
@@ -301,6 +317,31 @@ export function progressForStatus(book: Book, status: ReadStatus): Book['progres
 	}
 }
 
+/**
+ * Optimistic copy of a book after an app-data patch (see updateAppData).
+ *
+ * @param book
+ * @param patch
+ */
+export function optimisticAppData(book: Book, patch: AppDataPatch): Book {
+	const out: Book = { ...book }
+	if ('rating' in patch) {
+		out.rating = patch.rating ?? null
+	}
+	if (patch.readStatus) {
+		out.readStatus = patch.readStatus
+		out.progress = progressForStatus(book, patch.readStatus)
+	}
+	if ('completion' in patch) {
+		out.completion = patch.completion ?? null
+	}
+	if ('ageRating' in patch) {
+		out.ageRating = patch.ageRating ?? null
+		out.ageRatingManual = true
+	}
+	return out
+}
+
 export const useLibraryStore = defineStore('library', () => {
 	const books = ref<Book[]>([])
 	const total = ref(0)
@@ -324,6 +365,8 @@ export const useLibraryStore = defineStore('library', () => {
 	/** smart shelf whose saved query is the base of the current filters */
 	const smartShelfId = ref<number | null>(null)
 	const recent = ref<Book[]>([])
+	/** next volumes of series whose latest read volume is finished (shown with "continue reading") */
+	const upNext = ref<UpNext[]>([])
 
 	const selectMode = ref(false)
 	const selection = ref<Set<number>>(new Set())
@@ -360,6 +403,7 @@ export const useLibraryStore = defineStore('library', () => {
 	const orderedSelectedIds = computed(() => orderSelection(books.value.map((b) => b.fileId), selectedIds.value))
 	const activeBook = computed(() => books.value.find((b) => b.fileId === activeFileId.value)
 		?? recent.value.find((b) => b.fileId === activeFileId.value)
+		?? upNext.value.find((u) => u.book.fileId === activeFileId.value)?.book
 		?? null)
 
 	/**
@@ -480,9 +524,12 @@ export const useLibraryStore = defineStore('library', () => {
 	 */
 	async function loadRecent(): Promise<void> {
 		try {
-			recent.value = (await api.recentBooks(10)).books
+			const res = await api.recentBooks(10)
+			recent.value = res.books
+			upNext.value = res.upNext ?? []
 		} catch {
 			recent.value = []
+			upNext.value = []
 		}
 	}
 
@@ -810,6 +857,16 @@ export const useLibraryStore = defineStore('library', () => {
 	function applyBook(book: Book): void {
 		books.value = books.value.map((b) => (b.fileId === book.fileId ? book : b))
 		recent.value = recent.value.map((b) => (b.fileId === book.fileId ? book : b))
+		upNext.value = upNext.value.map((u) => (u.book.fileId === book.fileId ? { ...u, book } : u))
+	}
+
+	/**
+	 * A loaded copy of a book (library list, continue reading or up next).
+	 *
+	 * @param fileId
+	 */
+	function findLoaded(fileId: number): Book | undefined {
+		return [...books.value, ...recent.value, ...upNext.value.map((u) => u.book)].find((b) => b.fileId === fileId)
 	}
 
 	/**
@@ -819,6 +876,10 @@ export const useLibraryStore = defineStore('library', () => {
 	 * @param book
 	 */
 	function dropByStatus(book: Book): void {
+		if (book.readStatus !== 'unread') {
+			// "up next" only offers volumes that were not started yet
+			upNext.value = upNext.value.filter((u) => u.book.fileId !== book.fileId)
+		}
 		if (book.readStatus === 'unread') {
 			recent.value = recent.value.filter((b) => b.fileId !== book.fileId)
 			return
@@ -835,30 +896,76 @@ export const useLibraryStore = defineStore('library', () => {
 	}
 
 	/**
-	 * Optimistic update of rating and/or read status; rolls back and rethrows on failure.
+	 * Optimistic update of app data (rating, read status, completion, age rating); rolls back and rethrows on failure.
 	 * The server couples the status with the progress (finished = 100 %, unread = 0 %); the
 	 * optimistic copy shows that right away, the server copy (with its progress) replaces it.
+	 * Resetting the age rating has no optimistic copy (only the server knows the value from the file).
 	 *
 	 * @param fileId
 	 * @param patch
-	 * @param patch.rating
-	 * @param patch.readStatus
 	 */
-	async function updateAppData(fileId: number, patch: { rating?: number | null, readStatus?: ReadStatus }): Promise<void> {
-		const previous = [...books.value, ...recent.value].find((b) => b.fileId === fileId)
+	async function updateAppData(fileId: number, patch: AppDataPatch): Promise<void> {
+		const previous = findLoaded(fileId)
 		if (!previous) {
 			return
 		}
 		const snapshot = { ...previous }
-		applyBook({ ...previous, ...patch, progress: patch.readStatus ? progressForStatus(previous, patch.readStatus) : previous.progress })
+		applyBook(optimisticAppData(previous, patch))
 		try {
 			const fresh = await api.patchAppData(fileId, patch)
 			applyBook(fresh)
 			dropByStatus(fresh)
+			if (patch.readStatus === 'finished' && fresh.series) {
+				// a finished volume brings its successor into "continue reading"
+				void loadRecent()
+			}
+			if ('completion' in patch || 'ageRating' in patch || patch.resetAgeRating) {
+				void loadFacets()
+			}
 		} catch (e) {
 			applyBook(snapshot)
 			throw e
 		}
+	}
+
+	/**
+	 * @param fileId
+	 * @param completion null = unknown
+	 */
+	function setCompletion(fileId: number, completion: Book['completion']): Promise<void> {
+		return updateAppData(fileId, { completion })
+	}
+
+	/**
+	 * Sets the age rating by hand (null = explicitly none); it survives re-indexing.
+	 *
+	 * @param fileId
+	 * @param ageRating
+	 */
+	function setAgeRating(fileId: number, ageRating: AgeRating | null): Promise<void> {
+		return updateAppData(fileId, { ageRating })
+	}
+
+	/**
+	 * Uses the age rating from the file again.
+	 *
+	 * @param fileId
+	 */
+	function resetAgeRating(fileId: number): Promise<void> {
+		return updateAppData(fileId, { resetAgeRating: true })
+	}
+
+	/**
+	 * Completion status / age rating of the selected books (one request), then refreshes list, facets and
+	 * "continue reading". The selection stays.
+	 *
+	 * @param changes
+	 * @param fileIds default: the selection
+	 */
+	async function bulkAppData(changes: Omit<BulkAppDataRequest, 'fileIds'>, fileIds: number[] = orderedSelectedIds.value): Promise<BulkAppDataResult> {
+		const result = await api.bulkAppData({ ...changes, fileIds })
+		await Promise.all([reload(), loadFacets(), loadRecent()])
+		return result
 	}
 
 	/**
@@ -1021,6 +1128,7 @@ export const useLibraryStore = defineStore('library', () => {
 		books.value = books.value.filter((b) => !gone.has(b.fileId))
 		total.value = Math.max(0, total.value - (before - books.value.length))
 		recent.value = recent.value.filter((b) => !gone.has(b.fileId))
+		upNext.value = upNext.value.filter((u) => !gone.has(u.book.fileId) && !gone.has(u.previousFileId))
 		const next = new Set(selection.value)
 		gone.forEach((id) => next.delete(id))
 		selection.value = next
@@ -1060,6 +1168,7 @@ export const useLibraryStore = defineStore('library', () => {
 		order,
 		facets,
 		recent,
+		upNext,
 		selectMode,
 		selection,
 		activeFileId,
@@ -1091,6 +1200,10 @@ export const useLibraryStore = defineStore('library', () => {
 		applyBook,
 		setRating,
 		setReadStatus,
+		setCompletion,
+		setAgeRating,
+		resetAgeRating,
+		bulkAppData,
 		saveBookTags,
 		embedMetadata,
 		resetOverrides,

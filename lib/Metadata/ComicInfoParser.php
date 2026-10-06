@@ -11,7 +11,7 @@ namespace OCA\EbookReader\Metadata;
 
 /** Parses (and generates) ComicInfo.xml; shared by the CBZ and CBR/CB7/CBT extractors and the converter. */
 final class ComicInfoParser {
-	private const FIELDS = ['Title', 'Series', 'Number', 'Summary', 'Writer', 'Publisher', 'Year', 'Month', 'Day', 'LanguageISO', 'Genre', 'Tags', 'Manga'];
+	private const FIELDS = ['Title', 'Series', 'Number', 'Summary', 'Writer', 'Publisher', 'Year', 'Month', 'Day', 'LanguageISO', 'Genre', 'Tags', 'Manga', 'AgeRating'];
 
 	/**
 	 * @return array{fields: array<string, ?string>, summaryRaw: ?string, coverIndex: int, coverExplicit: bool}
@@ -86,6 +86,7 @@ final class ComicInfoParser {
 			tags: XmlUtil::splitList($fields['Tags'] ?? null),
 			coverData: $coverData,
 			coverMime: $coverMime,
+			ageRating: AgeRating::fromText($fields['AgeRating'] ?? null),
 		);
 	}
 

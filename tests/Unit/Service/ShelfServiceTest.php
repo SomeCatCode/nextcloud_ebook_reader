@@ -15,8 +15,10 @@ use OCA\EbookReader\Db\Shelf;
 use OCA\EbookReader\Db\ShelfBook;
 use OCA\EbookReader\Db\ShelfBookMapper;
 use OCA\EbookReader\Db\ShelfMapper;
+use OCA\EbookReader\Db\ShelfShare;
 use OCA\EbookReader\Service\BookQuery;
 use OCA\EbookReader\Service\LibraryService;
+use OCA\EbookReader\Service\ShareService;
 use OCA\EbookReader\Service\ShelfException;
 use OCA\EbookReader\Service\ShelfService;
 use OCP\AppFramework\Db\DoesNotExistException;
@@ -378,5 +380,93 @@ class ShelfServiceTest extends TestCase {
 		$this->assertSame([], $bq->include);
 		$this->assertSame([], $bq->exclude);
 		$this->assertSame(BookQuery::MATCH_ALL, $bq->match);
+	}
+
+	// ---- sharing ------------------------------------------------------------------------------------------------
+
+	private function withSharing(): ShareService&MockObject {
+		$sharing = $this->createMock(ShareService::class);
+		$sharing->method('displayName')->willReturnCallback(static fn (string $u): string => strtoupper($u));
+		$this->service = new ShelfService($this->shelfMapper, $this->shelfBooks, $this->bookMapper, $this->library, $this->time, $sharing);
+		return $sharing;
+	}
+
+	public function testOwnShelvesCarryOwnerAndShareCount(): void {
+		$sharing = $this->withSharing();
+		$a = $this->service->create('u', 'A', 'manual');
+		$sharing->method('shelfShareCounts')->willReturn([$a['id'] => 2]);
+		$list = $this->service->list('u');
+		$this->assertSame('u', $list[0]['owner']);
+		$this->assertSame('U', $list[0]['ownerDisplayName']);
+		$this->assertFalse($list[0]['readOnly']);
+		$this->assertSame(2, $list[0]['shareCount']);
+	}
+
+	public function testIncomingShelvesAreListedReadOnlyWithoutTheOwnersQuery(): void {
+		$sharing = $this->withSharing();
+		$foreign = new Shelf();
+		$foreign->setId(77);
+		$foreign->setUserId('alice');
+		$foreign->setName('Alices Krimis');
+		$foreign->setType(Shelf::TYPE_SMART);
+		$foreign->setQuery('{"include":["tag:secret"],"status":"reading"}');
+		$share = new ShelfShare();
+		$share->setShelfId(77);
+		$share->setOwnerId('alice');
+		$share->setRecipientId('u');
+		$share->setCreatedAt(123);
+		$sharing->method('incomingShelves')->willReturn([['share' => $share, 'shelf' => $foreign]]);
+		$this->library = $this->createMock(LibraryService::class);
+		$this->library->expects($this->atLeastOnce())->method('countBooks')
+			->with('u', $this->callback(static fn (BookQuery $q): bool => $q->include === [['type' => 'shelf', 'name' => '77']]))
+			->willReturn(3);
+		$this->library->method('findBooks')->willReturn(['books' => [], 'total' => 3]);
+		$this->service = new ShelfService($this->shelfMapper, $this->shelfBooks, $this->bookMapper, $this->library, $this->time, $sharing);
+
+		$list = $this->service->list('u');
+		$this->assertCount(1, $list);
+		$this->assertSame(77, $list[0]['id']);
+		$this->assertTrue($list[0]['readOnly']);
+		$this->assertSame('alice', $list[0]['owner']);
+		$this->assertSame('ALICE', $list[0]['ownerDisplayName']);
+		$this->assertNull($list[0]['query']);
+		$this->assertSame(3, $list[0]['count']);
+		$this->assertSame(123, $list[0]['createdAt']);
+	}
+
+	public function testRecipientCannotChangeASharedShelf(): void {
+		$sharing = $this->withSharing();
+		$sharing->method('isIncomingShelf')->willReturnCallback(static fn (string $u, int $id): bool => $u === 'u' && $id === 77);
+		$this->assertShelfError(ShelfException::FORBIDDEN, fn () => $this->service->update('u', 77, 'X', false, null, null));
+		$this->assertShelfError(ShelfException::FORBIDDEN, fn () => $this->service->delete('u', 77));
+		$this->assertShelfError(ShelfException::FORBIDDEN, fn () => $this->service->addBooks('u', 77, [1]));
+		$this->assertShelfError(ShelfException::FORBIDDEN, fn () => $this->service->removeBooks('u', 77, [1]));
+		$this->assertShelfError(ShelfException::FORBIDDEN, fn () => $this->service->reorder('u', 77, [1]));
+		// unknown shelves stay 404
+		$this->assertShelfError(ShelfException::NOT_FOUND, fn () => $this->service->delete('u', 78));
+	}
+
+	public function testChangesOfASharedShelfAreSyncedAndDeletingRemovesItsShares(): void {
+		$sharing = $this->withSharing();
+		$shelf = $this->service->create('u', 'A', 'manual');
+		$synced = [];
+		$sharing->method('syncShelf')->willReturnCallback(static function (int $id) use (&$synced): void {
+			$synced[] = $id;
+		});
+		$this->service->addBooks('u', $shelf['id'], [1, 2]);
+		$this->service->addBooks('u', $shelf['id'], [1]); // nothing new: no sync
+		$this->service->removeBooks('u', $shelf['id'], [2]);
+		$this->assertSame([$shelf['id'], $shelf['id']], $synced);
+
+		$sharing->expects($this->once())->method('removeShelf')->with($shelf['id']);
+		$this->service->delete('u', $shelf['id']);
+	}
+
+	public function testSmartQueryChangeIsSynced(): void {
+		$sharing = $this->withSharing();
+		$shelf = $this->service->create('u', 'S', 'smart', ['include' => ['tag:a']]);
+		$sharing->expects($this->once())->method('syncShelf')->with($shelf['id']);
+		$this->service->update('u', $shelf['id'], 'S2', false, null, null);
+		$this->service->update('u', $shelf['id'], null, true, ['include' => ['tag:b']], null);
 	}
 }
