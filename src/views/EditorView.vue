@@ -458,7 +458,8 @@ const renameOpen = ref(false)
  */
 function openSave(asCopy: boolean): void {
 	saveAsCopy.value = asCopy
-	summary.value = state.computeChangeSummary((s, v) => t('ebookreader', s, v))
+	// The texts are literal tr() calls in useEditorState.ts and are extracted there.
+	summary.value = state.computeChangeSummary((s, v) => t('ebookreader', s, v)) // l10n-ignore
 	summaryOpen.value = true
 }
 

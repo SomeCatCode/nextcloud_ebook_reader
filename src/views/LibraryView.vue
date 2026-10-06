@@ -293,7 +293,7 @@
 					<template #icon>
 						<NcIconSvgWrapper :path="mdiImageSizeSelectLarge" />
 					</template>
-					{{ t('ebookreader', 'Optimize images�') }}
+					{{ t('ebookreader', 'Optimize images…') }}
 				</NcButton>
 				<NcButton variant="primary" :disabled="store.selectedIds.length === 0" @click="showBulk = true">
 					<template #icon>
