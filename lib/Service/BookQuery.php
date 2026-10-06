@@ -25,6 +25,12 @@ final class BookQuery {
 	public const MATCH_ALL = 'all';
 	public const MATCH_ANY = 'any';
 	public const MAX_FILTER_ENTRIES = 50;
+	/**
+	 * Values of the OCS `format` query parameter (response format). They share the name with the book-format filter
+	 * of GET /books and /series, so `format=json` must not filter for books "in the format json" (clients such as the
+	 * Android app up to 0.2.0 add it to every OCS request, which made every book list come back empty).
+	 */
+	public const OCS_RESPONSE_FORMATS = ['json', 'xml'];
 
 	public function __construct(
 		public readonly ?string $search = null,
@@ -166,7 +172,7 @@ final class BookQuery {
 
 		return new self(
 			search: $str($params['search'] ?? null),
-			format: $str($params['format'] ?? null),
+			format: in_array(strtolower($str($params['format'] ?? null) ?? ''), self::OCS_RESPONSE_FORMATS, true) ? null : $str($params['format'] ?? null),
 			genre: $str($params['genre'] ?? null),
 			tag: $str($params['tag'] ?? null),
 			author: $str($params['author'] ?? null),

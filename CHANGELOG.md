@@ -5,6 +5,9 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+### Behoben
+- `GET /books` und `/series`: Der OCS-Parameter `format=json` (Antwortformat) wurde als Buchformat-Filter gelesen und lieferte deshalb leere Listen, z. B. leere Regale in der Android-App. Die Werte `json` und `xml` werden jetzt ignoriert.
+
 ## 0.8.0 – 2026-10-06
 
 ### Hinzugefügt
