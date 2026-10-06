@@ -1,6 +1,6 @@
 {
 	"name": "ebookreader",
-	"version": "0.7.0",
+	"version": "0.8.0",
 	"description": "E-book library, reader and editor for Nextcloud",
 	"private": true,
 	"type": "module",
@@ -17,7 +17,10 @@
 		"lint": "eslint src",
 		"lint:fix": "eslint src --fix",
 		"test": "vitest run --passWithNoTests",
-		"typecheck": "vue-tsc --noEmit"
+		"typecheck": "vue-tsc --noEmit",
+		"l10n:extract": "node scripts/l10n.mjs extract",
+		"l10n:check": "node scripts/l10n.mjs check",
+		"l10n:missing": "node scripts/l10n.mjs missing"
 	},
 	"dependencies": {
 		"@mdi/js": "^7.4.47",

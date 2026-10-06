@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 import { describe, expect, it } from 'vitest'
-import { buildRequest, emptyForm, orderSelection, previewNumbering, validateForm } from './bulkEdit.ts'
+import { buildAppDataRequest, buildRequest, emptyForm, hasMetadataChanges, mergeBulkResults, orderSelection, previewNumbering, validateForm } from './bulkEdit.ts'
 
 describe('orderSelection', () => {
 	it('follows the list order and appends selected books that are not loaded', () => {
@@ -129,5 +129,37 @@ describe('validateForm', () => {
 		const form = emptyForm()
 		form.tags.change = true
 		expect(validateForm(form, 1)).toEqual(['tagsEmpty'])
+	})
+})
+
+describe('completion and age rating sections', () => {
+	it('count as a change on their own and are not part of the metadata request', () => {
+		const form = emptyForm()
+		form.completion = { change: true, value: 'completed' }
+		expect(validateForm(form, 2)).toEqual([])
+		expect(hasMetadataChanges(form)).toBe(false)
+		expect(buildRequest(form, [1, 2])).toEqual({ fileIds: [1, 2] })
+		expect(buildAppDataRequest(form)).toEqual({ completion: 'completed' })
+	})
+
+	it('builds set, explicit none and reset of the age rating', () => {
+		const form = emptyForm()
+		expect(buildAppDataRequest(form)).toBeNull()
+		form.age = { change: true, mode: 'set', value: 16 }
+		expect(buildAppDataRequest(form)).toEqual({ ageRating: 16 })
+		form.age = { change: true, mode: 'set', value: null }
+		expect(buildAppDataRequest(form)).toEqual({ ageRating: null })
+		form.age = { change: true, mode: 'reset', value: 12 }
+		form.completion = { change: true, value: null }
+		expect(buildAppDataRequest(form)).toEqual({ completion: null, resetAgeRating: true })
+	})
+
+	it('merges the results of both requests', () => {
+		expect(mergeBulkResults(null, { updated: 2, unchanged: 1, failed: [{ fileId: 3, error: 'not_found' }] }))
+			.toEqual({ updated: 2, unchanged: 1, failed: [{ fileId: 3, error: 'not_found' }], writeQueued: false })
+		expect(mergeBulkResults(
+			{ updated: 1, unchanged: 2, failed: [{ fileId: 3, error: 'x' }], writeQueued: true },
+			{ updated: 3, unchanged: 0, failed: [{ fileId: 3, error: 'not_found' }, { fileId: 4, error: 'failed' }] },
+		)).toEqual({ updated: 3, unchanged: 0, failed: [{ fileId: 3, error: 'x' }, { fileId: 4, error: 'failed' }], writeQueued: true })
 	})
 })

@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace OCA\EbookReader\Tests\Unit\Controller;
 
 use OCA\EbookReader\Controller\ProgressController;
+use OCA\EbookReader\Db\Book;
 use OCA\EbookReader\Db\BookMapper;
 use OCA\EbookReader\Db\Progress;
 use OCA\EbookReader\Db\ProgressMapper;
@@ -143,5 +144,39 @@ class ProgressControllerTest extends TestCase {
 			->willReturn([]);
 		$controller = new ProgressController($this->createMock(IRequest::class), 'u', $this->service, $progressMapper, $bookMapper, $this->library, $serializer);
 		$controller->recent(10);
+	}
+
+	public function testRecentOffersTheNextVolumeOfAFinishedSeries(): void {
+		$rows = [];
+		foreach ([1 => 1.0, 4 => 0.3] as $id => $pct) {
+			$p = new Progress();
+			$p->setFileId($id);
+			$p->setPercentage($pct);
+			$rows[] = $p;
+		}
+		$progressMapper = $this->createMock(ProgressMapper::class);
+		$progressMapper->method('findRecent')->willReturn($rows);
+		$mk = static function (int $id, string $status, ?string $series, ?float $index): Book {
+			$b = new Book();
+			$b->setFileId($id);
+			$b->setReadStatus($status);
+			$b->setSeries($series);
+			$b->setSeriesIndex($index);
+			return $b;
+		};
+		$v1 = $mk(1, 'finished', 'Saga', 1.0);
+		$v2 = $mk(2, 'unread', 'Saga', 2.0);
+		$other = $mk(4, 'reading', null, null);
+		$bookMapper = $this->createMock(BookMapper::class);
+		$bookMapper->method('findByUserAndFiles')->willReturn([$v1, $other]);
+		$this->library->expects($this->once())->method('volumesOfSeries')->with('u', ['Saga'])->willReturn(['saga' => [$v1, $v2]]);
+		$serializer = $this->createMock(BookSerializer::class);
+		$serializer->method('serializeMany')->willReturnCallback(static fn (string $u, array $list): array => array_map(static fn (Book $b): array => ['fileId' => $b->getFileId()], $list));
+		$controller = new ProgressController($this->createMock(IRequest::class), 'u', $this->service, $progressMapper, $bookMapper, $this->library, $serializer);
+
+		$data = $controller->recent(10)->getData();
+
+		$this->assertSame([['fileId' => 4]], $data['books']);
+		$this->assertSame([['previousFileId' => 1, 'book' => ['fileId' => 2]]], $data['upNext']);
 	}
 }

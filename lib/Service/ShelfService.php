@@ -14,6 +14,7 @@ use OCA\EbookReader\Db\Shelf;
 use OCA\EbookReader\Db\ShelfBook;
 use OCA\EbookReader\Db\ShelfBookMapper;
 use OCA\EbookReader\Db\ShelfMapper;
+use OCA\EbookReader\Db\ShelfShare;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\DB\Exception as DbException;
@@ -39,6 +40,7 @@ class ShelfService {
 		private BookMapper $books,
 		private LibraryService $library,
 		private ITimeFactory $time,
+		private ?ShareService $sharing = null,
 	) {
 	}
 
@@ -46,12 +48,18 @@ class ShelfService {
 		return (int)$this->time->now()->format('Uv');
 	}
 
-	/** @return list<EbookReaderShelf> sorted by sortOrder, then name */
+	/** @return list<EbookReaderShelf> own shelves sorted by sortOrder, then name; then the shelves shared with the user */
 	public function list(string $userId): array {
 		$counts = $this->shelfBooks->countsByShelf($userId);
+		$shareCounts = $this->sharing?->shelfShareCounts($userId) ?? [];
 		$out = [];
 		foreach ($this->shelves->findByUser($userId) as $shelf) {
-			$out[] = $this->toApi($userId, $shelf, $counts);
+			$out[] = $this->toApi($userId, $shelf, $counts, $shareCounts);
+		}
+		if ($this->sharing !== null) {
+			foreach ($this->sharing->incomingShelves($userId) as $entry) {
+				$out[] = $this->incomingToApi($userId, $entry['share'], $entry['shelf']);
+			}
 		}
 		return $out;
 	}
@@ -124,15 +132,19 @@ class ShelfService {
 		}
 		$shelf->setUpdatedAt($this->nowMs());
 		$shelf = $this->shelves->update($shelf);
+		if ($queryGiven) {
+			$this->sharing?->syncShelf($shelf->getId());
+		}
 		return $this->toApi($userId, $shelf, $this->shelfBooks->countsByShelf($userId));
 	}
 
 	/**
-	 * Deletes the shelf and its assignments; the books stay.
+	 * Deletes the shelf and its assignments; the books stay. Its shares are removed first.
 	 * @throws ShelfException
 	 */
 	public function delete(string $userId, int $id): void {
 		$shelf = $this->get($userId, $id);
+		$this->sharing?->removeShelf($shelf->getId());
 		$this->shelfBooks->deleteByShelf($shelf->getId());
 		$this->shelves->delete($shelf);
 	}
@@ -176,6 +188,7 @@ class ShelfService {
 		if ($added > 0) {
 			$shelf->setUpdatedAt($now);
 			$this->shelves->update($shelf);
+			$this->sharing?->syncShelf($shelf->getId());
 		}
 		return ['added' => $added, 'skipped' => count($ids) - $added];
 	}
@@ -191,6 +204,7 @@ class ShelfService {
 		if ($removed > 0) {
 			$shelf->setUpdatedAt($this->nowMs());
 			$this->shelves->update($shelf);
+			$this->sharing?->syncShelf($shelf->getId());
 		}
 		return ['removed' => $removed];
 	}
@@ -235,11 +249,17 @@ class ShelfService {
 		$this->shelves->deleteByUser($userId);
 	}
 
-	/** @throws ShelfException */
+	/**
+	 * An own shelf of the user (all changes go through here); a shelf shared with the user is read-only (FORBIDDEN).
+	 * @throws ShelfException
+	 */
 	public function get(string $userId, int $id): Shelf {
 		try {
 			return $this->shelves->findByUserAndId($userId, $id);
 		} catch (DoesNotExistException) {
+			if ($this->sharing?->isIncomingShelf($userId, $id) === true) {
+				throw new ShelfException('Shared shelves are read-only', ShelfException::FORBIDDEN);
+			}
 			throw new ShelfException('Shelf not found', ShelfException::NOT_FOUND);
 		}
 	}
@@ -255,9 +275,11 @@ class ShelfService {
 
 	/**
 	 * @param array<int, int> $counts manual shelf counts by shelf id
+	 * @param ?array<int, int> $shareCounts recipients by shelf id (null = loaded here)
 	 * @return EbookReaderShelf
 	 */
-	private function toApi(string $userId, Shelf $shelf, array $counts): array {
+	private function toApi(string $userId, Shelf $shelf, array $counts, ?array $shareCounts = null): array {
+		$shareCounts ??= $this->sharing?->shelfShareCounts($userId) ?? [];
 		$query = $shelf->isSmart() ? ($shelf->getQueryArray() ?? []) : null;
 		if ($query !== null) {
 			$bookQuery = self::toBookQuery($query, self::COVERS, true);
@@ -279,6 +301,36 @@ class ShelfService {
 			'sortOrder' => $shelf->getSortOrder(),
 			'createdAt' => $shelf->getCreatedAt(),
 			'updatedAt' => $shelf->getUpdatedAt(),
+			'owner' => $userId,
+			'ownerDisplayName' => $this->sharing?->displayName($userId) ?? $userId,
+			'readOnly' => false,
+			'shareCount' => $shareCounts[$shelf->getId()] ?? 0,
+		];
+	}
+
+	/**
+	 * A shelf shared with the user: its books are the shared files that are in the recipient's library (`shelf:<id>`
+	 * resolves to them). The owner's smart query is not exposed (it may reveal the owner's tags or reading status).
+	 * @return EbookReaderShelf
+	 */
+	private function incomingToApi(string $userId, ShelfShare $share, Shelf $shelf): array {
+		$base = ['include' => ['shelf:' . $shelf->getId()], 'sort' => $shelf->isSmart() ? 'title' : 'shelf', 'order' => 'asc'];
+		$count = $this->library->countBooks($userId, BookQuery::fromRequestParams($base));
+		$covers = array_map(static fn ($b): int => $b->getFileId(), $this->library->findBooks($userId, BookQuery::fromRequestParams($base + ['limit' => self::COVERS]))['books']);
+		return [
+			'id' => $shelf->getId(),
+			'name' => $shelf->getName(),
+			'type' => $shelf->isSmart() ? 'smart' : 'manual',
+			'query' => null,
+			'count' => $count,
+			'coverFileIds' => array_slice($covers, 0, self::COVERS),
+			'sortOrder' => $shelf->getSortOrder(),
+			'createdAt' => $share->getCreatedAt(),
+			'updatedAt' => $shelf->getUpdatedAt(),
+			'owner' => $share->getOwnerId(),
+			'ownerDisplayName' => $this->sharing?->displayName($share->getOwnerId()) ?? $share->getOwnerId(),
+			'readOnly' => true,
+			'shareCount' => 0,
 		];
 	}
 
@@ -424,7 +476,7 @@ class ShelfService {
 	 *
 	 * @param array<mixed> $query
 	 */
-	public static function toBookQuery(array $query, int $limit = BookQuery::DEFAULT_LIMIT, bool $withSort = false): BookQuery {
+	public static function toBookQuery(array $query, int $limit = BookQuery::DEFAULT_LIMIT, bool $withSort = false, int $offset = 0): BookQuery {
 		$strip = static function (mixed $list): array {
 			if (!is_array($list)) {
 				return [];
@@ -440,6 +492,7 @@ class ShelfService {
 			'sort' => $withSort && ($query['sort'] ?? null) !== 'shelf' ? ($query['sort'] ?? null) : null,
 			'order' => $withSort ? ($query['order'] ?? null) : null,
 			'limit' => $limit,
+			'offset' => $offset,
 		]);
 	}
 }

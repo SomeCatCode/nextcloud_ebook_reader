@@ -57,6 +57,8 @@ class PageController extends Controller {
 		if ($user !== null) {
 			$this->initialState->provideInitialState('settings', $this->settings->get($user->getUID()));
 		}
+		// l10n/<lang>.js (OC.L10N.register) for t()/n() in the frontend; addScript() would add it too.
+		Util::addTranslations(Application::APP_ID);
 		Util::addScript(Application::APP_ID, 'ebookreader-main');
 		Util::addStyle(Application::APP_ID, 'ebookreader-main');
 		return new TemplateResponse(Application::APP_ID, 'main');

@@ -24,6 +24,8 @@ class LoadFilesScriptsListener implements IEventListener {
 		if (!($event instanceof LoadAdditionalScriptsEvent)) {
 			return;
 		}
+		// File action labels use t('ebookreader', …); addScript() would add the translations too.
+		Util::addTranslations('ebookreader');
 		Util::addScript('ebookreader', 'ebookreader-files');
 		Util::addStyle('ebookreader', 'ebookreader-files');
 	}

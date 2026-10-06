@@ -533,7 +533,7 @@ class ConvertService {
 	}
 
 	/**
-	 * Copies rating, read status, app tags and the reading position to the new book.
+	 * Copies rating, read status, completion status, a manual age rating, app tags and the reading position to the new book.
 	 *
 	 * @param list<string> $hrefs page hrefs of the new book (EPUB); empty = use the page file names
 	 * @param list<string> $oldPages entry names of the source pages
@@ -549,6 +549,10 @@ class ConvertService {
 			$new->setRating($old->getRating());
 			$new->setReadStatus($old->getReadStatus());
 			$new->setReadStatusManual($old->getReadStatusManual());
+			$new->setCompletion($old->getCompletion());
+			if ($old->getAgeRatingManual()) {
+				$new->setManualAgeRating($old->getAgeRating());
+			}
 			$new = $this->bookMapper->update($new);
 			foreach ([Tag::TYPE_GENRE, Tag::TYPE_TAG] as $type) {
 				$names = [];

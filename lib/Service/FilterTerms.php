@@ -9,10 +9,14 @@ declare(strict_types=1);
 
 namespace OCA\EbookReader\Service;
 
+use OCA\EbookReader\Db\Book;
+
 /**
- * Pure helpers for the special filter terms: hierarchical names (`tag:Fantasy/*`) and `shelf:<id>`.
+ * Pure helpers for the special filter terms: hierarchical names (`tag:Fantasy/*`), `shelf:<id>` and `age:<rating>`.
  */
 final class FilterTerms {
+	/** `age:none` = books without an age rating */
+	public const AGE_NONE = 'none';
 	public const SEPARATOR = '/';
 	public const MAX_LEVELS = 5;
 	public const WILDCARD = '/*';
@@ -69,5 +73,54 @@ final class FilterTerms {
 		}
 		$id = (int)$name;
 		return $id > 0 ? $id : null;
+	}
+
+	/**
+	 * Canonical name of an `age:` term, or null if it is invalid:
+	 * "0" | "6" | "12" | "16" | "18" (exactly this rating), "none" (no rating) or "<=N" with N one of the levels
+	 * (rated N or lower; books without a rating do not match). Spaces are dropped ("<= 12" becomes "<=12").
+	 */
+	public static function normalizeAge(string $name): ?string {
+		$name = strtolower(preg_replace('/\s+/', '', $name) ?? $name);
+		if ($name === self::AGE_NONE) {
+			return $name;
+		}
+		$prefix = str_starts_with($name, '<=') ? '<=' : '';
+		$num = substr($name, strlen($prefix));
+		if ($num === '' || !ctype_digit($num) || strlen($num) > 2 || !in_array((int)$num, Book::AGE_RATINGS, true)) {
+			return null;
+		}
+		return $prefix . (string)(int)$num;
+	}
+
+	/**
+	 * Parsed `age:` term: ['op' => 'none'|'eq'|'lte', 'value' => ?int], null if invalid.
+	 * @return array{op: 'none'|'eq'|'lte', value: ?int}|null
+	 */
+	public static function parseAge(string $name): ?array {
+		$name = self::normalizeAge($name);
+		if ($name === null) {
+			return null;
+		}
+		if ($name === self::AGE_NONE) {
+			return ['op' => 'none', 'value' => null];
+		}
+		if (str_starts_with($name, '<=')) {
+			return ['op' => 'lte', 'value' => (int)substr($name, 2)];
+		}
+		return ['op' => 'eq', 'value' => (int)$name];
+	}
+
+	/** Mirrors the SQL of an `age:` term for a book's rating (null = none). */
+	public static function ageMatches(?int $rating, string $term): bool {
+		$t = self::parseAge($term);
+		if ($t === null) {
+			return false;
+		}
+		return match ($t['op']) {
+			'none' => $rating === null,
+			'eq' => $rating === $t['value'],
+			'lte' => $rating !== null && $rating <= (int)$t['value'],
+		};
 	}
 }

@@ -15,6 +15,10 @@
 		<div class="book-card__cover">
 			<BookCover :book="book" />
 			<span class="book-card__format">{{ book.format.toUpperCase() }}</span>
+			<span
+				v-if="book.ageRating !== null && book.ageRating !== undefined && !selectMode"
+				class="book-card__age"
+				:title="ageTitle(book.ageRating)">{{ ageBadge(book.ageRating) }}</span>
 			<span v-if="selectMode" class="book-card__check">
 				<NcIconSvgWrapper :path="selected ? mdiCheckCircle : mdiCircleOutline" :size="26" />
 			</span>
@@ -27,6 +31,12 @@
 		</div>
 		<div v-if="authors" class="book-card__authors" :title="authors">
 			{{ authors }}
+		</div>
+		<div
+			v-if="book.completion"
+			class="book-card__completion"
+			:class="'book-card__completion--' + book.completion">
+			{{ completionLabel(book.completion) }}
 		</div>
 		<div v-if="book.genres.length" class="book-card__chips">
 			<button
@@ -51,6 +61,7 @@ import { t } from '@nextcloud/l10n'
 import { computed } from 'vue'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import BookCover from './BookCover.vue'
+import { ageBadge, ageTitle, completionLabel } from './bookFlags.ts'
 import { bookAuthors, bookTitle, progressPercent } from './utils.ts'
 
 const props = defineProps<{
@@ -107,6 +118,34 @@ const percent = computed(() => progressPercent(props.book))
 		font-size: 10px;
 		font-weight: bold;
 		line-height: 18px;
+	}
+
+	&__age {
+		position: absolute;
+		top: 6px;
+		right: 6px;
+		padding: 0 6px;
+		border-radius: var(--border-radius-small, 4px);
+		background: rgba(0, 0, 0, 0.6);
+		color: #fff;
+		font-size: 10px;
+		font-weight: bold;
+		line-height: 18px;
+	}
+
+	&__completion {
+		align-self: flex-start;
+		padding: 0 6px;
+		border-radius: var(--border-radius-small, 4px);
+		font-size: 10px;
+		line-height: 16px;
+		border: 1px solid var(--color-border-maxcontrast);
+		color: var(--color-text-maxcontrast);
+
+		&--completed {
+			border-color: var(--color-success);
+			color: var(--color-success-text, var(--color-success));
+		}
 	}
 
 	&__check {

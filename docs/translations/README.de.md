@@ -48,6 +48,8 @@ Bibliothek, Reader und Editor für E-Books und Comics direkt in deiner Nextcloud
 - **Mehrfachauswahl:** Autoren, Serie mit automatischer Bandnummerierung, Verlag, Sprache, Genres und Tags für viele Bücher auf einmal ändern. Außerdem Bücher in Regale legen, umbenennen und einsortieren oder löschen (in den Papierkorb).
 - **Hochladen** per Drag & Drop, auch sehr große Dateien.
 - Bewertung (Sterne) und Lesestatus (ungelesen, lese gerade, gelesen).
+- Status pro Buch (laufend oder abgeschlossen) und optionale Altersfreigabe (0, 6, 12, 16, 18; aus ComicInfo.xml `AgeRating` bzw. EPUB `schema:typicalAgeRange` oder von Hand gesetzt), beides auf den Karten sichtbar und filterbar.
+- **Serie fortsetzen:** Ist ein Band gelesen, erscheint der nächste Band unter „Weiterlesen“, und der Reader bietet ihn am Ende des Buchs an.
 - Metadaten und Cover liest die App automatisch aus den Dateien. Neue, geänderte und gelöschte Bücher erkennt sie selbst.
 
 ### Bearbeiten

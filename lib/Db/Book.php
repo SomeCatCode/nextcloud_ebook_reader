@@ -64,6 +64,14 @@ use OCP\AppFramework\Db\Entity;
  * @method void setOverrides(?string $overrides)
  * @method string|null getSidecarEtag()
  * @method void setSidecarEtag(?string $sidecarEtag)
+ * @method string|null getCompletion()
+ * @method void setCompletion(?string $completion)
+ * @method int|null getAgeRating()
+ * @method void setAgeRating(?int $ageRating)
+ * @method int|null getAgeRatingFile()
+ * @method void setAgeRatingFile(?int $ageRatingFile)
+ * @method bool getAgeRatingManual()
+ * @method void setAgeRatingManual(bool $manual)
  */
 class Book extends Entity {
 	use MarksFieldsOnCreate;
@@ -71,6 +79,14 @@ class Book extends Entity {
 	public const STATUS_UNREAD = 'unread';
 	public const STATUS_READING = 'reading';
 	public const STATUS_FINISHED = 'finished';
+
+	/** Completion status of a book (app data): still being continued, or finished by the author/publisher. null = unknown */
+	public const COMPLETION_ONGOING = 'ongoing';
+	public const COMPLETION_COMPLETED = 'completed';
+	public const COMPLETIONS = [self::COMPLETION_ONGOING, self::COMPLETION_COMPLETED];
+
+	/** Allowed age ratings ("from N years"); null = none */
+	public const AGE_RATINGS = [0, 6, 12, 16, 18];
 
 	/** Metadata fields that can be overridden in the app (they then survive re-indexing of the file). */
 	public const OVERRIDABLE_FIELDS = ['title', 'authors', 'series', 'seriesIndex', 'description', 'language', 'publisher', 'isbn', 'publishedAt'];
@@ -104,6 +120,14 @@ class Book extends Entity {
 	protected ?string $overrides = null;
 	/** change marker of the sidecar file (".<book>.opf") at the last indexing; null = no sidecar */
 	protected ?string $sidecarEtag = null;
+	/** ongoing | completed | null (unknown) */
+	protected ?string $completion = null;
+	/** effective age rating: the manual value if ageRatingManual, else the one from the file */
+	protected ?int $ageRating = null;
+	/** age rating read from the file at the last indexing */
+	protected ?int $ageRatingFile = null;
+	/** ageRating was set in the app (also an explicit "none") and survives re-indexing */
+	protected bool $ageRatingManual = false;
 
 	public function __construct() {
 		$this->markAllFieldsUpdated();
@@ -117,6 +141,34 @@ class Book extends Entity {
 		$this->addType('addedAt', 'integer');
 		$this->addType('updatedAt', 'integer');
 		$this->addType('deletedAt', 'integer');
+		$this->addType('ageRating', 'integer');
+		$this->addType('ageRatingFile', 'integer');
+		$this->addType('ageRatingManual', 'boolean');
+	}
+
+	/**
+	 * Stores the age rating found in the file; it becomes the effective value unless one was set in the app.
+	 * Returns whether the effective value changed.
+	 */
+	public function applyFileAgeRating(?int $rating): bool {
+		$this->setAgeRatingFile($rating);
+		if ($this->getAgeRatingManual() || $this->getAgeRating() === $rating) {
+			return false;
+		}
+		$this->setAgeRating($rating);
+		return true;
+	}
+
+	/** Sets the age rating by hand (null = explicitly none); it then survives re-indexing. */
+	public function setManualAgeRating(?int $rating): void {
+		$this->setAgeRating($rating);
+		$this->setAgeRatingManual(true);
+	}
+
+	/** Drops a manual age rating: the value from the file applies again. */
+	public function resetAgeRating(): void {
+		$this->setAgeRatingManual(false);
+		$this->setAgeRating($this->getAgeRatingFile());
 	}
 
 	/** @return list<string> */

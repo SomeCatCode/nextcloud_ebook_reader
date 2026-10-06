@@ -94,6 +94,7 @@ import ShelfNameDialog from './ShelfNameDialog.vue'
 import { displayTermName } from '../../services/hierarchy.ts'
 import { termToString, useLibraryStore } from '../../stores/library.ts'
 import { useShelvesStore } from '../../stores/shelves.ts'
+import { ageTermLabel, completionTermLabel } from './bookFlags.ts'
 import { missingLabel } from './missing.ts'
 
 const store = useLibraryStore()
@@ -149,6 +150,8 @@ const typeLabels = computed<Record<string, string>>(() => ({
 	format: t('ebookreader', 'Format'),
 	shelf: t('ebookreader', 'Shelf'),
 	missing: '',
+	completion: t('ebookreader', 'Completion'),
+	age: t('ebookreader', 'Age rating'),
 }))
 
 /**
@@ -160,6 +163,12 @@ function termLabel(term: FilterTerm): string {
 	}
 	if (term.type === 'shelf') {
 		return shelves.byId(Number.parseInt(term.name, 10))?.name ?? term.name
+	}
+	if (term.type === 'completion') {
+		return completionTermLabel(term.name)
+	}
+	if (term.type === 'age') {
+		return ageTermLabel(term.name)
 	}
 	// "Fantasy/*" is shown as "Fantasy (+ sub)"
 	return displayTermName(term.name, t('ebookreader', '+ sub'))

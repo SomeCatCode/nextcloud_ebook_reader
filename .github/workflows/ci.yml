@@ -36,6 +36,8 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
+      # Fails on malformed l10n files and placeholder mismatches; missing translations are only warnings.
+      - run: npm run l10n:check
       - run: npm test
       - run: npm run build
 

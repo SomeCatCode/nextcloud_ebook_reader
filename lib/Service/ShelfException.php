@@ -17,6 +17,7 @@ class ShelfException extends \RuntimeException {
 	public const INVALID = 'invalid';
 	public const EXISTS = 'exists';
 	public const LIMIT = 'limit';
+	public const FORBIDDEN = 'forbidden';
 
 	public function __construct(
 		string $message,

@@ -36,6 +36,7 @@ use OCP\IRequest;
  */
 class BooksController extends AbstractOCSController {
 	private const MAX_BULK_DELETE = 100;
+	private const MAX_BULK_APP_DATA = 500;
 
 	public function __construct(
 		IRequest $request,
@@ -189,17 +190,24 @@ class BooksController extends AbstractOCSController {
 	}
 
 	/**
-	 * Change app-only fields (rating, read status) without touching the file
+	 * Change app-only fields (rating, read status, completion, age rating) without touching the file
 	 *
 	 * Absent fields stay unchanged, an explicit null rating clears the rating.
 	 * The read status also sets the reading progress: finished = 100 % (locator href "" with
 	 * totalProgression 1), unread = 0 % (href "", position 1, totalProgression 0; nothing is created
 	 * without stored progress), reading keeps it. The progress row gets clientUpdatedAt = server time,
 	 * so it wins over older positions of other devices; the returned book carries the new progress.
+	 * completion: "ongoing", "completed" or null (unknown). ageRating: 0, 6, 12, 16, 18 or null; any value
+	 * given here (also null = "no rating") is a manual value that survives re-indexing (ageRatingManual = true).
+	 * resetAgeRating = true drops the manual value: the rating from the file (ComicInfo.xml AgeRating, EPUB
+	 * schema:typicalAgeRange) applies again. A change bumps updatedAt, so GET /sync delivers it.
 	 *
 	 * @param int $fileId Nextcloud file id
 	 * @param int|null $rating Rating 0..5 or null
 	 * @param string|null $readStatus unread|reading|finished (sets a manual status and the progress: finished 100 %, unread 0 %)
+	 * @param string|null $completion ongoing|completed, or null to clear (unknown)
+	 * @param int|null $ageRating Age rating 0|6|12|16|18, or null for "no rating" (both manual)
+	 * @param bool $resetAgeRating true = use the age rating from the file again (not together with ageRating)
 	 * @return DataResponse<Http::STATUS_OK, EbookReaderBook, array{}>
 	 * @throws OCSBadRequestException Invalid value
 	 * @throws OCSNotFoundException Book not found
@@ -210,10 +218,11 @@ class BooksController extends AbstractOCSController {
 	#[NoAdminRequired]
 	#[UserRateLimit(limit: 120, period: 60)]
 	#[ApiRoute(verb: 'PATCH', url: '/api/v1/books/{fileId}/app-data', requirements: ['fileId' => '\d+'])]
-	public function patchAppData(int $fileId, ?int $rating = null, ?string $readStatus = null): DataResponse {
+	public function patchAppData(int $fileId, ?int $rating = null, ?string $readStatus = null, ?string $completion = null, ?int $ageRating = null, bool $resetAgeRating = false): DataResponse {
 		$userId = $this->uid();
 		$book = $this->findBook($userId, $fileId);
 		$params = $this->request->getParams();
+		$flags = $this->flagChanges($params, $completion, $ageRating, $resetAgeRating);
 		$changed = false;
 
 		if (array_key_exists('rating', $params)) {
@@ -232,11 +241,146 @@ class BooksController extends AbstractOCSController {
 			$changed = true;
 			$this->progress->applyReadStatus($userId, $fileId, $readStatus);
 		}
+		$changed = self::applyFlags($book, $flags) || $changed;
 		if ($changed) {
 			$book->setUpdatedAt((int)$this->time->now()->format('Uv'));
 			$this->bookMapper->update($book);
 		}
 		return new DataResponse($this->serializer->serializeWithProgress($userId, $book));
+	}
+
+	/**
+	 * Set completion status and/or age rating of several books (max. 500)
+	 *
+	 * Same semantics as the fields of PATCH /books/{fileId}/app-data: absent fields stay unchanged,
+	 * completion null clears it, ageRating null sets "no rating" by hand, resetAgeRating uses the value
+	 * from the file again. Changed books get a new updatedAt (delivered by GET /sync).
+	 *
+	 * @param list<int> $fileIds Nextcloud file ids
+	 * @param string|null $completion ongoing|completed, or null to clear (unknown)
+	 * @param int|null $ageRating Age rating 0|6|12|16|18, or null for "no rating"
+	 * @param bool $resetAgeRating true = use the age rating from the file again
+	 * @return DataResponse<Http::STATUS_OK, array{updated: int, unchanged: int, failed: list<array{fileId: int, error: string}>}, array{}>
+	 * @throws OCSBadRequestException Empty or too large selection, no field or an invalid value
+	 * @throws OCSForbiddenException Not logged in
+	 *
+	 * 200: Result per file
+	 */
+	#[NoAdminRequired]
+	#[UserRateLimit(limit: 30, period: 60)]
+	#[ApiRoute(verb: 'PATCH', url: '/api/v1/books/app-data')]
+	public function patchAppDataMany(array $fileIds = [], ?string $completion = null, ?int $ageRating = null, bool $resetAgeRating = false): DataResponse {
+		$userId = $this->uid();
+		$ids = array_values(array_unique(array_map('intval', $fileIds)));
+		if ($ids === [] || count($ids) > self::MAX_BULK_APP_DATA) {
+			throw new OCSBadRequestException('Select between 1 and ' . self::MAX_BULK_APP_DATA . ' books');
+		}
+		$flags = $this->flagChanges($this->request->getParams(), $completion, $ageRating, $resetAgeRating);
+		if ($flags === []) {
+			throw new OCSBadRequestException('Nothing to change');
+		}
+		$now = (int)$this->time->now()->format('Uv');
+		$byFile = [];
+		foreach ($this->bookMapper->findByUserAndFiles($userId, $ids) as $b) {
+			$byFile[$b->getFileId()] = $b;
+		}
+		$updated = 0;
+		$unchanged = 0;
+		$failed = [];
+		foreach ($ids as $id) {
+			$book = $byFile[$id] ?? null;
+			if ($book === null) {
+				$failed[] = ['fileId' => $id, 'error' => 'not_found'];
+				continue;
+			}
+			if (!self::applyFlags($book, $flags)) {
+				$unchanged++;
+				continue;
+			}
+			$book->setUpdatedAt($now);
+			try {
+				$this->bookMapper->update($book);
+				$updated++;
+			} catch (\Throwable) {
+				$failed[] = ['fileId' => $id, 'error' => 'failed'];
+			}
+		}
+		return new DataResponse(['updated' => $updated, 'unchanged' => $unchanged, 'failed' => $failed]);
+	}
+
+	/**
+	 * Next volume of the book's series
+	 *
+	 * Reading order: series index ascending (volumes without an index last), then title in natural order,
+	 * then file id. Other copies of the same volume (same series index) are skipped. book is null for the
+	 * last volume and for books without a series.
+	 *
+	 * @param int $fileId Nextcloud file id
+	 * @return DataResponse<Http::STATUS_OK, array{book: ?EbookReaderBook}, array{}>
+	 * @throws OCSNotFoundException Book not found
+	 * @throws OCSForbiddenException Not logged in
+	 *
+	 * 200: Next volume returned (book is null when there is none)
+	 */
+	#[NoAdminRequired]
+	#[ApiRoute(verb: 'GET', url: '/api/v1/books/{fileId}/next', requirements: ['fileId' => '\d+'])]
+	public function next(int $fileId): DataResponse {
+		$userId = $this->uid();
+		$next = $this->library->nextVolume($userId, $this->findBook($userId, $fileId));
+		return new DataResponse(['book' => $next === null ? null : $this->serializer->serializeWithProgress($userId, $next)]);
+	}
+
+	/**
+	 * Validated completion/age rating changes of a request (only the fields that are present).
+	 *
+	 * @param array<array-key, mixed> $params request parameters (to tell an explicit null from an absent field)
+	 * @return array{completion?: ?string, ageRating?: ?int, resetAgeRating?: true}
+	 * @throws OCSBadRequestException
+	 */
+	private function flagChanges(array $params, ?string $completion, ?int $ageRating, bool $resetAgeRating): array {
+		$out = [];
+		if (array_key_exists('completion', $params)) {
+			if ($completion !== null && !in_array($completion, Book::COMPLETIONS, true)) {
+				throw new OCSBadRequestException('completion must be ongoing, completed or null');
+			}
+			$out['completion'] = $completion;
+		}
+		$hasAge = array_key_exists('ageRating', $params);
+		if ($hasAge && $resetAgeRating) {
+			throw new OCSBadRequestException('ageRating and resetAgeRating can not be combined');
+		}
+		if ($hasAge) {
+			if ($ageRating !== null && !in_array($ageRating, Book::AGE_RATINGS, true)) {
+				throw new OCSBadRequestException('ageRating must be one of 0, 6, 12, 16, 18 or null');
+			}
+			$out['ageRating'] = $ageRating;
+		}
+		if ($resetAgeRating) {
+			$out['resetAgeRating'] = true;
+		}
+		return $out;
+	}
+
+	/**
+	 * @param array{completion?: ?string, ageRating?: ?int, resetAgeRating?: true} $flags
+	 * @return bool whether anything that is part of the API changed
+	 */
+	private static function applyFlags(Book $book, array $flags): bool {
+		$changed = false;
+		if (array_key_exists('completion', $flags) && $book->getCompletion() !== $flags['completion']) {
+			$book->setCompletion($flags['completion']);
+			$changed = true;
+		}
+		if (array_key_exists('ageRating', $flags)
+			&& ($book->getAgeRating() !== $flags['ageRating'] || !$book->getAgeRatingManual())) {
+			$book->setManualAgeRating($flags['ageRating']);
+			$changed = true;
+		}
+		if (isset($flags['resetAgeRating']) && $book->getAgeRatingManual()) {
+			$book->resetAgeRating();
+			$changed = true;
+		}
+		return $changed;
 	}
 
 	/** @throws OCSNotFoundException */

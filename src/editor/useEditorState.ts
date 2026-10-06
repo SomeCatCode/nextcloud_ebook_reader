@@ -485,21 +485,22 @@ export function useEditorState() {
 		if (!same(origOrder, newOrder)) {
 			out.push(pages ? tr('Pages reordered') : tr('Chapters reordered'))
 		}
+		// Literal tr() calls so scripts/l10n.mjs can extract the strings.
 		const labels: Record<keyof BookMetadata, string> = {
-			title: 'Title changed',
-			authors: 'Authors changed',
-			series: 'Series changed',
-			seriesIndex: 'Series number changed',
-			description: 'Description changed',
-			language: 'Language changed',
-			publisher: 'Publisher changed',
-			isbn: 'ISBN changed',
-			publishedAt: 'Publication date changed',
-			genres: 'Genres changed',
-			tags: 'Tags changed',
+			title: tr('Title changed'),
+			authors: tr('Authors changed'),
+			series: tr('Series changed'),
+			seriesIndex: tr('Series number changed'),
+			description: tr('Description changed'),
+			language: tr('Language changed'),
+			publisher: tr('Publisher changed'),
+			isbn: tr('ISBN changed'),
+			publishedAt: tr('Publication date changed'),
+			genres: tr('Genres changed'),
+			tags: tr('Tags changed'),
 		}
 		for (const k of Object.keys(metadataPatch()) as (keyof BookMetadata)[]) {
-			out.push(tr(labels[k]))
+			out.push(labels[k])
 		}
 		if (cover.value) {
 			out.push(tr('Cover changed'))
