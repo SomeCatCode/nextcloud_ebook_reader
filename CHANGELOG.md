@@ -5,6 +5,9 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+### Behoben
+- Browser-Tab der Bibliothek zeigte „E-book library - [object Object]“ (Fehler in @nextcloud/vue 9.13, der App-Name wurde als Objekt angehängt); der Titel lautet jetzt „E-book library - <App-Name> - <Instanz>“.
+
 ## 0.7.0 – 2026-10-05
 
 ### Hinzugefügt
