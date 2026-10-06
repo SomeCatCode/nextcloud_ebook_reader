@@ -10,13 +10,11 @@ declare(strict_types=1);
 namespace OCA\EbookReader\Service;
 
 /**
- * Domain error of the shelf service; the controller maps `reason` to an OCS status.
+ * Domain error of the share service; the controller maps `reason` to an OCS status (404, 400, 403).
  */
-class ShelfException extends \RuntimeException {
+class ShareException extends \RuntimeException {
 	public const NOT_FOUND = 'not_found';
 	public const INVALID = 'invalid';
-	public const EXISTS = 'exists';
-	public const LIMIT = 'limit';
 	public const FORBIDDEN = 'forbidden';
 
 	public function __construct(

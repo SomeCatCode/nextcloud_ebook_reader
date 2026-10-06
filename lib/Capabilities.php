@@ -23,7 +23,7 @@ class Capabilities implements ICapability {
 	 * `version` is the installed app version (e.g. "0.8.0"), so clients can check which features the server
 	 * offers and tell users when the server app is too old. Servers before 0.8.0 do not send it.
 	 *
-	 * @return array{ebookreader: array{version: string, apiVersion: int, apiStable: bool, formats: list<string>, editor: bool, annotations: bool}}
+	 * @return array{ebookreader: array{version: string, apiVersion: int, apiStable: bool, formats: list<string>, editor: bool, annotations: bool, sharing: bool}}
 	 */
 	public function getCapabilities(): array {
 		return [
@@ -34,6 +34,7 @@ class Capabilities implements ICapability {
 				'formats' => ['epub', 'mobi', 'azw3', 'fb2', 'fbz', 'cbz', 'cbr', 'cb7', 'cbt'],
 				'editor' => true,
 				'annotations' => true,
+				'sharing' => true,
 			],
 		];
 	}

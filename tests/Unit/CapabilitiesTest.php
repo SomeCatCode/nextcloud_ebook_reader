@@ -23,5 +23,6 @@ class CapabilitiesTest extends TestCase {
 		$this->assertSame('0.8.0', $caps['version']);
 		$this->assertSame(1, $caps['apiVersion']);
 		$this->assertContains('cbr', $caps['formats']);
+		$this->assertTrue($caps['sharing']);
 	}
 }

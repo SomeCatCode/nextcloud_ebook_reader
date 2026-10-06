@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace OCA\EbookReader\Controller;
 
 use OCA\EbookReader\Http\AbstractOCSController;
+use OCA\EbookReader\Service\ShareService;
 use OCA\EbookReader\Service\ShelfException;
 use OCA\EbookReader\Service\ShelfService;
 use OCP\AppFramework\Http;
@@ -31,6 +32,7 @@ class ShelfController extends AbstractOCSController {
 		IRequest $request,
 		?string $userId,
 		private ShelfService $shelves,
+		private ?ShareService $sharing = null,
 	) {
 		parent::__construct($request, $userId);
 	}
@@ -38,15 +40,25 @@ class ShelfController extends AbstractOCSController {
 	/**
 	 * List the shelves of the user
 	 *
+	 * Own shelves come first (sorted by sortOrder, then name), followed by the shelves other users share with the user
+	 * (`readOnly: true`, `owner`/`ownerDisplayName` of the sharing user, `query: null`).
+	 *
 	 * @return DataResponse<Http::STATUS_OK, array{shelves: list<EbookReaderShelf>}, array{}>
 	 * @throws OCSForbiddenException Not logged in
 	 *
-	 * 200: Shelves returned, sorted by sortOrder then name
+	 * 200: Shelves returned
 	 */
 	#[NoAdminRequired]
 	#[ApiRoute(verb: 'GET', url: '/api/v1/shelves')]
 	public function index(): DataResponse {
-		return new DataResponse(['shelves' => $this->shelves->list($this->uid())]);
+		$userId = $this->uid();
+		// books shared with the user since the last scan show up right away
+		try {
+			$this->sharing?->ensureIncomingIndexed($userId);
+		} catch (\Throwable) {
+			// listing must not fail because of it
+		}
+		return new DataResponse(['shelves' => $this->shelves->list($userId)]);
 	}
 
 	/**
@@ -83,7 +95,7 @@ class ShelfController extends AbstractOCSController {
 	 * @return DataResponse<Http::STATUS_OK, EbookReaderShelf, array{}>
 	 * @throws OCSBadRequestException Invalid value or duplicate name
 	 * @throws OCSNotFoundException Shelf not found
-	 * @throws OCSForbiddenException Not logged in
+	 * @throws OCSForbiddenException Not logged in, or the shelf is shared with the user (read-only)
 	 *
 	 * 200: Shelf updated
 	 */
@@ -106,7 +118,7 @@ class ShelfController extends AbstractOCSController {
 	 * @param int $id Shelf id
 	 * @return DataResponse<Http::STATUS_OK, array{deleted: int}, array{}>
 	 * @throws OCSNotFoundException Shelf not found
-	 * @throws OCSForbiddenException Not logged in
+	 * @throws OCSForbiddenException Not logged in, or the shelf is shared with the user (read-only)
 	 *
 	 * 200: Shelf deleted
 	 */
@@ -131,7 +143,7 @@ class ShelfController extends AbstractOCSController {
 	 * @return DataResponse<Http::STATUS_OK, array{added: int, skipped: int}, array{}>
 	 * @throws OCSBadRequestException Empty or too large selection, or a smart shelf
 	 * @throws OCSNotFoundException Shelf not found
-	 * @throws OCSForbiddenException Not logged in
+	 * @throws OCSForbiddenException Not logged in, or the shelf is shared with the user (read-only)
 	 *
 	 * 200: Books added; skipped counts unknown, foreign and already assigned books
 	 */
@@ -156,7 +168,7 @@ class ShelfController extends AbstractOCSController {
 	 * @return DataResponse<Http::STATUS_OK, array{removed: int}, array{}>
 	 * @throws OCSBadRequestException Empty or too large selection, or a smart shelf
 	 * @throws OCSNotFoundException Shelf not found
-	 * @throws OCSForbiddenException Not logged in
+	 * @throws OCSForbiddenException Not logged in, or the shelf is shared with the user (read-only)
 	 *
 	 * 200: Books removed from the shelf
 	 */
@@ -181,7 +193,7 @@ class ShelfController extends AbstractOCSController {
 	 * @return DataResponse<Http::STATUS_OK, array{fileIds: list<int>}, array{}>
 	 * @throws OCSBadRequestException Empty or too large selection, or a smart shelf
 	 * @throws OCSNotFoundException Shelf not found
-	 * @throws OCSForbiddenException Not logged in
+	 * @throws OCSForbiddenException Not logged in, or the shelf is shared with the user (read-only)
 	 *
 	 * 200: New order of the shelf
 	 */
@@ -206,9 +218,11 @@ class ShelfController extends AbstractOCSController {
 		ShelfService::cleanFileIds($fileIds);
 	}
 
-	private function map(ShelfException $e): OCSBadRequestException|OCSNotFoundException {
-		return $e->reason === ShelfException::NOT_FOUND
-			? new OCSNotFoundException($e->getMessage())
-			: new OCSBadRequestException($e->getMessage());
+	private function map(ShelfException $e): OCSBadRequestException|OCSNotFoundException|OCSForbiddenException {
+		return match ($e->reason) {
+			ShelfException::NOT_FOUND => new OCSNotFoundException($e->getMessage()),
+			ShelfException::FORBIDDEN => new OCSForbiddenException($e->getMessage()),
+			default => new OCSBadRequestException($e->getMessage()),
+		};
 	}
 }

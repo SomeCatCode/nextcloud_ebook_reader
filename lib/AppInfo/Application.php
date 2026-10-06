@@ -15,6 +15,7 @@ use OCA\EbookReader\Listener\CspListener;
 use OCA\EbookReader\Listener\FileEventListener;
 use OCA\EbookReader\Listener\LoadFilesScriptsListener;
 use OCA\EbookReader\Listener\LoadViewerListener;
+use OCA\EbookReader\Listener\ShareEventListener;
 use OCA\EbookReader\Listener\UserDeletedListener;
 use OCA\EbookReader\Preview\EbookCoverProvider;
 use OCA\Files\Event\LoadAdditionalScriptsEvent;
@@ -28,6 +29,9 @@ use OCP\Files\Events\Node\NodeDeletedEvent;
 use OCP\Files\Events\Node\NodeRenamedEvent;
 use OCP\Files\Events\Node\NodeWrittenEvent;
 use OCP\Security\CSP\AddContentSecurityPolicyEvent;
+use OCP\Share\Events\ShareAcceptedEvent;
+use OCP\Share\Events\ShareDeletedEvent;
+use OCP\Share\Events\ShareDeletedFromSelfEvent;
 use OCP\User\Events\UserDeletedEvent;
 
 class Application extends App implements IBootstrap {
@@ -65,6 +69,10 @@ class Application extends App implements IBootstrap {
 		$context->registerEventListener(AddContentSecurityPolicyEvent::class, CspListener::class);
 		$context->registerEventListener(LoadViewer::class, LoadViewerListener::class);
 		$context->registerEventListener(LoadAdditionalScriptsEvent::class, LoadFilesScriptsListener::class);
+		// sharing: keep the app's share records in line with Nextcloud shares
+		$context->registerEventListener(ShareDeletedEvent::class, ShareEventListener::class);
+		$context->registerEventListener(ShareDeletedFromSelfEvent::class, ShareEventListener::class);
+		$context->registerEventListener(ShareAcceptedEvent::class, ShareEventListener::class);
 	}
 
 	public function boot(IBootContext $context): void {

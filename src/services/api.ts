@@ -33,6 +33,9 @@ import type {
 	SeriesEntry,
 	SeriesQuery,
 	Settings,
+	ShareCreated,
+	Sharee,
+	ShareOverview,
 	Shelf,
 	ShelfBooksResult,
 	ShelfType,
@@ -741,4 +744,82 @@ export function patchAnnotation(uuid: string, body: AnnotationPatch): Promise<An
  */
 export function deleteAnnotation(uuid: string, clientUpdatedAt?: number): Promise<Annotation> {
 	return request<Annotation>('delete', `/annotations/${uuid}`, { params: { clientUpdatedAt } })
+}
+
+// ---- Sharing --------------------------------------------------------------
+
+/**
+ * What the user shares with whom and what is shared with the user.
+ */
+export function listShares(): Promise<ShareOverview> {
+	return request<ShareOverview>('get', '/shares')
+}
+
+/**
+ * @param fileId
+ * @param shareWith user id of the recipient
+ */
+export function shareBook(fileId: number, shareWith: string): Promise<ShareCreated> {
+	return request<ShareCreated>('post', `/books/${fileId}/shares`, { body: { shareWith } })
+}
+
+/**
+ * Owner: `{ shareWith }` stops sharing with that user; recipient: `{ sharedBy }` removes a book shared with them.
+ *
+ * @param fileId
+ * @param who
+ * @param who.shareWith
+ * @param who.sharedBy
+ */
+export async function unshareBook(fileId: number, who: { shareWith?: string, sharedBy?: string }): Promise<void> {
+	await request<unknown>('delete', `/books/${fileId}/shares`, { params: who })
+}
+
+/**
+ * @param shelfId
+ * @param shareWith user id of the recipient
+ */
+export function shareShelf(shelfId: number, shareWith: string): Promise<ShareCreated> {
+	return request<ShareCreated>('post', `/shelves/${shelfId}/shares`, { body: { shareWith } })
+}
+
+/**
+ * Owner: with `shareWith` stops sharing with that user; recipient: without it removes the shelf shared with them.
+ *
+ * @param shelfId
+ * @param shareWith
+ */
+export async function unshareShelf(shelfId: number, shareWith?: string): Promise<void> {
+	await request<unknown>('delete', `/shelves/${shelfId}/shares`, { params: { shareWith } })
+}
+
+interface ShareeEntry {
+	label: string
+	shareWithDisplayNameUnique?: string
+	value: { shareType: number, shareWith: string }
+}
+
+/**
+ * Searches users to share with through the sharee API of the Files sharing app, which applies the admin settings
+ * (user enumeration, "only group members"). Only user results (share type 0).
+ *
+ * @param search
+ */
+export async function searchSharees(search: string): Promise<Sharee[]> {
+	const res = await axios.get<OcsEnvelope<{ exact?: { users?: ShareeEntry[] }, users?: ShareeEntry[] }>>(
+		generateOcsUrl('/apps/files_sharing/api/v1/sharees'),
+		{ params: { search, itemType: 'file', perPage: 20, 'shareType[]': 0, lookup: false }, headers: { 'OCS-APIRequest': 'true' } },
+	)
+	const data = res.data.ocs.data
+	const seen = new Set<string>()
+	const out: Sharee[] = []
+	for (const entry of [...(data.exact?.users ?? []), ...(data.users ?? [])]) {
+		const id = entry.value?.shareWith
+		if (entry.value?.shareType !== 0 || !id || seen.has(id)) {
+			continue
+		}
+		seen.add(id)
+		out.push({ id, displayName: entry.label || id, subname: entry.shareWithDisplayNameUnique })
+	}
+	return out
 }

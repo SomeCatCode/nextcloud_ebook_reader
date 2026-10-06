@@ -462,6 +462,13 @@ export interface Shelf {
 	sortOrder: number
 	createdAt: number
 	updatedAt: number
+	/** user id of the owner (own shelves: the current user) */
+	owner?: string
+	ownerDisplayName?: string
+	/** true for a shelf another user shares with the current user */
+	readOnly?: boolean
+	/** number of users an own shelf is shared with */
+	shareCount?: number
 }
 
 export interface ShelfBooksResult {
@@ -519,4 +526,40 @@ export interface AnnotationPatch {
 	note?: string
 	color?: AnnotationColor | ''
 	clientUpdatedAt?: number
+}
+
+// ---- Sharing (CONTRACTS-v5) --------------------------------------------------
+
+export type ShareType = 'book' | 'shelf'
+
+/** A book or shelf shared through the app (outgoing: with `recipient`; incoming: by `owner`). */
+export interface Share {
+	type: ShareType
+	fileId: number | null
+	shelfId: number | null
+	name: string
+	owner: string
+	ownerDisplayName: string
+	recipient: string
+	recipientDisplayName: string
+	createdAt: number
+	bookCount: number
+}
+
+export interface ShareOverview {
+	outgoing: Share[]
+	incoming: Share[]
+}
+
+export interface ShareCreated {
+	share: Share
+	/** books of a shelf that could not be shared */
+	skipped: number
+}
+
+/** A user found by the Nextcloud sharee search */
+export interface Sharee {
+	id: string
+	displayName: string
+	subname?: string
 }
