@@ -5,6 +5,9 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+### Hinzugefügt
+- Capabilities melden die installierte App-Version (`ebookreader.version`), damit Clients wie die Android-App prüfen können, welche Funktionen der Server bietet, und bei zu alten Server-Versionen einen Hinweis zeigen.
+
 ### Behoben
 - Browser-Tab der Bibliothek zeigte „E-book library - [object Object]“ (Fehler in @nextcloud/vue 9.13, der App-Name wurde als Objekt angehängt); der Titel lautet jetzt „E-book library - <App-Name> - <Instanz>“.
 
