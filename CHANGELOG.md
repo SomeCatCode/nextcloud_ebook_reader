@@ -5,9 +5,9 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+## 0.8.0 – 2026-10-06
+
 ### Hinzugefügt
-### Behoben
-- Browser-Tab der Bibliothek zeigte „E-book library - [object Object]“ (Fehler in @nextcloud/vue 9.13, der App-Name wurde als Objekt angehängt); der Titel lautet jetzt „E-book library - <App-Name> - <Instanz>“.
 - Capabilities melden die installierte App-Version (`ebookreader.version`), damit Clients wie die Android-App prüfen können, welche Funktionen der Server bietet, und bei zu alten Server-Versionen einen Hinweis zeigen.
 - **Status laufend/abgeschlossen** pro Buch und Comic: In den Buchdetails und in „Ausgewählte bearbeiten“ lässt sich festlegen, ob ein Werk noch fortgesetzt wird (laufend) oder abgeschlossen ist; ohne Angabe gilt „unbekannt“. Der Status wird nur in der App gespeichert (nicht in die Datei geschrieben), erscheint als kleines Label auf der Karte und in der Liste und ist filterbar: Navigationsgruppe „Completion status“ mit Anzahl, Filter `completion:ongoing|completed|unknown` (auch in der URL und in intelligenten Regalen).
 - **Altersfreigabe** (optional, Stufen 0, 6, 12, 16, 18): Beim Einlesen wird sie aus ComicInfo.xml (`AgeRating`, z. B. „Everyone“ → 0, „Teen“ → 12, „Mature 17+“ → 18) bzw. aus EPUB 3 (`schema:typicalAgeRange`) übernommen; Altersangaben ohne passende Stufe werden auf die nächsthöhere Stufe aufgerundet, unbekannte Werte ignoriert. Von Hand gesetzte Werte (auch „keine Altersfreigabe“) haben Vorrang und überstehen ein erneutes Einlesen, „Use value from file“ nimmt wieder den Wert aus der Datei. Anzeige als Badge „16+“ auf dem Cover, Bearbeiten in den Details und in der Mehrfachauswahl, Filter in der Navigation („Up to 12“, einzelne Stufen, „No age rating“) bzw. `age:<=12`, `age:16`, `age:none`.
@@ -18,10 +18,12 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 - Geteilte Bücher erscheinen in der Bibliothek des Empfängers, egal wo Nextcloud sie einhängt (Freigabe-Ordner), auch außerhalb der Bibliotheksordner. Sie werden im Hintergrund, beim Öffnen der Bibliothek und beim Scannen eingelesen; ist die Annahme von Freigaben aktiviert, nach dem Annehmen.
 - Neuer Navigationseintrag **„Geteilt“**: zeigt, was ich mit wem teile und was mit mir geteilt ist, jeweils mit Entfernen-Knopf (Empfänger können geteilte Bücher und Regale auch selbst entfernen).
 - API: `GET /api/v1/shares`, `POST/DELETE /api/v1/books/{fileId}/shares`, `POST/DELETE /api/v1/shelves/{id}/shares`; das Regal-JSON hat die neuen Felder `owner`, `ownerDisplayName`, `readOnly` und `shareCount`, `GET /shelves` liefert mit mir geteilte Regale nach den eigenen, der Filter `shelf:<id>` funktioniert auch für sie. Capabilities melden `sharing: true`. Neue Tabellen `ebookreader_shelf_shares` und `ebookreader_file_shares` (Migration `Version1006Date20261005140000`). Details in `docs/CONTRACTS-v5.md`, Sicherheitsmodell in `docs/SECURITY-SHARING.md`.
-- Der Menüpunkt „Optimize images…“ der Mehrfachauswahl zeigte statt der Auslassungspunkte ein Ersatzzeichen (�).
-
 - **Übersetzungen**: Deutsch (du und Sie), Spanisch, Japanisch. Die ganze Weboberfläche (Bibliothek, Reader, Editor, Konvertieren, Einstellungen, Dateien-Aktionen), das Dashboard-Widget „Weiterlesen“, die Titel und Beschreibungen des OPDS-Katalogs, der Eintrag in der Navigation sowie Name, Kurzbeschreibung und Beschreibung im App Store. Nextcloud wählt die Sprache nach der Benutzereinstellung: „Deutsch (Persönlich: Du)“ nutzt `de`, „Deutsch (Förmlich: Sie)“ `de_DE`; ohne passende Übersetzung bleibt es Englisch. Meldungen, die der Server als Fehlertext liefert, sind weiterhin englisch.
 - Werkzeug für Übersetzungen: `npm run l10n:extract` sammelt alle Texte aus `src/`, `lib/` und `appinfo/info.xml` in `translationfiles/source.json` und erzeugt `l10n/<lang>.js` aus `l10n/<lang>.json`, `npm run l10n:check` prüft Platzhalter (`{name}`, `%s`, `%n`), Pluralformen und listet fehlende und veraltete Texte je Sprache auf, `npm run l10n:missing <lang>` gibt die fehlenden Texte als JSON aus. Die CI bricht nur bei kaputten Dateien und falschen Platzhaltern ab, fehlende Übersetzungen sind Warnungen (siehe CONTRIBUTING.md).
+
+### Behoben
+- Browser-Tab der Bibliothek zeigte „E-book library - [object Object]“ (Fehler in @nextcloud/vue 9.13, der App-Name wurde als Objekt angehängt); der Titel lautet jetzt „E-book library - <App-Name> - <Instanz>“.
+- Der Menüpunkt „Optimize images…“ der Mehrfachauswahl zeigte statt der Auslassungspunkte ein Ersatzzeichen (�).
 
 ## 0.7.0 – 2026-10-05
 
