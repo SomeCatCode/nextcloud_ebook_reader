@@ -227,6 +227,51 @@
 				</div>
 			</section>
 
+			<section class="bulk-edit__section">
+				<NcCheckboxRadioSwitch v-model="form.completion.change" :disabled="busy">
+					{{ t('ebookreader', 'Change completion status') }}
+				</NcCheckboxRadioSwitch>
+				<div v-if="form.completion.change" class="bulk-edit__body">
+					<NcSelect
+						v-model="completionChoice"
+						:options="completionOptions"
+						:inputLabel="t('ebookreader', 'Completion status')"
+						:clearable="false"
+						:searchable="false"
+						label="label" />
+				</div>
+			</section>
+
+			<section class="bulk-edit__section">
+				<NcCheckboxRadioSwitch v-model="form.age.change" :disabled="busy">
+					{{ t('ebookreader', 'Change age rating') }}
+				</NcCheckboxRadioSwitch>
+				<div v-if="form.age.change" class="bulk-edit__body">
+					<NcCheckboxRadioSwitch
+						v-model="form.age.mode"
+						type="radio"
+						name="bulk-age-mode"
+						value="set">
+						{{ t('ebookreader', 'Set age rating') }}
+					</NcCheckboxRadioSwitch>
+					<NcCheckboxRadioSwitch
+						v-model="form.age.mode"
+						type="radio"
+						name="bulk-age-mode"
+						value="reset">
+						{{ t('ebookreader', 'Use the age rating from the file') }}
+					</NcCheckboxRadioSwitch>
+					<NcSelect
+						v-if="form.age.mode === 'set'"
+						v-model="ageChoice"
+						:options="ageOptions"
+						:inputLabel="t('ebookreader', 'Age rating')"
+						:clearable="false"
+						:searchable="false"
+						label="label" />
+				</div>
+			</section>
+
 			<NcNoteCard v-if="visibleProblems.length" type="warning">
 				<ul>
 					<li v-for="p in visibleProblems" :key="p">
@@ -242,7 +287,7 @@
 </template>
 
 <script setup lang="ts">
-import type { BulkAuthorsMode, BulkMetadataResult, Task } from '../../types.ts'
+import type { AgeRating, BulkAuthorsMode, BulkMetadataResult, Completion, Task } from '../../types.ts'
 import type { BulkEditError } from './bulkEdit.ts'
 
 import { showSuccess } from '@nextcloud/dialogs'
@@ -256,7 +301,8 @@ import NcTextField from '@nextcloud/vue/components/NcTextField'
 import TaskProgress from '../common/TaskProgress.vue'
 import { useLibraryStore } from '../../stores/library.ts'
 import { useSettingsStore } from '../../stores/settings.ts'
-import { buildRequest, emptyForm, PREVIEW_LIMIT, previewNumbering, validateForm } from './bulkEdit.ts'
+import { AGE_RATINGS, ageBadge, completionLabel } from './bookFlags.ts'
+import { buildAppDataRequest, buildRequest, emptyForm, hasMetadataChanges, mergeBulkResults, PREVIEW_LIMIT, previewNumbering, validateForm } from './bulkEdit.ts'
 import { bookTitle } from './utils.ts'
 
 const emit = defineEmits<{ close: [] }>()
@@ -308,6 +354,32 @@ const stepText = computed({
 })
 const startInvalid = computed(() => !Number.isFinite(form.series.start) || form.series.start < 0)
 const stepInvalid = computed(() => !Number.isFinite(form.series.step) || form.series.step <= 0)
+
+const completionOptions = computed<{ id: Completion | null, label: string }[]>(() => [
+	{ id: null, label: completionLabel(null) },
+	{ id: 'ongoing', label: completionLabel('ongoing') },
+	{ id: 'completed', label: completionLabel('completed') },
+])
+const completionChoice = computed({
+	get: () => completionOptions.value.find((o) => o.id === form.completion.value),
+	set: (o: { id: Completion | null } | null | undefined) => {
+		if (o) {
+			form.completion.value = o.id
+		}
+	},
+})
+const ageOptions = computed<{ id: AgeRating | null, label: string }[]>(() => [
+	{ id: null, label: t('ebookreader', 'No age rating') },
+	...AGE_RATINGS.map((a) => ({ id: a, label: ageBadge(a) })),
+])
+const ageChoice = computed({
+	get: () => ageOptions.value.find((o) => o.id === form.age.value),
+	set: (o: { id: AgeRating | null } | null | undefined) => {
+		if (o) {
+			form.age.value = o.id
+		}
+	},
+})
 
 const authorOptions = computed(() => store.facets.authors.map((a) => a.name))
 const seriesOptions = computed(() => store.facets.series.map((s) => s.name))
@@ -411,9 +483,14 @@ async function apply(): Promise<void> {
 	task.value = null
 	phase.value = 'running'
 	try {
-		const res = await store.bulkMetadata(buildRequest(form, fileIds), (tk) => {
-			task.value = tk
-		})
+		const metadata = hasMetadataChanges(form)
+			? await store.bulkMetadata(buildRequest(form, fileIds), (tk) => {
+					task.value = tk
+				})
+			: null
+		const appDataReq = buildAppDataRequest(form)
+		const appData = appDataReq ? await store.bulkAppData(appDataReq, fileIds) : null
+		const res = mergeBulkResults(metadata, appData)
 		result.value = res
 		if (res.failed.length === 0) {
 			showSuccess(n('ebookreader', '%n book updated', '%n books updated', res.updated)

@@ -77,6 +77,7 @@ class EpubExtractor implements ExtractorInterface {
 			subjects: $subjects,
 			coverData: $coverData,
 			coverMime: $coverMime,
+			ageRating: AgeRating::fromAgeRange(XmlUtil::text($xp, "$md/*[local-name()='meta'][@property='schema:typicalAgeRange']")),
 		);
 	}
 

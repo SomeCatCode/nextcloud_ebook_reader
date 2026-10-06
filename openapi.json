@@ -119,6 +119,9 @@
                     "downloadable",
                     "overrides",
                     "hasSidecar",
+                    "completion",
+                    "ageRating",
+                    "ageRatingManual",
                     "progress"
                 ],
                 "properties": {
@@ -234,6 +237,28 @@
                     "hasSidecar": {
                         "type": "boolean"
                     },
+                    "completion": {
+                        "type": "string",
+                        "nullable": true,
+                        "enum": [
+                            "ongoing",
+                            "completed"
+                        ]
+                    },
+                    "ageRating": {
+                        "type": "integer",
+                        "nullable": true,
+                        "enum": [
+                            0,
+                            6,
+                            12,
+                            16,
+                            18
+                        ]
+                    },
+                    "ageRatingManual": {
+                        "type": "boolean"
+                    },
                     "progress": {
                         "nullable": true,
                         "allOf": [
@@ -330,7 +355,9 @@
                     "authors",
                     "series",
                     "formats",
-                    "missing"
+                    "missing",
+                    "completion",
+                    "ageRatings"
                 ],
                 "properties": {
                     "genres": {
@@ -403,6 +430,18 @@
                                 "type": "integer",
                                 "format": "int64"
                             }
+                        }
+                    },
+                    "completion": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/FacetEntry"
+                        }
+                    },
+                    "ageRatings": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/FacetEntry"
                         }
                     }
                 }
@@ -935,6 +974,22 @@
                     },
                     "hasMore": {
                         "type": "boolean"
+                    }
+                }
+            },
+            "UpNext": {
+                "type": "object",
+                "required": [
+                    "previousFileId",
+                    "book"
+                ],
+                "properties": {
+                    "previousFileId": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "book": {
+                        "$ref": "#/components/schemas/Book"
                     }
                 }
             }
@@ -2688,8 +2743,8 @@
         "/ocs/v2.php/apps/ebookreader/api/v1/books/{fileId}/app-data": {
             "patch": {
                 "operationId": "books-patch-app-data",
-                "summary": "Change app-only fields (rating, read status) without touching the file",
-                "description": "Absent fields stay unchanged, an explicit null rating clears the rating. The read status also sets the reading progress: finished = 100 % (locator href \"\" with totalProgression 1), unread = 0 % (href \"\", position 1, totalProgression 0; nothing is created without stored progress), reading keeps it. The progress row gets clientUpdatedAt = server time, so it wins over older positions of other devices; the returned book carries the new progress.",
+                "summary": "Change app-only fields (rating, read status, completion, age rating) without touching the file",
+                "description": "Absent fields stay unchanged, an explicit null rating clears the rating. The read status also sets the reading progress: finished = 100 % (locator href \"\" with totalProgression 1), unread = 0 % (href \"\", position 1, totalProgression 0; nothing is created without stored progress), reading keeps it. The progress row gets clientUpdatedAt = server time, so it wins over older positions of other devices; the returned book carries the new progress. completion: \"ongoing\", \"completed\" or null (unknown). ageRating: 0, 6, 12, 16, 18 or null; any value given here (also null = \"no rating\") is a manual value that survives re-indexing (ageRatingManual = true). resetAgeRating = true drops the manual value: the rating from the file (ComicInfo.xml AgeRating, EPUB schema:typicalAgeRange) applies again. A change bumps updatedAt, so GET /sync delivers it.",
                 "tags": [
                     "books"
                 ],
@@ -2720,6 +2775,24 @@
                                         "nullable": true,
                                         "default": null,
                                         "description": "unread|reading|finished (sets a manual status and the progress: finished 100 %, unread 0 %)"
+                                    },
+                                    "completion": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "default": null,
+                                        "description": "ongoing|completed, or null to clear (unknown)"
+                                    },
+                                    "ageRating": {
+                                        "type": "integer",
+                                        "format": "int64",
+                                        "nullable": true,
+                                        "default": null,
+                                        "description": "Age rating 0|6|12|16|18, or null for \"no rating\" (both manual)"
+                                    },
+                                    "resetAgeRating": {
+                                        "type": "boolean",
+                                        "default": false,
+                                        "description": "true = use the age rating from the file again (not together with ageRating)"
                                     }
                                 }
                             }
@@ -2800,6 +2873,394 @@
                                                     "$ref": "#/components/schemas/OCSMeta"
                                                 },
                                                 "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Book not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not logged in",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Current user is not logged in",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/ocs/v2.php/apps/ebookreader/api/v1/books/app-data": {
+            "patch": {
+                "operationId": "books-patch-app-data-many",
+                "summary": "Set completion status and/or age rating of several books (max. 500)",
+                "description": "Same semantics as the fields of PATCH /books/{fileId}/app-data: absent fields stay unchanged, completion null clears it, ageRating null sets \"no rating\" by hand, resetAgeRating uses the value from the file again. Changed books get a new updatedAt (delivered by GET /sync).",
+                "tags": [
+                    "books"
+                ],
+                "security": [
+                    {
+                        "bearer_auth": []
+                    },
+                    {
+                        "basic_auth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": false,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "fileIds": {
+                                        "type": "array",
+                                        "default": [],
+                                        "description": "Nextcloud file ids",
+                                        "items": {
+                                            "type": "integer",
+                                            "format": "int64"
+                                        }
+                                    },
+                                    "completion": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "default": null,
+                                        "description": "ongoing|completed, or null to clear (unknown)"
+                                    },
+                                    "ageRating": {
+                                        "type": "integer",
+                                        "format": "int64",
+                                        "nullable": true,
+                                        "default": null,
+                                        "description": "Age rating 0|6|12|16|18, or null for \"no rating\""
+                                    },
+                                    "resetAgeRating": {
+                                        "type": "boolean",
+                                        "default": false,
+                                        "description": "true = use the age rating from the file again"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "OCS-APIRequest",
+                        "in": "header",
+                        "description": "Required to be true for the API request to pass",
+                        "required": true,
+                        "schema": {
+                            "type": "boolean",
+                            "default": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Result per file",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "required": [
+                                                        "updated",
+                                                        "unchanged",
+                                                        "failed"
+                                                    ],
+                                                    "properties": {
+                                                        "updated": {
+                                                            "type": "integer",
+                                                            "format": "int64"
+                                                        },
+                                                        "unchanged": {
+                                                            "type": "integer",
+                                                            "format": "int64"
+                                                        },
+                                                        "failed": {
+                                                            "type": "array",
+                                                            "items": {
+                                                                "type": "object",
+                                                                "required": [
+                                                                    "fileId",
+                                                                    "error"
+                                                                ],
+                                                                "properties": {
+                                                                    "fileId": {
+                                                                        "type": "integer",
+                                                                        "format": "int64"
+                                                                    },
+                                                                    "error": {
+                                                                        "type": "string"
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Empty or too large selection, no field or an invalid value",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not logged in",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Current user is not logged in",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/ocs/v2.php/apps/ebookreader/api/v1/books/{fileId}/next": {
+            "get": {
+                "operationId": "books-next",
+                "summary": "Next volume of the book's series",
+                "description": "Reading order: series index ascending (volumes without an index last), then title in natural order, then file id. Other copies of the same volume (same series index) are skipped. book is null for the last volume and for books without a series.",
+                "tags": [
+                    "books"
+                ],
+                "security": [
+                    {
+                        "bearer_auth": []
+                    },
+                    {
+                        "basic_auth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "fileId",
+                        "in": "path",
+                        "description": "Nextcloud file id",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int64"
+                        }
+                    },
+                    {
+                        "name": "OCS-APIRequest",
+                        "in": "header",
+                        "description": "Required to be true for the API request to pass",
+                        "required": true,
+                        "schema": {
+                            "type": "boolean",
+                            "default": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Next volume returned (book is null when there is none)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "required": [
+                                                        "book"
+                                                    ],
+                                                    "properties": {
+                                                        "book": {
+                                                            "nullable": true,
+                                                            "allOf": [
+                                                                {
+                                                                    "$ref": "#/components/schemas/Book"
+                                                                }
+                                                            ]
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -7869,7 +8330,7 @@
         "/ocs/v2.php/apps/ebookreader/api/v1/facets": {
             "get": {
                 "operationId": "facets-index",
-                "summary": "Genres, tags, authors, series and formats with their counts",
+                "summary": "Genres, tags, authors, series, formats, completion status and age ratings with their counts",
                 "tags": [
                     "facets"
                 ],
@@ -8636,7 +9097,8 @@
         "/ocs/v2.php/apps/ebookreader/api/v1/progress/recent": {
             "get": {
                 "operationId": "progress-recent",
-                "summary": "Most recently read books that are started and not finished (\"continue reading\")",
+                "summary": "Most recently read books that are started and not finished (\"continue reading\"), plus the next volumes to start",
+                "description": "upNext: for each series whose most recently read volume is finished, the next volume in reading order (see GET /books/{fileId}/next) that is not finished yet, if it has not been started (status unread). previousFileId is the finished volume. At most limit entries, most recently finished series first.",
                 "tags": [
                     "progress"
                 ],
@@ -8652,7 +9114,7 @@
                     {
                         "name": "limit",
                         "in": "query",
-                        "description": "Maximum number of books",
+                        "description": "Maximum number of books (and of upNext entries)",
                         "schema": {
                             "type": "integer",
                             "format": "int64",
@@ -8696,13 +9158,20 @@
                                                 "data": {
                                                     "type": "object",
                                                     "required": [
-                                                        "books"
+                                                        "books",
+                                                        "upNext"
                                                     ],
                                                     "properties": {
                                                         "books": {
                                                             "type": "array",
                                                             "items": {
                                                                 "$ref": "#/components/schemas/Book"
+                                                            }
+                                                        },
+                                                        "upNext": {
+                                                            "type": "array",
+                                                            "items": {
+                                                                "$ref": "#/components/schemas/UpNext"
                                                             }
                                                         }
                                                     }

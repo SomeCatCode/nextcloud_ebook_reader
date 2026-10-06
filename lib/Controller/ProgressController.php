@@ -16,6 +16,7 @@ use OCA\EbookReader\Http\AbstractOCSController;
 use OCA\EbookReader\Http\BookSerializer;
 use OCA\EbookReader\Service\LibraryService;
 use OCA\EbookReader\Service\ProgressService;
+use OCA\EbookReader\Service\SeriesOrder;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\ApiRoute;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
@@ -32,6 +33,7 @@ use OCP\IRequest;
  * @psalm-import-type EbookReaderProgress from \OCA\EbookReader\ResponseDefinitions
  * @psalm-import-type EbookReaderLocator from \OCA\EbookReader\ResponseDefinitions
  * @psalm-import-type EbookReaderProgressBatchResult from \OCA\EbookReader\ResponseDefinitions
+ * @psalm-import-type EbookReaderUpNext from \OCA\EbookReader\ResponseDefinitions
  */
 class ProgressController extends AbstractOCSController {
 	public const MAX_BATCH = 100;
@@ -50,10 +52,14 @@ class ProgressController extends AbstractOCSController {
 	}
 
 	/**
-	 * Most recently read books that are started and not finished ("continue reading")
+	 * Most recently read books that are started and not finished ("continue reading"), plus the next volumes to start
 	 *
-	 * @param int<1, 50> $limit Maximum number of books
-	 * @return DataResponse<Http::STATUS_OK, array{books: list<EbookReaderBook>}, array{}>
+	 * upNext: for each series whose most recently read volume is finished, the next volume in reading order
+	 * (see GET /books/{fileId}/next) that is not finished yet, if it has not been started (status unread).
+	 * previousFileId is the finished volume. At most limit entries, most recently finished series first.
+	 *
+	 * @param int<1, 50> $limit Maximum number of books (and of upNext entries)
+	 * @return DataResponse<Http::STATUS_OK, array{books: list<EbookReaderBook>, upNext: list<EbookReaderUpNext>}, array{}>
 	 * @throws OCSForbiddenException Not logged in
 	 *
 	 * 200: Books returned
@@ -71,16 +77,42 @@ class ProgressController extends AbstractOCSController {
 			$byFile[$book->getFileId()] = $book;
 		}
 		$books = [];
+		$read = [];
 		foreach ($rows as $row) {
 			$book = $byFile[$row->getFileId()] ?? null;
-			if ($book !== null && $book->getReadStatus() !== Book::STATUS_FINISHED && $row->getPercentage() > 0.0) {
+			if ($book === null) {
+				continue;
+			}
+			$read[] = $book;
+			if (count($books) < $limit && $book->getReadStatus() !== Book::STATUS_FINISHED && $row->getPercentage() > 0.0) {
 				$books[] = $book;
-				if (count($books) >= $limit) {
-					break;
-				}
 			}
 		}
-		return new DataResponse(['books' => $this->serializer->serializeMany($userId, $books)]);
+		$upNext = $this->upNext($userId, $read, $books, $limit);
+		$serializedNext = $upNext === [] ? [] : $this->serializer->serializeMany($userId, array_map(static fn (array $e): Book => $e['next'], $upNext));
+		$next = [];
+		foreach ($upNext as $i => $entry) {
+			$next[] = ['previousFileId' => $entry['previous']->getFileId(), 'book' => $serializedNext[$i]];
+		}
+		return new DataResponse(['books' => $this->serializer->serializeMany($userId, $books), 'upNext' => $next]);
+	}
+
+	/**
+	 * @param list<Book> $read recently read books, most recent first
+	 * @param list<Book> $shown books of "continue reading"
+	 * @return list<array{previous: Book, next: Book}>
+	 */
+	private function upNext(string $userId, array $read, array $shown, int $limit): array {
+		$finished = array_filter(SeriesOrder::latestPerSeries($read), static fn (Book $b): bool => $b->getReadStatus() === Book::STATUS_FINISHED);
+		if ($finished === []) {
+			return [];
+		}
+		$volumes = $this->library->volumesOfSeries($userId, array_values(array_map(static fn (Book $b): string => (string)$b->getSeries(), $finished)));
+		$exclude = [];
+		foreach ($shown as $b) {
+			$exclude[$b->getFileId()] = true;
+		}
+		return SeriesOrder::upNext($read, $volumes, $exclude, $limit);
 	}
 
 	/**

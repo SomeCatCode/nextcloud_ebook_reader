@@ -238,6 +238,36 @@ class LibraryServiceTest extends TestCase {
 		$this->assertSame(['title', 'authors'], $book->getOverridesArray());
 	}
 
+	public function testIndexFileTakesTheAgeRatingFromTheFileUnlessSetByHand(): void {
+		$this->metadata->method('detectFormat')->willReturn('cbz');
+		$existing = new Book();
+		$existing->setId(3);
+		$existing->setFileMtime(1);
+		$existing->setFileEtag('old');
+		$existing->setCompletion(Book::COMPLETION_ONGOING);
+		$this->books->method('findByUserAndFile')->willReturn($existing);
+		$this->metadata->method('extract')->willReturn(new BookMetadata(title: 'T', ageRating: 16));
+		$this->books->method('update')->willReturnArgument(0);
+
+		$book = $this->service->indexFile('u', $this->file(5, 200, 'new'));
+		$this->assertNotNull($book);
+		$this->assertSame(16, $book->getAgeRating());
+		$this->assertSame(16, $book->getAgeRatingFile());
+		$this->assertFalse($book->getAgeRatingManual());
+		// completion is app data: untouched by indexing
+		$this->assertSame(Book::COMPLETION_ONGOING, $book->getCompletion());
+
+		// a manual value (here: explicitly none) survives the next re-index, the file value is still remembered
+		$book->setManualAgeRating(null);
+		$book = $this->service->indexFile('u', $this->file(5, 300, 'newer'));
+		$this->assertNotNull($book);
+		$this->assertNull($book->getAgeRating());
+		$this->assertSame(16, $book->getAgeRatingFile());
+		$book->resetAgeRating();
+		$this->assertSame(16, $book->getAgeRating());
+		$this->assertFalse($book->getAgeRatingManual());
+	}
+
 	public function testResetOverridesRereadsOnlyThatField(): void {
 		$this->metadata->method('detectFormat')->willReturn('mobi');
 		$existing = new Book();

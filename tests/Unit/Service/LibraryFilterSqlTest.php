@@ -231,4 +231,40 @@ class LibraryFilterSqlTest extends TestCase {
 		$empty = LibraryService::buildMissingCounts([], []);
 		$this->assertSame(0, array_sum($empty));
 	}
+
+	/** @return array<string, array{string, string, string}> */
+	public static function flagProvider(): array {
+		return [
+			'ongoing' => ['completion:ongoing', "eq(b.completion,'ongoing')", "(isNull(b.completion) OR NOT (eq(b.completion,'ongoing')))"],
+			'completed' => ['completion:completed', "eq(b.completion,'completed')", "(isNull(b.completion) OR NOT (eq(b.completion,'completed')))"],
+			'unknown' => ['completion:unknown', 'isNull(b.completion)', 'isNotNull(b.completion)'],
+			'age exact' => ['age:16', "eq(b.age_rating,'16')", "(isNull(b.age_rating) OR NOT (eq(b.age_rating,'16')))"],
+			'age up to' => ['age:<=12', "lte(b.age_rating,'12')", "(isNull(b.age_rating) OR NOT (lte(b.age_rating,'12')))"],
+			'age none' => ['age:none', 'isNull(b.age_rating)', 'isNotNull(b.age_rating)'],
+		];
+	}
+
+	#[\PHPUnit\Framework\Attributes\DataProvider('flagProvider')]
+	public function testCompletionAndAgeConditions(string $term, string $include, string $exclude): void {
+		$this->assertSame(['(' . $include . ')'], $this->conditions(BookQuery::fromRequestParams(['include' => [$term]])));
+		$this->assertSame([$exclude], $this->conditions(BookQuery::fromRequestParams(['exclude' => [$term]])));
+	}
+
+	public function testSmartShelfWithAgeAndCompletionTerms(): void {
+		$this->addShelf(6, 'u', 'smart', json_encode(['include' => ['age:<=12', 'completion:completed']]));
+		$c = $this->conditions(BookQuery::fromRequestParams(['include' => ['shelf:6']]));
+		$this->assertStringContainsString("lte(b.age_rating,'12')", $c[0]);
+		$this->assertStringContainsString("eq(b.completion,'completed')", $c[0]);
+	}
+
+	public function testFlagFacetHelpers(): void {
+		$this->assertSame(
+			[['name' => 'ongoing', 'count' => 3], ['name' => 'completed', 'count' => 0], ['name' => 'unknown', 'count' => 5]],
+			LibraryService::buildCompletionFacets(['ongoing' => 3, 'unknown' => 4, 'weird' => 1]),
+		);
+		$this->assertSame(
+			[['name' => '0', 'count' => 1], ['name' => '6', 'count' => 0], ['name' => '12', 'count' => 2], ['name' => '16', 'count' => 0], ['name' => '18', 'count' => 4], ['name' => 'none', 'count' => 7]],
+			LibraryService::buildAgeFacets(['0' => 1, '12' => 2, '18' => 4, 'none' => 7]),
+		);
+	}
 }

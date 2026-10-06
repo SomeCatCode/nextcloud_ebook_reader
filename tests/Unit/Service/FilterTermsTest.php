@@ -69,4 +69,29 @@ class FilterTermsTest extends TestCase {
 		$this->assertNull(FilterTerms::shelfId(''));
 		$this->assertNull(FilterTerms::shelfId('99999999999999999999'));
 	}
+
+	public function testNormalizeAge(): void {
+		$this->assertSame('12', FilterTerms::normalizeAge('12'));
+		$this->assertSame('0', FilterTerms::normalizeAge('00'));
+		$this->assertSame('<=16', FilterTerms::normalizeAge(' <= 16 '));
+		$this->assertSame('none', FilterTerms::normalizeAge('None'));
+		$this->assertNull(FilterTerms::normalizeAge('15'));
+		$this->assertNull(FilterTerms::normalizeAge('>=12'));
+		$this->assertNull(FilterTerms::normalizeAge('<='));
+		$this->assertNull(FilterTerms::normalizeAge('-6'));
+		$this->assertNull(FilterTerms::normalizeAge('118'));
+	}
+
+	public function testAgeMatches(): void {
+		$this->assertTrue(FilterTerms::ageMatches(12, '12'));
+		$this->assertFalse(FilterTerms::ageMatches(16, '12'));
+		$this->assertTrue(FilterTerms::ageMatches(6, '<=12'));
+		$this->assertTrue(FilterTerms::ageMatches(12, '<=12'));
+		$this->assertFalse(FilterTerms::ageMatches(16, '<=12'));
+		// unrated books are not "12 or lower"
+		$this->assertFalse(FilterTerms::ageMatches(null, '<=12'));
+		$this->assertTrue(FilterTerms::ageMatches(null, 'none'));
+		$this->assertFalse(FilterTerms::ageMatches(0, 'none'));
+		$this->assertFalse(FilterTerms::ageMatches(12, 'bogus'));
+	}
 }

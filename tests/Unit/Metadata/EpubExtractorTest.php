@@ -65,6 +65,21 @@ class EpubExtractorTest extends TestCase {
 		(new EpubExtractor())->extract(Fixtures::path('comic.cbz'));
 	}
 
+	public function testTypicalAgeRangeBecomesAgeRating(): void {
+		$path = Fixtures::temp('.epub');
+		$opf = '<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/">'
+			. '<dc:title>Teen book</dc:title><meta property="schema:typicalAgeRange">13-17</meta></metadata></package>';
+		$zip = new \ZipArchive();
+		$zip->open($path, \ZipArchive::CREATE | \ZipArchive::OVERWRITE);
+		$zip->addFromString('META-INF/container.xml', '<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="a.opf"/></rootfiles></container>');
+		$zip->addFromString('a.opf', $opf);
+		$zip->close();
+		$m = (new EpubExtractor())->extract($path);
+		$this->assertSame(16, $m->ageRating);
+		// the fixtures have no age range
+		$this->assertNull((new EpubExtractor())->extract(Fixtures::path('epub3.epub'))->ageRating);
+	}
+
 	public function testEntityDeclarationIsRejected(): void {
 		$path = Fixtures::temp('.epub');
 		$opf = '<?xml version="1.0"?><!DOCTYPE p [<!ENTITY x SYSTEM "file:///etc/passwd">]><package xmlns="http://www.idpf.org/2007/opf"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>&x;</dc:title></metadata></package>';

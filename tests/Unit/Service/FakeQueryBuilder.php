@@ -70,6 +70,7 @@ final class FakeQueryBuilder {
 		$str = static fn ($v): string => (string)$v;
 		$expr->method('eq')->willReturnCallback(static fn ($x, $y): string => 'eq(' . $str($x) . ',' . $str($y) . ')');
 		$expr->method('neq')->willReturnCallback(static fn ($x, $y): string => 'neq(' . $str($x) . ',' . $str($y) . ')');
+		$expr->method('lte')->willReturnCallback(static fn ($x, $y): string => 'lte(' . $str($x) . ',' . $str($y) . ')');
 		$expr->method('iLike')->willReturnCallback(static fn ($x, $y): string => 'iLike(' . $str($x) . ',' . $str($y) . ')');
 		$expr->method('in')->willReturnCallback(static fn ($x, $y): string => 'in(' . $str($x) . ',' . $str($y) . ')');
 		$expr->method('notIn')->willReturnCallback(static fn ($x, $y): string => 'notIn(' . $str($x) . ',' . $str($y) . ')');

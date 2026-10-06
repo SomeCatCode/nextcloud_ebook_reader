@@ -7,6 +7,8 @@ import type {
 	Book,
 	BookList,
 	BookQuery,
+	BulkAppDataRequest,
+	BulkAppDataResult,
 	BulkMetadataRequest,
 	BulkMetadataResult,
 	BulkTagRequest,
@@ -24,6 +26,7 @@ import type {
 	ProgressBatchItem,
 	ProgressBatchResult,
 	ProgressPut,
+	RecentResult,
 	RenameRequest,
 	SaveResult,
 	ScanResult,
@@ -267,6 +270,15 @@ export function patchAppData(fileId: number, patch: AppDataPatch): Promise<Book>
 }
 
 /**
+ * Completion status / age rating of several books (max. 500).
+ *
+ * @param req
+ */
+export function bulkAppData(req: BulkAppDataRequest): Promise<BulkAppDataResult> {
+	return request<BulkAppDataResult>('patch', '/books/app-data', { body: req })
+}
+
+/**
  *
  * @param fileId
  * @param patch
@@ -348,8 +360,17 @@ export function putProgressBatch(items: ProgressBatchItem[]): Promise<{ results:
  *
  * @param limit
  */
-export function recentBooks(limit = 10): Promise<{ books: Book[] }> {
-	return request<{ books: Book[] }>('get', '/progress/recent', { params: { limit } })
+export function recentBooks(limit = 10): Promise<RecentResult> {
+	return request<RecentResult>('get', '/progress/recent', { params: { limit } })
+}
+
+/**
+ * Next volume of the book's series (null for the last volume or without a series).
+ *
+ * @param fileId
+ */
+export async function nextVolume(fileId: number): Promise<Book | null> {
+	return (await request<{ book: Book | null }>('get', `/books/${fileId}/next`)).book
 }
 
 /**
