@@ -5,6 +5,11 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+### Behoben
+- Geteilter Ordner mit Bearbeitungsrecht: Bearbeiten Eigentümer und Empfänger die Metadaten eines Buchs, überschreiben sie sich nicht mehr gegenseitig. Vor dem Schreiben der Begleitdatei (`.<Buch>.opf`) wird geprüft, ob sie sich seit dem Aufbau der eigenen Bibliothekszeile geändert hat; dann werden zuerst die fremden Änderungen übernommen (nicht bearbeitete Felder behalten die Werte der anderen Person) und ein Schreiben mitten in einer fremden Änderung wird wiederholt. Bleibt die Begleitdatei dauerhaft in Bewegung, wird die Änderung nur in der Bibliothek gespeichert und eine Warnung gezeigt. Nach jedem Schreiben von Begleitdatei oder Datei werden die Bücher aller Benutzer sofort neu eingelesen, statt erst beim nächsten Scan (bis zu 6 Stunden).
+- Vom Besitzer geteilte Bücher (App-Teilen): Titel, Serie usw., die der Empfänger ändert, bleiben jetzt erhalten. Sie werden immer als eigene Überschreibungen in der Bibliothek des Empfängers gespeichert (nie in Begleitdatei oder Datei des Besitzers) und haben Vorrang vor den Werten des Besitzers; „Metadaten in die Datei schreiben“ ist für solche Bücher gesperrt.
+- Persönliche (nur in der App gespeicherte) Tags landen nicht mehr in der Begleitdatei oder in der Buchdatei: Die Tags eines Benutzers erscheinen nicht mehr beim anderen, und das Entfernen eines Tags des Eigentümers wirkt nicht mehr bei ihm. Beim App-Teilen erhält der Empfänger nur Genres und Datei-Tags des Besitzers, nie dessen persönliche Tags.
+
 ### Geändert
 - Kontaktadresse der App (App-Store-Angaben in `info.xml`, `composer.json`) ist jetzt it@wasmitleder.de.
 - `.gitignore` schließt Schlüssel- und Umgebungsdateien aus (`*.key`, `*.pem`, `*.p12`, `.env`), damit z. B. der App-Store-Signaturschlüssel nie versehentlich committet wird.
