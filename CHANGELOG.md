@@ -5,6 +5,9 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+### Geändert
+- Release-Workflow: Die Veröffentlichung im Nextcloud App Store läuft nur noch, wenn die Repository-Variable `APPSTORE_PUBLISH` auf `true` steht. Solange die App dort nicht registriert ist, schlägt das Release dadurch nicht mehr fehl; das GitHub-Release wird wie bisher erstellt.
+
 ## 0.9.0 – 2026-10-07
 
 ### Geändert
