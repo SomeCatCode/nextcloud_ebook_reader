@@ -72,6 +72,8 @@ use OCP\AppFramework\Db\Entity;
  * @method void setAgeRatingFile(?int $ageRatingFile)
  * @method bool getAgeRatingManual()
  * @method void setAgeRatingManual(bool $manual)
+ * @method int getMetaUpdatedAt()
+ * @method void setMetaUpdatedAt(int $metaUpdatedAt)
  */
 class Book extends Entity {
 	use MarksFieldsOnCreate;
@@ -90,6 +92,15 @@ class Book extends Entity {
 
 	/** Metadata fields that can be overridden in the app (they then survive re-indexing of the file). */
 	public const OVERRIDABLE_FIELDS = ['title', 'authors', 'series', 'seriesIndex', 'description', 'language', 'publisher', 'isbn', 'publishedAt'];
+
+	/**
+	 * Entity fields whose change counts as a change of the descriptive data (BookMapper then moves metaUpdatedAt).
+	 * Not part of it: rating, read status, completion, age rating, path.
+	 */
+	public const META_FIELDS = [
+		'format', 'size', 'title', 'authors', 'series', 'seriesIndex', 'description', 'language', 'publisher', 'isbn', 'publishedAt',
+		'hasCover', 'coverEtag', 'fileMtime', 'fileEtag', 'overrides', 'sidecarEtag',
+	];
 
 	protected string $userId = '';
 	protected int $fileId = 0;
@@ -128,6 +139,11 @@ class Book extends Entity {
 	protected ?int $ageRatingFile = null;
 	/** ageRating was set in the app (also an explicit "none") and survives re-indexing */
 	protected bool $ageRatingManual = false;
+	/**
+	 * ms; last change of the descriptive data (metadata, cover, file). Not moved by rating/status/progress, unlike updatedAt
+	 * (which drives /sync): a book shared through the app is stale for the recipient only when this moved.
+	 */
+	protected int $metaUpdatedAt = 0;
 
 	public function __construct() {
 		$this->markAllFieldsUpdated();
@@ -144,6 +160,12 @@ class Book extends Entity {
 		$this->addType('ageRating', 'integer');
 		$this->addType('ageRatingFile', 'integer');
 		$this->addType('ageRatingManual', 'boolean');
+		$this->addType('metaUpdatedAt', 'integer');
+	}
+
+	/** Whether the pending (not yet stored) changes touch the descriptive data. */
+	public function hasPendingMetaChange(): bool {
+		return array_intersect(self::META_FIELDS, array_keys($this->getUpdatedFields())) !== [];
 	}
 
 	/**

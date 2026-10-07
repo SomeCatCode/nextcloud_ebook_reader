@@ -5,6 +5,12 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+### Behoben
+- Konvertieren/Optimieren in einem geteilten Ordner mit „Original löschen“: Status, Bewertung, Tags, Lesefortschritt und Markierungen werden jetzt für alle Benutzer übernommen, die das Original in ihrer Bibliothek hatten, und die neue Datei wird für sie sofort indexiert (bisher nur für den ausführenden Benutzer; bei den anderen blieben Fortschritt und Markierungen am gelöschten Original und wurden nach 30 Tagen entfernt).
+- Markierungen und Notizen eines Empfängers bleiben erhalten, wenn eine Freigabe widerrufen wird, ein Buch ein geteiltes Smart-Regal verlässt oder ein Mount verschwindet (wie der Lesefortschritt). Die Bereinigung löscht Markierungen nur noch, wenn die Datei selbst gelöscht wurde.
+- Freigegebene Bücher: Bewertungs-, Status- und Lesefortschrittsänderungen des Besitzers lösen beim Empfänger keine Neuindexierung mehr aus und verraten nicht mehr dessen Aktivitätszeiten. Neue Spalte `meta_updated_at` in `ebookreader_books` (Migration `Version1007Date20261007100000`) für Metadaten-, Cover- und Dateiänderungen; `updatedAt` für `/sync` bleibt unverändert.
+- Nach dem Bearbeiten eines EPUB werden auch die Positionen der Markierungen aller Benutzer auf die geänderten Kapitel umgeschrieben (wie die Lesepositionen).
+
 ### Geändert
 - Kontaktadresse der App (App-Store-Angaben in `info.xml`, `composer.json`) ist jetzt it@wasmitleder.de.
 - `.gitignore` schließt Schlüssel- und Umgebungsdateien aus (`*.key`, `*.pem`, `*.p12`, `.env`), damit z. B. der App-Store-Signaturschlüssel nie versehentlich committet wird.

@@ -27,6 +27,8 @@ Sharing (see [CONTRACTS-v5.md](CONTRACTS-v5.md)) never grants access by itself. 
 - Shares the user created in Files are reused (`share_id = null`) and never deleted.
 - A share deleted outside the app (Files, recipient leaving it) is not re-created by the live sync.
 - Deleting a shelf, stopping a shelf share, the recipient removing it, or deleting the owner/recipient (user deletion, background sync) removes the app's records; the recipient's book rows are tombstoned by `ScanFileJob` once the file is no longer reachable.
+- The recipient's own data survives that: reading progress is never deleted with the book row, and annotations are kept as well. `CleanupTombstonesJob` purges a tombstoned row after 30 days and deletes the annotations of that user and file only if the file itself is gone (it does not exist in any user's files any more; the trash bin does not count). The row (and with it the check) is gone after the purge, so the job also sweeps annotations without any book row and deletes them once their file is deleted. A revoked share, a book leaving a shared smart shelf, an unmounted share or a book moved out of the library therefore lose nothing; sharing again brings progress and highlights back. Deleting the user removes everything.
+- A recipient's copy is re-indexed only when the owner changed what the recipient sees: descriptive metadata, cover or file (`meta_updated_at`). Rating, status or reading progress of the owner move `updated_at` (for `/sync`) but never `meta_updated_at`, so they neither cost indexing work for the recipient nor show the owner's activity times.
 
 ## 4. Limits
 
