@@ -238,9 +238,12 @@ class LibraryService {
 			$genres = [];
 			$tags = [];
 			foreach ($this->tagMapper->findByBook($source->getId()) as $tag) {
+				if ($tag->getSource() !== Tag::SOURCE_FILE) {
+					continue; // app-only genres and tags of the owner are never shared
+				}
 				if ($tag->getType() === Tag::TYPE_GENRE) {
 					$genres[] = $tag->getName();
-				} elseif ($tag->getSource() === Tag::SOURCE_FILE) {
+				} else {
 					$tags[] = $tag->getName();
 				}
 			}
@@ -276,6 +279,15 @@ class LibraryService {
 		$out = array_map('strval', $res->fetchAll(\PDO::FETCH_COLUMN));
 		$res->closeCursor();
 		return $out;
+	}
+
+	/** Whether the app (its own share feature, not a Nextcloud share) shared the file with the user: the book is not theirs. */
+	public function isSharedWithUser(string $userId, int $fileId): bool {
+		try {
+			return $this->sharedOwners($userId, $fileId) !== [];
+		} catch (\Throwable) {
+			return false;
+		}
 	}
 
 	/**
@@ -463,10 +475,18 @@ class LibraryService {
 		}
 	}
 
-	/** Re-indexes a file for all users having it (after editing). */
-	public function reindexFileForAllUsers(int $fileId): void {
+	/**
+	 * Re-indexes a file for all users having it (after editing), so that users sharing the file (native share or the
+	 * app's own share) see a change of the file or its sidecar right away.
+	 *
+	 * @param ?string $exceptUserId user whose row the caller has just updated itself
+	 */
+	public function reindexFileForAllUsers(int $fileId, ?string $exceptUserId = null): void {
 		foreach ($this->bookMapper->findByFileId($fileId) as $book) {
 			$userId = $book->getUserId();
+			if ($exceptUserId !== null && $userId === $exceptUserId) {
+				continue;
+			}
 			try {
 				$file = $this->getFileForUser($userId, $fileId);
 				$this->indexFile($userId, $file, true);

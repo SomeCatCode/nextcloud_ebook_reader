@@ -13,9 +13,11 @@ use OCA\EbookReader\BackgroundJob\WriteMetadataJob;
 use OCA\EbookReader\Db\Book;
 use OCA\EbookReader\Db\BookMapper;
 use OCA\EbookReader\Db\Tag;
+use OCA\EbookReader\Editor\EditForbiddenException;
 use OCA\EbookReader\Editor\InvalidEditRequestException;
 use OCA\EbookReader\Metadata\BookMetadata;
 use OCA\EbookReader\Metadata\MetadataService;
+use OCA\EbookReader\Metadata\SidecarChangedException;
 use OCA\EbookReader\Metadata\SidecarService;
 use OCA\EbookReader\Service\ArchiveCache;
 use OCA\EbookReader\Service\EditorService;
@@ -104,14 +106,16 @@ class EditorServiceTest extends TestCase {
 		return $b;
 	}
 
-	/** @param list<array{string, string}> $tags [type, name] */
+	/** @param list<array{0: string, 1: string, 2?: string}> $tags [type, name, source (default file)] */
 	private function withBook(Book $book, array $tags = []): void {
 		$this->library->method('getBook')->willReturn($book);
 		$objs = [];
-		foreach ($tags as [$type, $name]) {
+		foreach ($tags as $def) {
+			[$type, $name] = $def;
 			$t = new Tag();
 			$t->setType($type);
 			$t->setName($name);
+			$t->setSource($def[2] ?? Tag::SOURCE_FILE);
 			$objs[] = $t;
 		}
 		$this->library->method('getTags')->willReturn($objs);
@@ -517,6 +521,160 @@ class EditorServiceTest extends TestCase {
 
 		$this->service->save('u', 5, ['etag' => 'etag1', 'metadata' => ['title' => 'Written']]);
 		$this->assertSame(['putContent', 'sidecar', 'reindex'], $order);
+	}
+
+	// ------------------------------------------------------------------ shared folder / shared books
+
+	public function testStaleRowIsRefreshedFromTheSidecarBeforeTheEditSoOthersChangesSurvive(): void {
+		$this->target = 'sidecar';
+		$this->untouchableFile();
+		$stale = $this->book();
+		$stale->setSeries('Old series');
+		$stale->setSidecarEtag('sc:1');
+		$fresh = $this->book();
+		$fresh->setSeries('Owner series');
+		$fresh->setSidecarEtag('sc:2');
+		$this->withBook($stale);
+		$this->sidecar->method('etagOf')->willReturn('sc:2');
+		$this->library->expects($this->once())->method('indexFile')->with('u', $this->anything(), true)->willReturn($fresh);
+		$this->books->method('update')->willReturnArgument(0);
+		$seen = null;
+		$this->sidecar->expects($this->once())->method('write')->willReturnCallback(function (File $f, array $meta, bool $c, ?string $expected, bool $verify) use (&$seen): bool {
+			$seen = [$meta, $expected, $verify];
+			return true;
+		});
+		$this->library->expects($this->once())->method('reindexFileForAllUsers')->with(5, 'u');
+
+		$res = $this->service->saveMetadataOnly('u', 5, ['description' => 'Recipient text']);
+		$this->assertSame('Owner series', $seen[0]['series'], 'the field the user did not edit keeps the value from the sidecar');
+		$this->assertSame('<p>Recipient text</p>', $seen[0]['description']);
+		$this->assertSame('sc:2', $seen[1], 'the write is based on the sidecar state of the refreshed row');
+		$this->assertTrue($seen[2], 'the write is verified against that state');
+		$this->assertSame('Owner series', $res['book']->getSeries());
+		$this->assertSame([], $res['warnings']);
+	}
+
+	public function testSidecarChangedWhileWritingIsMergedAndRetried(): void {
+		$this->target = 'sidecar';
+		$this->untouchableFile();
+		$first = $this->book();
+		$first->setSidecarEtag('sc:1');
+		$second = $this->book();
+		$second->setSeries('Changed meanwhile');
+		$second->setSidecarEtag('sc:2');
+		$this->withBook($first);
+		$this->sidecar->method('etagOf')->willReturn('sc:1');
+		$this->library->expects($this->once())->method('indexFile')->willReturn($second);
+		$this->books->method('update')->willReturnArgument(0);
+		$metas = [];
+		$calls = 0;
+		$this->sidecar->expects($this->exactly(2))->method('write')->willReturnCallback(function (File $f, array $meta) use (&$metas, &$calls): bool {
+			$metas[] = $meta;
+			if (++$calls === 1) {
+				throw new SidecarChangedException('changed');
+			}
+			return true;
+		});
+		$this->library->expects($this->once())->method('reindexFileForAllUsers')->with(5, 'u');
+
+		$res = $this->service->saveMetadataOnly('u', 5, ['title' => 'New']);
+		$this->assertNull($metas[0]['series']);
+		$this->assertSame('Changed meanwhile', $metas[1]['series']);
+		$this->assertSame('New', $metas[1]['title']);
+		$this->assertSame([], $res['warnings']);
+	}
+
+	public function testSidecarThatKeepsChangingIsReportedAndTheEditStaysInTheLibrary(): void {
+		$this->target = 'both';
+		$this->untouchableFile();
+		$book = $this->book();
+		$this->withBook($book);
+		$this->library->method('indexFile')->willReturn($book);
+		$this->books->method('update')->willReturnArgument(0);
+		$this->sidecar->method('write')->willThrowException(new SidecarChangedException('changed'));
+		$this->jobList->expects($this->never())->method('add');
+		$this->library->expects($this->never())->method('reindexFileForAllUsers');
+
+		$res = $this->service->saveMetadataOnly('u', 5, ['title' => 'New']);
+		$this->assertCount(1, $res['warnings']);
+		$this->assertFalse($res['writeQueued']);
+		$this->assertSame(['title'], $res['book']->getOverridesArray(), 'kept as an app edit, so a re-index does not undo it');
+	}
+
+	public function testSidecarEditReindexesTheOtherUsersOfTheFile(): void {
+		$this->target = 'sidecar';
+		$this->untouchableFile();
+		$this->withBook($this->book());
+		$this->books->method('update')->willReturnArgument(0);
+		$this->sidecar->method('write')->willReturn(true);
+		$this->library->expects($this->once())->method('reindexFileForAllUsers')->with(5, 'u');
+		$this->service->saveMetadataOnly('u', 5, ['title' => 'New']);
+	}
+
+	public function testEditsOfABookSharedByTheAppStayInTheRecipientsLibrary(): void {
+		$this->target = 'both';
+		$this->untouchableFile();
+		$this->withBook($this->book());
+		$this->library->method('isSharedWithUser')->with('u', 5)->willReturn(true);
+		$this->books->method('update')->willReturnArgument(0);
+		$this->sidecar->expects($this->never())->method('write');
+		$this->jobList->expects($this->never())->method('add');
+		$this->library->expects($this->never())->method('reindexFileForAllUsers');
+
+		$res = $this->service->saveMetadataOnly('u', 5, ['title' => 'Mine', 'series' => 'My series']);
+		$this->assertSame('Mine', $res['book']->getTitle());
+		$this->assertEqualsCanonicalizing(['title', 'series'], $res['book']->getOverridesArray());
+		$this->assertFalse($res['writeQueued']);
+	}
+
+	public function testBookSharedByTheAppCanNotBeEmbeddedIntoTheOwnersFile(): void {
+		$this->untouchableFile();
+		$this->withBook($this->book());
+		$this->library->method('isSharedWithUser')->willReturn(true);
+		$this->expectException(EditForbiddenException::class);
+		$this->service->embedMetadata('u', 5);
+	}
+
+	public function testAppOnlyTagsAreNeverWrittenIntoTheSidecar(): void {
+		$this->target = 'sidecar';
+		$this->untouchableFile();
+		$this->withBook($this->book(), [[Tag::TYPE_TAG, 'private', Tag::SOURCE_APP], [Tag::TYPE_TAG, 'public', Tag::SOURCE_FILE], [Tag::TYPE_GENRE, 'Fantasy', Tag::SOURCE_APP]]);
+		$this->books->method('update')->willReturnArgument(0);
+		$written = [];
+		$this->sidecar->method('write')->willReturnCallback(function (File $f, array $meta) use (&$written): bool {
+			$written[] = $meta;
+			return true;
+		});
+		$stored = [];
+		$this->library->method('setTags')->willReturnCallback(function (int $id, string $type, array $names, string $source) use (&$stored): void {
+			$stored[$type . ':' . $source] = $names;
+		});
+
+		$this->service->saveMetadataOnly('u', 5, ['title' => 'New', 'tags' => ['private', 'public', 'added']]);
+		$this->assertSame(['public', 'added'], $written[0]['tags']);
+		$this->assertSame(['Fantasy'], $written[0]['genres'], 'genres are part of the file');
+		$this->assertSame(['public', 'added'], $stored['tag:' . Tag::SOURCE_FILE]);
+		$this->assertSame(['private'], $stored['tag:' . Tag::SOURCE_APP], 'the personal tag stays in the library of the user');
+	}
+
+	public function testEditorSaveKeepsAppOnlyTagsOutOfTheFileAndTheSidecar(): void {
+		$this->target = 'sidecar';
+		$src = $this->tmp[] = Fixtures::cbz(2, true);
+		$dst = $this->tmp[] = Fixtures::tmp('.cbz');
+		$this->localFile($src);
+		$this->withBook($this->book(), [[Tag::TYPE_TAG, 'private', Tag::SOURCE_APP]]);
+		$this->tempManager->method('getTemporaryFile')->willReturn($dst);
+		$this->metadata->method('extractLocal')->willReturn(new BookMetadata(title: 'X'));
+		$this->books->method('update')->willReturnArgument(0);
+		$written = null;
+		$this->sidecar->method('write')->willReturnCallback(function (File $f, array $meta) use (&$written): bool {
+			$written = $meta;
+			return true;
+		});
+		$this->library->expects($this->atLeastOnce())->method('setTags')->with(9, Tag::TYPE_TAG, ['private'], Tag::SOURCE_APP);
+
+		$this->service->save('u', 5, ['etag' => 'etag1', 'metadata' => ['tags' => ['private', 'shared']]]);
+		$this->assertSame(['shared'], $written['tags']);
 	}
 
 	public function testRenameMovesTheSidecarWithTheBook(): void {
