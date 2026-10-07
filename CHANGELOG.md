@@ -5,6 +5,10 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+### Geändert
+- Kontaktadresse der App (App-Store-Angaben in `info.xml`, `composer.json`) ist jetzt it@wasmitleder.de.
+- `.gitignore` schließt Schlüssel- und Umgebungsdateien aus (`*.key`, `*.pem`, `*.p12`, `.env`), damit z. B. der App-Store-Signaturschlüssel nie versehentlich committet wird.
+
 ### Behoben
 - Geteilte Bücher: Löschen, Sortieren, Umbenennen und „Original löschen“ nach der Comic-Konvertierung veränderten bisher die Datei des Eigentümers, wenn die Freigabe Löschrechte hatte. Die App rührt Dateien anderer Benutzer nicht mehr an: `DELETE /books/{fileId}` antwortet mit 403 („The book belongs to <Benutzer>; remove the share instead“), `POST /books/delete` meldet solche Bücher als fehlgeschlagen (`error: shared`), „Ordnen“ überspringt sie mit Hinweis und räumt keine leeren Ordner innerhalb einer Freigabe (auch nicht deren Wurzel) mehr weg. Der Lösch-Dialog zeigt geteilte Bücher mit „geteilt von …“ an und löscht nur eigene. Das Buch-JSON hat dafür die neuen Felder `owner` (Benutzer-ID des Dateieigentümers) und `shared` (Datei stammt aus einer Freigabe).
 - Geteilter Ordner mit Bearbeitungsrecht: Bearbeiten Eigentümer und Empfänger die Metadaten eines Buchs, überschreiben sie sich nicht mehr gegenseitig. Vor dem Schreiben der Begleitdatei (`.<Buch>.opf`) wird geprüft, ob sie sich seit dem Aufbau der eigenen Bibliothekszeile geändert hat; dann werden zuerst die fremden Änderungen übernommen (nicht bearbeitete Felder behalten die Werte der anderen Person) und ein Schreiben mitten in einer fremden Änderung wird wiederholt. Bleibt die Begleitdatei dauerhaft in Bewegung, wird die Änderung nur in der Bibliothek gespeichert und eine Warnung gezeigt. Nach jedem Schreiben von Begleitdatei oder Datei werden die Bücher aller Benutzer sofort neu eingelesen, statt erst beim nächsten Scan (bis zu 6 Stunden).
@@ -14,10 +18,6 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 - Markierungen und Notizen eines Empfängers bleiben erhalten, wenn eine Freigabe widerrufen wird, ein Buch ein geteiltes Smart-Regal verlässt oder ein Mount verschwindet (wie der Lesefortschritt). Die Bereinigung löscht Markierungen nur noch, wenn die Datei selbst gelöscht wurde.
 - Freigegebene Bücher: Bewertungs-, Status- und Lesefortschrittsänderungen des Besitzers lösen beim Empfänger keine Neuindexierung mehr aus und verraten nicht mehr dessen Aktivitätszeiten. Neue Spalte `meta_updated_at` in `ebookreader_books` (Migration `Version1007Date20261007100000`) für Metadaten-, Cover- und Dateiänderungen; `updatedAt` für `/sync` bleibt unverändert.
 - Nach dem Bearbeiten eines EPUB werden auch die Positionen der Markierungen aller Benutzer auf die geänderten Kapitel umgeschrieben (wie die Lesepositionen).
-
-### Geändert
-- Kontaktadresse der App (App-Store-Angaben in `info.xml`, `composer.json`) ist jetzt it@wasmitleder.de.
-- `.gitignore` schließt Schlüssel- und Umgebungsdateien aus (`*.key`, `*.pem`, `*.p12`, `.env`), damit z. B. der App-Store-Signaturschlüssel nie versehentlich committet wird.
 
 ## 0.8.1 – 2026-10-07
 
