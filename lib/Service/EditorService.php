@@ -844,7 +844,8 @@ class EditorService {
 		$current = $file->getName();
 		$candidate = $base . $ext;
 		if ($candidate !== $current) {
-			if (!$file->isUpdateable() || !$file->isDeletable()) {
+			// renaming a shared file would rename the owner's file
+			if (!$file->isUpdateable() || !$file->isDeletable() || FileOwnership::isShared($file)) {
 				throw new EditForbiddenException('Die Datei darf nicht umbenannt werden.');
 			}
 			$n = 1;

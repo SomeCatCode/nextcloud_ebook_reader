@@ -5,6 +5,9 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+### Behoben
+- Geteilte Bücher: Löschen, Sortieren, Umbenennen und „Original löschen“ nach der Comic-Konvertierung veränderten bisher die Datei des Eigentümers, wenn die Freigabe Löschrechte hatte. Die App rührt Dateien anderer Benutzer nicht mehr an: `DELETE /books/{fileId}` antwortet mit 403 („The book belongs to <Benutzer>; remove the share instead“), `POST /books/delete` meldet solche Bücher als fehlgeschlagen (`error: shared`), „Ordnen“ überspringt sie mit Hinweis und räumt keine leeren Ordner innerhalb einer Freigabe (auch nicht deren Wurzel) mehr weg. Der Lösch-Dialog zeigt geteilte Bücher mit „geteilt von …“ an und löscht nur eigene. Das Buch-JSON hat dafür die neuen Felder `owner` (Benutzer-ID des Dateieigentümers) und `shared` (Datei stammt aus einer Freigabe).
+
 ### Geändert
 - Kontaktadresse der App (App-Store-Angaben in `info.xml`, `composer.json`) ist jetzt it@wasmitleder.de.
 - `.gitignore` schließt Schlüssel- und Umgebungsdateien aus (`*.key`, `*.pem`, `*.p12`, `.env`), damit z. B. der App-Store-Signaturschlüssel nie versehentlich committet wird.

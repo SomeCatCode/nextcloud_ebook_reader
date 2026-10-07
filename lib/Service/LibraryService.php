@@ -1375,10 +1375,15 @@ class LibraryService {
 	 * user right away; other users of a shared file follow via the node-deleted event.
 	 *
 	 * @throws NotFoundException the user can not see the file
+	 * @throws SharedBookException the file belongs to another user (reached via a share): never deleted
 	 * @throws NotPermittedException the user may not delete it (e.g. read-only share)
 	 */
 	public function deleteFileForUser(string $userId, int $fileId): void {
 		$file = $this->getFileForUser($userId, $fileId);
+		// a share with delete permission would delete the owner's file: the recipient can only remove the share itself
+		if (FileOwnership::isShared($file)) {
+			throw new SharedBookException(FileOwnership::shareOwner($file) ?? '');
+		}
 		if (!$file->isDeletable()) {
 			throw new NotPermittedException('File can not be deleted');
 		}

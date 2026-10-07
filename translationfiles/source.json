@@ -652,6 +652,7 @@
 			"files": [
 				"src/components/convert/ConvertDialog.vue",
 				"src/components/library/BulkEditDialog.vue",
+				"src/components/library/DeleteBooksDialog.vue",
 				"src/components/library/UploadPanel.vue",
 				"src/views/ReaderView.vue"
 			]
@@ -4136,6 +4137,14 @@
 			]
 		},
 		{
+			"id": "_This book was shared with you and is not deleted, as that would delete the file of its owner. Remove the share in the Files app instead._::_These %n books were shared with you and are not deleted, as that would delete the files of their owners. Remove the shares in the Files app instead._",
+			"singular": "This book was shared with you and is not deleted, as that would delete the file of its owner. Remove the share in the Files app instead.",
+			"plural": "These %n books were shared with you and are not deleted, as that would delete the files of their owners. Remove the shares in the Files app instead.",
+			"files": [
+				"src/components/library/DeleteBooksDialog.vue"
+			]
+		},
+		{
 			"id": "_and %n more_::_and %n more_",
 			"singular": "and %n more",
 			"plural": "and %n more",
@@ -4289,6 +4298,12 @@
 			"id": "{seconds} s elapsed.",
 			"files": [
 				"src/views/EditorView.vue"
+			]
+		},
+		{
+			"id": "{title} (shared by {owner})",
+			"files": [
+				"src/components/library/DeleteBooksDialog.vue"
 			]
 		}
 	]

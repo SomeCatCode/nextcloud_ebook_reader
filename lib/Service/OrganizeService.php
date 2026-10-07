@@ -232,6 +232,12 @@ class OrganizeService {
 			}
 			$rel = $userFolder->getRelativePath($node->getPath());
 			$from = '/' . trim((string)($rel ?? $book->getPath()), '/');
+			if (FileOwnership::isShared($node)) {
+				// moving it would take the book out of the owner's folder
+				$owner = FileOwnership::shareOwner($node);
+				$items[] = ['fileId' => $fileId, 'from' => $from, 'to' => '', 'status' => 'error', 'message' => 'The book belongs to ' . ($owner ?? 'another user') . ' (shared) and is not moved.'];
+				continue;
+			}
 			$ext = $this->extensionOf($node->getName());
 			$fallback = $ext !== '' ? substr($node->getName(), 0, -strlen($ext)) : $node->getName();
 			$rendered = $this->renderPath($pattern, $this->variablesFor($book), $ext, $fallback);
@@ -414,7 +420,8 @@ class OrganizeService {
 				}
 				try {
 					$node = $userFolder->get(ltrim($path, '/'));
-					if (!$node instanceof Folder || $node->getDirectoryListing() !== [] || !$node->isDeletable()) {
+					// never remove folders of other users (share mounts, their roots included)
+					if (!$node instanceof Folder || FileOwnership::isShared($node) || $node->getDirectoryListing() !== [] || !$node->isDeletable()) {
 						break;
 					}
 					$node->delete();
