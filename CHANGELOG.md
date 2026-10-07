@@ -5,6 +5,10 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+### Geändert
+- Kontaktadresse der App (App-Store-Angaben in `info.xml`, `composer.json`) ist jetzt it@wasmitleder.de.
+- `.gitignore` schließt Schlüssel- und Umgebungsdateien aus (`*.key`, `*.pem`, `*.p12`, `.env`), damit z. B. der App-Store-Signaturschlüssel nie versehentlich committet wird.
+
 ## 0.8.1 – 2026-10-07
 
 ### Behoben

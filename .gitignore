@@ -12,3 +12,12 @@
 .idea/
 .vscode/
 .DS_Store
+
+# Secrets: never commit keys, certificates with private parts or local env files
+# (e.g. the App Store signing key ebookreader.key)
+*.key
+*.pem
+*.p12
+*.pfx
+.env
+.env.*
