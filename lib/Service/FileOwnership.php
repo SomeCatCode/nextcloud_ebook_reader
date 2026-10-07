@@ -19,13 +19,13 @@ use OCP\Files\Storage\ISharedStorage;
 final class FileOwnership {
 	/** The node lives on a share mount (a file or folder shared by another user). */
 	public static function isShared(Node $node): bool {
-		return (bool)$node->getStorage()?->instanceOfStorage(ISharedStorage::class);
+		return (bool)$node->getStorage()->instanceOfStorage(ISharedStorage::class);
 	}
 
 	/** Nextcloud user id of the owner of a shared node, null when it is not shared (or the owner is unknown). */
 	public static function shareOwner(Node $node): ?string {
 		$storage = $node->getStorage();
-		if (!$storage?->instanceOfStorage(ISharedStorage::class)) {
+		if (!$storage->instanceOfStorage(ISharedStorage::class)) {
 			return null;
 		}
 		/** @var ISharedStorage $storage */
