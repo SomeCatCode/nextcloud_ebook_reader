@@ -18,12 +18,16 @@ use OCA\EbookReader\Service\ArchiveCache;
 use OCA\EbookReader\Service\TaskService;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\Files\IAppData;
+use OCP\Files\IRootFolder;
+use OCP\Files\Node;
 use OCP\Files\NotFoundException;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 
+require_once __DIR__ . '/../Service/OcHooksEmitterStub.php';
+
 class CleanupTombstonesShelvesTest extends TestCase {
-	private function job(BookMapper $books, ShelfMapper $shelves, ShelfBookMapper $shelfBooks, ?AnnotationMapper $annotations = null): CleanupTombstonesJob {
+	private function job(BookMapper $books, ShelfMapper $shelves, ShelfBookMapper $shelfBooks, ?AnnotationMapper $annotations = null, ?IRootFolder $root = null): CleanupTombstonesJob {
 		$time = $this->createMock(ITimeFactory::class);
 		$time->method('getTime')->willReturn(1800000000);
 		$appData = $this->createMock(IAppData::class);
@@ -38,6 +42,7 @@ class CleanupTombstonesShelvesTest extends TestCase {
 			$shelves,
 			$shelfBooks,
 			$annotations ?? $this->createMock(AnnotationMapper::class),
+			$root ?? $this->rootWithFiles([]),
 		);
 	}
 
@@ -92,9 +97,88 @@ class CleanupTombstonesShelvesTest extends TestCase {
 		// annotation tombstones are kept 90 days, books 30
 		$annotations->expects($this->once())->method('deleteTombstonesOlderThan')->with((1800000000 - 90 * 86400) * 1000);
 
-		$this->runJob($this->job($books, $shelves, $this->createMock(ShelfBookMapper::class), $annotations));
+		// the files are gone for good
+		$this->runJob($this->job($books, $shelves, $this->createMock(ShelfBookMapper::class), $annotations, $this->rootWithFiles([])));
 
 		$this->assertSame([['a', [100, 101]], ['b', [100]]], $calls);
+	}
+
+	/** @param list<int> $existing file ids that still exist in somebody's files */
+	private function rootWithFiles(array $existing, string $path = '/owner/files/Books/x.epub'): IRootFolder {
+		$root = $this->createMock(IRootFolder::class);
+		$root->method('getById')->willReturnCallback(function (int $id) use ($existing, $path): array {
+			if (!in_array($id, $existing, true)) {
+				return [];
+			}
+			$node = $this->createMock(Node::class);
+			$node->method('getPath')->willReturn($path);
+			return [$node];
+		});
+		return $root;
+	}
+
+	public function testAnnotationsStayWhenTheFileOnlyBecameInaccessible(): void {
+		$books = $this->createMock(BookMapper::class);
+		$books->method('findTombstonesOlderThan')->willReturn([
+			// 100: share revoked, the file still exists for its owner; 101: the file was deleted; 102: only left in the trash bin
+			['id' => 10, 'user_id' => 'bob', 'file_id' => 100],
+			['id' => 11, 'user_id' => 'bob', 'file_id' => 101],
+			['id' => 12, 'user_id' => 'bob', 'file_id' => 102],
+		]);
+		$shelves = $this->createMock(ShelfMapper::class);
+		$shelves->method('findIdsByUser')->willReturn([]);
+		$annotations = $this->createMock(AnnotationMapper::class);
+		$deleted = [];
+		$annotations->method('deleteByUserAndFiles')->willReturnCallback(function (string $user, array $files) use (&$deleted): void {
+			$deleted[] = [$user, $files];
+		});
+		$root = $this->createMock(IRootFolder::class);
+		$root->method('getById')->willReturnCallback(function (int $id): array {
+			$paths = [100 => '/alice/files/Books/x.epub', 102 => '/alice/files_trashbin/files/x.epub.d1700000000'];
+			if (!isset($paths[$id])) {
+				return [];
+			}
+			$node = $this->createMock(Node::class);
+			$node->method('getPath')->willReturn($paths[$id]);
+			return [$node];
+		});
+
+		$this->runJob($this->job($books, $shelves, $this->createMock(ShelfBookMapper::class), $annotations, $root));
+
+		$this->assertSame([['bob', [101, 102]]], $deleted, 'only annotations of vanished files are deleted');
+	}
+
+	public function testUnknownFileStateKeepsTheAnnotations(): void {
+		$books = $this->createMock(BookMapper::class);
+		$books->method('findTombstonesOlderThan')->willReturn([['id' => 10, 'user_id' => 'bob', 'file_id' => 100]]);
+		$shelves = $this->createMock(ShelfMapper::class);
+		$shelves->method('findIdsByUser')->willReturn([]);
+		$annotations = $this->createMock(AnnotationMapper::class);
+		$annotations->expects($this->never())->method('deleteByUserAndFiles');
+		$root = $this->createMock(IRootFolder::class);
+		$root->method('getById')->willThrowException(new \RuntimeException('storage not available'));
+
+		$this->runJob($this->job($books, $shelves, $this->createMock(ShelfBookMapper::class), $annotations, $root));
+	}
+
+	public function testAnnotationsOfPurgedBooksAreDeletedOnceTheirFileIsGone(): void {
+		$books = $this->createMock(BookMapper::class);
+		$books->method('findTombstonesOlderThan')->willReturn([]);
+		$annotations = $this->createMock(AnnotationMapper::class);
+		// the share was revoked long ago (row purged); file 100 still exists, file 101 was deleted since
+		$annotations->method('findWithoutBook')->willReturnCallback(static fn (int $after): array => $after === 0 ? [
+			['id' => 1, 'user_id' => 'bob', 'file_id' => 100],
+			['id' => 2, 'user_id' => 'bob', 'file_id' => 101],
+			['id' => 3, 'user_id' => 'bob', 'file_id' => 101],
+		] : []);
+		$deleted = [];
+		$annotations->method('deleteByUserAndFiles')->willReturnCallback(function (string $user, array $files) use (&$deleted): void {
+			$deleted[] = [$user, $files];
+		});
+
+		$this->runJob($this->job($books, $this->createMock(ShelfMapper::class), $this->createMock(ShelfBookMapper::class), $annotations, $this->rootWithFiles([100])));
+
+		$this->assertSame([['bob', [101]]], $deleted);
 	}
 
 	public function testNothingToPurgeTouchesNoAssignments(): void {

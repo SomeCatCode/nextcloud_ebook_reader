@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace OCA\EbookReader\Service;
 
+use OCA\EbookReader\Db\AnnotationMapper;
 use OCA\EbookReader\Db\Book;
 use OCA\EbookReader\Db\BookMapper;
 use OCA\EbookReader\Db\Tag;
@@ -60,6 +61,7 @@ class ConvertService {
 		private SidecarService $sidecar,
 		private ?ComicWriter $writer = null,
 		private ?ImageOptimizer $optimizer = null,
+		private ?AnnotationMapper $annotations = null,
 	) {
 		$this->writer ??= new ComicWriter($tools);
 		$this->optimizer ??= new ImageOptimizer();
@@ -343,6 +345,7 @@ class ConvertService {
 			throw new ConvertException('The converted file could not be indexed', 500);
 		}
 		$newBook = $this->carryOver($userId, $book, $newBook, $prepared['hrefs'] ?? [], $prepared['pages']);
+		$this->carryOverForOthers($userId, $book, $newFile, $prepared['hrefs'] ?? [], $prepared['pages']);
 
 		if ($deleteOriginal) {
 			try {
@@ -399,6 +402,7 @@ class ConvertService {
 			throw new ConvertException('The converted file could not be indexed', 500);
 		}
 		$newBook = $this->carryOver($userId, $book, $newBook, $limit($newPages), $limit($oldPages));
+		$this->carryOverForOthers($userId, $book, $newFile, $limit($newPages), $limit($oldPages));
 
 		$originalDeleted = false;
 		if ($deleteOriginal) {
@@ -533,7 +537,8 @@ class ConvertService {
 	}
 
 	/**
-	 * Copies rating, read status, completion status, a manual age rating, app tags and the reading position to the new book.
+	 * Copies rating, read status, completion status, a manual age rating, app tags, the reading position and the
+	 * annotations of one user to the new book.
 	 *
 	 * @param list<string> $hrefs page hrefs of the new book (EPUB); empty = use the page file names
 	 * @param list<string> $oldPages entry names of the source pages
@@ -543,6 +548,11 @@ class ConvertService {
 			$this->copyProgress($userId, $old->getFileId(), $new->getFileId(), $new->getFormat(), $oldPages, $hrefs);
 		} catch (\Throwable $e) {
 			$this->logger->info('Reading position was not carried over: ' . $e->getMessage(), ['app' => 'ebookreader']);
+		}
+		try {
+			$this->moveAnnotations($userId, $old->getFileId(), $new->getFileId(), $new->getFormat(), $oldPages, $hrefs);
+		} catch (\Throwable $e) {
+			$this->logger->info('Annotations were not carried over: ' . $e->getMessage(), ['app' => 'ebookreader']);
 		}
 		try {
 			$new = $this->bookMapper->findByUserAndFile($userId, $new->getFileId());
@@ -572,6 +582,43 @@ class ConvertService {
 	}
 
 	/**
+	 * The original may be shared with other users (shared folder): deleting it tombstones their book rows too, so every other
+	 * user who has the original in their library gets the new file indexed right away and their data (status, rating, tags,
+	 * reading position, annotations) carried over like the acting user's. Users who cannot see the new file or do not
+	 * have it in their library keep their data on the old file id.
+	 *
+	 * @param list<string> $hrefs
+	 * @param list<string> $oldPages
+	 */
+	private function carryOverForOthers(string $actingUserId, Book $oldOfActing, File $newFile, array $hrefs, array $oldPages): void {
+		try {
+			$rows = $this->bookMapper->findByFileId($oldOfActing->getFileId());
+		} catch (\Throwable $e) {
+			$this->logger->info('Other users of the original were not looked up: ' . $e->getMessage(), ['app' => 'ebookreader']);
+			return;
+		}
+		foreach ($rows as $old) {
+			$userId = $old->getUserId();
+			if ($userId === $actingUserId) {
+				continue;
+			}
+			try {
+				$theirs = $this->library->getFileForUser($userId, $newFile->getId());
+				if (!$this->library->isInLibrary($userId, $theirs)) {
+					continue;
+				}
+				$new = $this->library->indexFile($userId, $theirs, true);
+				if ($new === null) {
+					continue;
+				}
+				$this->carryOver($userId, $old, $new, $hrefs, $oldPages);
+			} catch (\Throwable $e) {
+				$this->logger->info('Data of user ' . $userId . ' was not carried over to the converted book: ' . $e->getMessage(), ['app' => 'ebookreader']);
+			}
+		}
+	}
+
+	/**
 	 * @param list<string> $oldPages
 	 * @param list<string> $hrefs
 	 */
@@ -580,7 +627,53 @@ class ConvertService {
 		if ($p === null) {
 			return;
 		}
-		$locator = $p->getLocatorArray();
+		$locator = $this->mapLocator($p->getLocatorArray(), $newFormat, $oldPages, $hrefs);
+		if ($locator === null) {
+			return;
+		}
+		// clientUpdatedAt stays: the carried position is the same reading state, not a newer one; put() gives it a new
+		// updatedAt, so /sync delivers it
+		$this->progress->put($userId, $newFileId, $locator, $p->getPercentage(), $p->getDevice(), $p->getClientUpdatedAt());
+	}
+
+	/**
+	 * Moves the live annotations of the user to the new file (same uuid, so clients see the same annotation on the new book).
+	 * An annotation whose page cannot be mapped keeps its text and note and only the overall position.
+	 *
+	 * @param list<string> $oldPages
+	 * @param list<string> $hrefs
+	 */
+	private function moveAnnotations(string $userId, int $oldFileId, int $newFileId, string $newFormat, array $oldPages, array $hrefs): void {
+		if ($this->annotations === null) {
+			return;
+		}
+		$now = (int)(microtime(true) * 1000.0);
+		foreach ($this->annotations->findByUserAndFile($userId, $oldFileId) as $annotation) {
+			$old = $annotation->getLocatorArray();
+			$locator = $this->mapLocator($old, $newFormat, $oldPages, $hrefs);
+			if ($locator === null) {
+				$locator = ['href' => ''];
+				if (isset($old['locations']['totalProgression']) && is_numeric($old['locations']['totalProgression'])) {
+					$locator['locations'] = ['totalProgression' => $old['locations']['totalProgression']];
+				}
+			}
+			$annotation->setFileId($newFileId);
+			$annotation->setLocator(json_encode($locator, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+			// delivered by /sync; clientUpdatedAt stays (nothing was edited)
+			$annotation->setUpdatedAt($now);
+			$this->annotations->update($annotation);
+		}
+	}
+
+	/**
+	 * Translates a locator of the old book to the page of the new book (by href, else by position).
+	 *
+	 * @param array<string, mixed> $locator
+	 * @param list<string> $oldPages
+	 * @param list<string> $hrefs
+	 * @return array<string, mixed>|null null = the page cannot be found
+	 */
+	private function mapLocator(array $locator, string $newFormat, array $oldPages, array $hrefs): ?array {
 		$locations = isset($locator['locations']) && is_array($locator['locations']) ? $locator['locations'] : [];
 		$href = is_string($locator['href'] ?? null) ? explode('#', $locator['href'], 2)[0] : '';
 		$index = array_search($href, $oldPages, true);
@@ -588,7 +681,7 @@ class ConvertService {
 			$index = $locations['position'] - 1;
 		}
 		if (!is_int($index) || $index < 0 || $index >= count($oldPages)) {
-			return;
+			return null;
 		}
 		$width = max(4, strlen((string)count($oldPages)));
 		if ($newFormat === 'epub') {
@@ -605,13 +698,13 @@ class ConvertService {
 			$type = 'image/' . ($ext === 'jpg' ? 'jpeg' : $ext);
 		}
 		if ($newHref === null) {
-			return;
+			return null;
 		}
 		$newLocations = ['position' => $index + 1, 'progression' => 0];
 		if (isset($locations['totalProgression']) && (is_float($locations['totalProgression']) || is_int($locations['totalProgression']))) {
 			$newLocations['totalProgression'] = $locations['totalProgression'];
 		}
-		$this->progress->put($userId, $newFileId, ['href' => $newHref, 'type' => $type, 'locations' => $newLocations], $p->getPercentage(), $p->getDevice(), $p->getClientUpdatedAt());
+		return ['href' => $newHref, 'type' => $type, 'locations' => $newLocations];
 	}
 
 	private function generatedComicInfo(Book $book): ?string {

@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace OCA\EbookReader\Service;
 
+use OCA\EbookReader\Db\AnnotationMapper;
 use OCA\EbookReader\Db\Book;
 use OCA\EbookReader\Db\BookMapper;
 use OCA\EbookReader\Db\Progress;
@@ -28,6 +29,7 @@ class ProgressService {
 		private ProgressMapper $progressMapper,
 		private BookMapper $bookMapper,
 		private ITimeFactory $time,
+		private ?AnnotationMapper $annotationMapper = null,
 	) {
 	}
 
@@ -146,7 +148,8 @@ class ProgressService {
 	}
 
 	/**
-	 * Rewrites stored locators of ALL users after an edit changed item hrefs.
+	 * Rewrites stored locators of ALL users (reading positions and annotations) after an edit changed item hrefs.
+	 * Both get a new updatedAt so /sync delivers them.
 	 *
 	 * @param array<string, ?string> $itemMap old href => new href|null (null = item removed)
 	 */
@@ -156,33 +159,60 @@ class ProgressService {
 		}
 		$now = $this->nowMs();
 		foreach ($this->progressMapper->findByFileId($fileId) as $row) {
-			$locator = $row->getLocatorArray();
-			$href = $locator['href'] ?? null;
-			if (!is_string($href)) {
+			$locator = self::remapLocator($row->getLocatorArray(), $itemMap);
+			if ($locator === null) {
 				continue;
 			}
-			$path = explode('#', $href, 2)[0];
-			if (!array_key_exists($path, $itemMap)) {
-				continue;
-			}
-			$new = $itemMap[$path];
-			if ($new === $path) {
-				continue;
-			}
-			$locations = isset($locator['locations']) && is_array($locator['locations']) ? $locator['locations'] : [];
-			unset($locations['cfi']);
-			if ($new === null) {
-				// item removed: keep only the overall position
-				$locator['href'] = '';
-				$locations = array_intersect_key($locations, ['totalProgression' => true]);
-			} else {
-				$locator['href'] = $new;
-			}
-			$locator['locations'] = $locations;
 			$row->setLocator(json_encode($locator, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
 			$row->setUpdatedAt($now);
 			$this->progressMapper->update($row);
 		}
+		if ($this->annotationMapper === null) {
+			return;
+		}
+		foreach ($this->annotationMapper->findLiveByFileId($fileId) as $annotation) {
+			$locator = self::remapLocator($annotation->getLocatorArray(), $itemMap);
+			if ($locator === null) {
+				continue;
+			}
+			$annotation->setLocator(json_encode($locator, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+			$annotation->setUpdatedAt($now);
+			$this->annotationMapper->update($annotation);
+		}
+	}
+
+	/**
+	 * The locator with its href mapped, or null when it does not point into a changed item. The CFI is dropped (it is only
+	 * valid inside the old document); a removed item keeps only the overall position.
+	 *
+	 * @param array<string, mixed> $locator
+	 * @param array<string, ?string> $itemMap
+	 * @return array<string, mixed>|null
+	 */
+	private static function remapLocator(array $locator, array $itemMap): ?array {
+		$href = $locator['href'] ?? null;
+		if (!is_string($href)) {
+			return null;
+		}
+		$path = explode('#', $href, 2)[0];
+		if (!array_key_exists($path, $itemMap)) {
+			return null;
+		}
+		$new = $itemMap[$path];
+		if ($new === $path) {
+			return null;
+		}
+		$locations = isset($locator['locations']) && is_array($locator['locations']) ? $locator['locations'] : [];
+		unset($locations['cfi']);
+		if ($new === null) {
+			// item removed: keep only the overall position
+			$locator['href'] = '';
+			$locations = array_intersect_key($locations, ['totalProgression' => true]);
+		} else {
+			$locator['href'] = $new;
+		}
+		$locator['locations'] = $locations;
+		return $locator;
 	}
 
 	/**
