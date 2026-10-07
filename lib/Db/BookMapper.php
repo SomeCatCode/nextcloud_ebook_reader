@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace OCA\EbookReader\Db;
 
 use OCP\AppFramework\Db\DoesNotExistException;
+use OCP\AppFramework\Db\Entity;
 use OCP\AppFramework\Db\QBMapper;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
@@ -20,6 +21,33 @@ use OCP\IDBConnection;
 class BookMapper extends QBMapper {
 	public function __construct(IDBConnection $db) {
 		parent::__construct($db, 'ebookreader_books', Book::class);
+	}
+
+	/**
+	 * Moves metaUpdatedAt (descriptive data changed) unless the caller set it itself.
+	 * @param Book $entity
+	 * @return Book
+	 */
+	#[\Override]
+	public function insert(Entity $entity): Entity {
+		if ($entity instanceof Book && $entity->getMetaUpdatedAt() === 0) {
+			$entity->setMetaUpdatedAt($entity->getUpdatedAt() > 0 ? $entity->getUpdatedAt() : (int)(microtime(true) * 1000.0));
+		}
+		return parent::insert($entity);
+	}
+
+	/**
+	 * Moves metaUpdatedAt when a descriptive field (see Book::META_FIELDS) changed, unless the caller set it itself.
+	 * Every writer of such fields (indexing, editor, cover upload) is covered without having to remember it.
+	 * @param Book $entity
+	 * @return Book
+	 */
+	#[\Override]
+	public function update(Entity $entity): Entity {
+		if ($entity instanceof Book && $entity->hasPendingMetaChange() && !array_key_exists('metaUpdatedAt', $entity->getUpdatedFields())) {
+			$entity->setMetaUpdatedAt((int)(microtime(true) * 1000.0));
+		}
+		return parent::update($entity);
 	}
 
 	/**

@@ -9,6 +9,8 @@ declare(strict_types=1);
 
 namespace OCA\EbookReader\Tests\Unit\Service;
 
+use OCA\EbookReader\Db\Annotation;
+use OCA\EbookReader\Db\AnnotationMapper;
 use OCA\EbookReader\Db\Book;
 use OCA\EbookReader\Db\BookMapper;
 use OCA\EbookReader\Db\Progress;
@@ -251,5 +253,39 @@ class ProgressServiceTest extends TestCase {
 		$this->assertSame(['href' => '', 'locations' => ['totalProgression' => 0.5]], $removed->getLocatorArray());
 		$this->assertSame(self::NOW_MS, $moved->getUpdatedAt());
 		$this->assertSame(1, $untouched->getUpdatedAt());
+	}
+
+	public function testRemapAfterEditRemapsTheAnnotationsOfAllUsersToo(): void {
+		$time = $this->createMock(ITimeFactory::class);
+		$time->method('now')->willReturn(\DateTimeImmutable::createFromFormat('U.u', '1800000000.123000'));
+		$annotationMapper = $this->createMock(AnnotationMapper::class);
+		$service = new ProgressService($this->progressMapper, $this->bookMapper, $time, $annotationMapper);
+		$this->progressMapper->method('findByFileId')->willReturn([]);
+
+		$annotation = static function (string $user, string $href): Annotation {
+			$a = new Annotation();
+			$a->setUserId($user);
+			$a->setFileId(7);
+			$a->setLocator((string)json_encode(['href' => $href, 'locations' => ['cfi' => 'epubcfi(/6/4)', 'progression' => 0.2, 'totalProgression' => 0.4]]));
+			$a->setClientUpdatedAt(555);
+			$a->setUpdatedAt(1);
+			return $a;
+		};
+		$alice = $annotation('alice', 'old.xhtml#f');
+		$bob = $annotation('bob', 'old.xhtml');
+		$removed = $annotation('bob', 'gone.xhtml');
+		$untouched = $annotation('alice', 'other.xhtml');
+		$annotationMapper->method('findLiveByFileId')->with(7)->willReturn([$alice, $bob, $removed, $untouched]);
+		$annotationMapper->expects($this->exactly(3))->method('update');
+
+		$service->remapAfterEdit(7, ['old.xhtml' => 'new.xhtml', 'gone.xhtml' => null]);
+
+		$this->assertSame(['href' => 'new.xhtml', 'locations' => ['progression' => 0.2, 'totalProgression' => 0.4]], $alice->getLocatorArray(), 'same href mapping and CFI handling as progress');
+		$this->assertSame('new.xhtml', $bob->getLocatorArray()['href']);
+		$this->assertSame(['href' => '', 'locations' => ['totalProgression' => 0.4]], $removed->getLocatorArray());
+		$this->assertSame(self::NOW_MS, $alice->getUpdatedAt(), '/sync delivers the remapped annotation');
+		$this->assertSame(555, $alice->getClientUpdatedAt());
+		$this->assertSame(1, $untouched->getUpdatedAt());
+		$this->assertSame('other.xhtml', $untouched->getLocatorArray()['href']);
 	}
 }

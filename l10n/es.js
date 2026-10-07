@@ -661,6 +661,7 @@ OC.L10N.register(
     "_Optimizing %n comic in the background_::_Optimizing %n comics in the background_" : ["Optimizando %n cómic en segundo plano","Optimizando %n cómics en segundo plano"],
     "_Shared with %n user_::_Shared with %n users_" : ["Compartido con %n usuario","Compartido con %n usuarios"],
     "_Shared, but %n book could not be shared (no permission to share it)_::_Shared, but %n books could not be shared (no permission to share them)_" : ["Compartido, pero %n libro no se pudo compartir (sin permiso para compartirlo)","Compartido, pero %n libros no se pudieron compartir (sin permiso para compartirlos)"],
+    "_This book was shared with you and is not deleted, as that would delete the file of its owner. Remove the share in the Files app instead._::_These %n books were shared with you and are not deleted, as that would delete the files of their owners. Remove the shares in the Files app instead._" : ["Este libro se compartió contigo y no se elimina, porque se eliminaría el archivo de su propietario. Quita el recurso compartido en la aplicación Archivos.","Estos %n libros se compartieron contigo y no se eliminan, porque se eliminarían los archivos de sus propietarios. Quita los recursos compartidos en la aplicación Archivos."],
     "_and %n more_::_and %n more_" : ["y %n más","y %n más"],
     "_{count} task running on the server…_::_{count} tasks running on the server…_" : ["{count} tarea en ejecución en el servidor…","{count} tareas en ejecución en el servidor…"],
     "_… and %n more book_::_… and %n more books_" : ["… y %n libro más","… y %n libros más"],
@@ -685,6 +686,7 @@ OC.L10N.register(
     "{n} table of contents entries pointing to removed items will be dropped" : "Se descartarán {n} entradas del índice que apuntan a elementos eliminados",
     "{percent}% read" : "{percent} % leído",
     "{read}/{total} read" : "{read}/{total} leídos",
-    "{seconds} s elapsed." : "Han pasado {seconds} s."
+    "{seconds} s elapsed." : "Han pasado {seconds} s.",
+    "{title} (shared by {owner})" : "{title} (compartido por {owner})"
 },
 "nplurals=2; plural=(n != 1);");

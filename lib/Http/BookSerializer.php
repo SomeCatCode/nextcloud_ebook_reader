@@ -14,6 +14,7 @@ use OCA\EbookReader\Db\Progress;
 use OCA\EbookReader\Db\ProgressMapper;
 use OCA\EbookReader\Db\Tag;
 use OCA\EbookReader\Db\TagMapper;
+use OCA\EbookReader\Service\FileOwnership;
 use OCA\EbookReader\Service\LibraryService;
 use OCP\Files\NotFoundException;
 
@@ -47,7 +48,7 @@ class BookSerializer {
 				$plain[] = $tag->getName();
 			}
 		}
-		[$fileEditable, $downloadable] = $this->fileFlags($userId, $book->getFileId());
+		[$fileEditable, $downloadable, $owner, $shared] = $this->fileFlags($userId, $book->getFileId());
 		$editable ??= $fileEditable;
 		$status = match ($book->getReadStatus()) {
 			Book::STATUS_READING => Book::STATUS_READING,
@@ -80,6 +81,8 @@ class BookSerializer {
 			'updatedAt' => $book->getUpdatedAt(),
 			'editable' => $editable,
 			'downloadable' => $downloadable,
+			'owner' => $owner,
+			'shared' => $shared,
 			'overrides' => $book->getOverridesArray(),
 			'hasSidecar' => $book->getSidecarEtag() !== null,
 			'completion' => self::completionOf($book),
@@ -137,14 +140,16 @@ class BookSerializer {
 	}
 
 	/**
-	 * @return array{0: bool, 1: bool} editable (isUpdateable) and downloadable (false for view-only shares: the client must not fetch the content)
+	 * @return array{0: bool, 1: bool, 2: string, 3: bool} editable (isUpdateable), downloadable (false for view-only shares: the client must not fetch the content),
+	 *                                                     owner (Nextcloud user id of the file owner, the user themself for own files) and shared (the file reached the user through a share of another user)
 	 */
 	private function fileFlags(string $userId, int $fileId): array {
 		try {
 			$file = $this->library->getFileForUser($userId, $fileId);
-			return [$file->isUpdateable(), $this->library->canReadContent($file)];
+			$owner = FileOwnership::shareOwner($file);
+			return [$file->isUpdateable(), $this->library->canReadContent($file), $owner ?? $userId, FileOwnership::isShared($file)];
 		} catch (NotFoundException) {
-			return [false, false];
+			return [false, false, $userId, false];
 		}
 	}
 }

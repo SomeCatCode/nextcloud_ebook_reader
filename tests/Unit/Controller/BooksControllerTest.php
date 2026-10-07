@@ -63,6 +63,25 @@ class BooksControllerTest extends TestCase {
 		$this->controller->destroy(5);
 	}
 
+	public function testDeleteOfSharedBookIs403WithOwnerHint(): void {
+		$this->library->method('getBook')->willReturn($this->book());
+		$this->library->method('deleteFileForUser')->willThrowException(new \OCA\EbookReader\Service\SharedBookException('alice'));
+		try {
+			$this->controller->destroy(5);
+			$this->fail('expected OCSForbiddenException');
+		} catch (\OCP\AppFramework\OCS\OCSForbiddenException $e) {
+			$this->assertStringContainsString('alice', $e->getMessage());
+		}
+	}
+
+	public function testBulkDeleteReportsSharedBooks(): void {
+		$this->library->method('getBook')->willReturn($this->book());
+		$this->library->method('deleteFileForUser')->willThrowException(new \OCA\EbookReader\Service\SharedBookException('alice'));
+		$data = $this->controller->destroyMany([7])->getData();
+		$this->assertSame([], $data['deleted']);
+		$this->assertSame([['fileId' => 7, 'error' => 'shared']], $data['failed']);
+	}
+
 	public function testBulkDeleteReportsPerFileResults(): void {
 		$this->library->method('getBook')->willReturnCallback(function (string $u, int $id): Book {
 			if ($id === 3) {

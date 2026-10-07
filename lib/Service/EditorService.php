@@ -26,6 +26,7 @@ use OCA\EbookReader\Editor\Fb2Editor;
 use OCA\EbookReader\Editor\InvalidEditRequestException;
 use OCA\EbookReader\Metadata\HtmlSanitizer;
 use OCA\EbookReader\Metadata\MetadataService;
+use OCA\EbookReader\Metadata\SidecarChangedException;
 use OCA\EbookReader\Metadata\SidecarService;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\BackgroundJob\IJobList;
@@ -55,6 +56,8 @@ class EditorService {
 	public const PARTS = ['all', 'metadata'];
 	public const BULK_MAX_FILES = 500;
 	private const BULK_MAX_AUTHORS = 50;
+	/** How often a metadata save re-reads the sidecar and tries again when somebody else changed it in the meantime. */
+	private const SIDECAR_RETRIES = 2;
 	private const METADATA_KEYS = ['title', 'authors', 'series', 'seriesIndex', 'description', 'language', 'publisher', 'isbn', 'publishedAt', 'genres', 'tags'];
 
 	/** @var list<BookEditorInterface> */
@@ -204,6 +207,7 @@ class EditorService {
 	public function save(string $userId, int $fileId, array $request, ?callable $progress = null): array {
 		[$file, $format, $req, $patch] = $this->checkSave($userId, $fileId, $request);
 		$pending = $this->jobList->has(WriteMetadataJob::class, WriteMetadataJob::argument($userId, $fileId));
+		$book = null;
 		if ($pending) {
 			// edits that are only in the database so far must not get lost: the request patch goes on top of them
 			$book = $this->findBook($userId, $fileId);
@@ -211,7 +215,7 @@ class EditorService {
 				$req = new EditRequest(
 					etag: $req->etag,
 					saveAsCopy: $req->saveAsCopy,
-					metadata: array_merge($this->metadataOf($book), $patch),
+					metadata: array_merge($this->fileMetadataOf($book), $patch),
 					cover: $req->cover,
 					order: $req->order,
 					removed: $req->removed,
@@ -219,7 +223,19 @@ class EditorService {
 				);
 			}
 		}
+		// personal (app-only) tags stay in the library: they are never written into the book or its sidecar
+		$appKeys = [];
+		$requestedTags = [];
+		$book ??= $this->findBook($userId, $fileId);
+		if ($book !== null && $req->metadata !== null && array_key_exists('tags', $req->metadata)) {
+			$appKeys = $this->appTagKeys($book);
+			$requestedTags = is_array($req->metadata['tags']) ? $req->metadata['tags'] : [];
+			$req = $this->withFileMetadata($req, $appKeys);
+		}
 		$result = $this->write($userId, $file, $format, $req, $progress);
+		if ($appKeys !== [] && !$req->saveAsCopy) {
+			$this->syncAppTags($result['book'], $requestedTags, $appKeys);
+		}
 		if ($pending && !$req->saveAsCopy) {
 			$this->jobList->remove(WriteMetadataJob::class, WriteMetadataJob::argument($userId, $fileId));
 		}
@@ -240,42 +256,69 @@ class EditorService {
 		$format = $this->formatOf($file);
 		$book = $this->library->getBook($userId, $fileId);
 		$patch = $this->normalizePatch($metadataPatch);
-		$current = $this->metadataOf($book);
-		$merged = array_merge($current, $patch);
-		if ($this->sameMetadata($current, $merged, false)) {
-			return ['book' => $book, 'warnings' => [], 'writeQueued' => false];
-		}
 
 		$config = $this->settings->get($userId);
-		$target = $this->targetOf($config);
+		$target = $this->targetFor($userId, $fileId, $config);
 		$mode = (string)($config['metadataWriteMode'] ?? SettingsService::DEFAULT_METADATA_WRITE_MODE);
 		$warnings = [];
 
+		// The sidecar (and the book file) can be shared with other users (native folder share with edit permission). The
+		// library row this edit is based on must match the sidecar as it is now; otherwise the row is refreshed first, so
+		// that the fields this edit does not touch keep the values somebody else wrote. If the sidecar changes while we
+		// write, the write is refused (SidecarChangedException) and the loop starts again.
 		$sidecarOk = false;
-		if ($target === 'sidecar' || $target === 'both') {
-			$sidecarOk = $this->sidecar->write($file, $merged);
-			if (!$sidecarOk) {
-				$warnings[] = 'Die Begleitdatei konnte nicht geschrieben werden (Ordner schreibgeschützt); die Änderungen wurden nur in der Bibliothek gespeichert.';
+		$sidecarWritten = false;
+		$attempt = 0;
+		while (true) {
+			$book = $this->refreshIfStale($userId, $file, $book, $target, $attempt > 0);
+			$current = $this->metadataOf($book);
+			$merged = array_merge($current, $patch);
+			if ($this->sameMetadata($current, $merged, false)) {
+				return ['book' => $book, 'warnings' => [], 'writeQueued' => false];
 			}
-		} elseif ($target === 'file') {
-			// an existing sidecar must not keep the old values alive
-			$this->sidecar->write($file, $merged, false);
+			$appKeys = $this->appTagKeys($book);
+			$fileMeta = $this->forFile($merged, $appKeys);
+			try {
+				if ($target === 'sidecar' || $target === 'both') {
+					$sidecarOk = $this->sidecar->write($file, $fileMeta, true, $book->getSidecarEtag(), true);
+					$sidecarWritten = $sidecarOk;
+					if (!$sidecarOk) {
+						$warnings[] = 'Die Begleitdatei konnte nicht geschrieben werden (Ordner schreibgeschützt); die Änderungen wurden nur in der Bibliothek gespeichert.';
+					}
+				} elseif ($target === 'file') {
+					// an existing sidecar must not keep the old values alive
+					$this->sidecar->write($file, $fileMeta, false, $book->getSidecarEtag(), true);
+				}
+				break;
+			} catch (SidecarChangedException) {
+				if (++$attempt > self::SIDECAR_RETRIES) {
+					$warnings[] = 'Die Begleitdatei wurde gleichzeitig von jemand anderem geändert; die Änderungen wurden nur in der Bibliothek gespeichert. Bitte erneut speichern.';
+					$target = 'library';
+					break;
+				}
+			}
 		}
 
 		if (($target === 'file' || $target === 'both') && in_array($format, self::WRITABLE, true)) {
 			if ($file->isUpdateable() && $this->sizeOk($file)) {
 				if ($mode === 'immediate') {
-					$req = new EditRequest(etag: (string)$file->getEtag(), saveAsCopy: false, metadata: $merged);
+					$req = new EditRequest(etag: (string)$file->getEtag(), saveAsCopy: false, metadata: $fileMeta);
 					$result = $this->write($userId, $file, $format, $req);
 					if (array_key_exists('description', $patch)) {
 						// the file holds plain text; keep the sanitized HTML in the database
 						$this->applyDescription($result['book'], $patch['description']);
 					}
+					if (array_key_exists('tags', $patch)) {
+						$this->syncAppTags($result['book'], is_array($merged['tags']) ? $merged['tags'] : [], $appKeys);
+					}
 					return ['book' => $result['book'], 'warnings' => array_merge($warnings, $result['warnings']), 'writeQueued' => false];
 				}
 				// background: the library is updated now, the file follows in one job (identical jobs are merged)
 				$book->setSidecarEtag($this->sidecar->etagOf($file));
-				$book = $this->updateDatabase($book, $merged, Tag::SOURCE_FILE);
+				$book = $this->updateDatabase($book, $merged, Tag::SOURCE_FILE, [], $appKeys);
+				if ($sidecarWritten) {
+					$this->library->reindexFileForAllUsers($fileId, $userId);
+				}
 				$this->jobList->add(WriteMetadataJob::class, WriteMetadataJob::argument($userId, $fileId));
 				return ['book' => $book, 'warnings' => $warnings, 'writeQueued' => true];
 			}
@@ -299,11 +342,117 @@ class EditorService {
 			}
 			$book->setOverridesArray(array_values(array_diff($book->getOverridesArray(), $clear)));
 			$book->setSidecarEtag($this->sidecar->etagOf($file));
-			return ['book' => $this->updateDatabase($book, $merged, Tag::SOURCE_FILE, $add), 'warnings' => $warnings, 'writeQueued' => false];
+			$book = $this->updateDatabase($book, $merged, Tag::SOURCE_FILE, $add, $appKeys);
+			// everybody else who has this file (shared folder, app share) sees the new sidecar right away
+			$this->library->reindexFileForAllUsers($fileId, $userId);
+			return ['book' => $book, 'warnings' => $warnings, 'writeQueued' => false];
 		}
 		// nothing was written anywhere: remember the edited fields so a re-index does not overwrite them
 		$changed = $this->changedFields($current, $merged, false);
 		return ['book' => $this->updateDatabase($book, $merged, Tag::SOURCE_APP, $changed), 'warnings' => $warnings, 'writeQueued' => false];
+	}
+
+	/**
+	 * The library row of a user is based on the sidecar/file as of its last indexing. If another user changed them since
+	 * (shared folder), the row is indexed again first. App edits of the row (overrides) survive that.
+	 */
+	private function refreshIfStale(string $userId, File $file, Book $book, string $target, bool $force): Book {
+		if ($target === 'library') {
+			return $book;
+		}
+		$fileEtag = $book->getFileEtag();
+		$stale = $force
+			|| $book->getSidecarEtag() !== $this->sidecar->etagOf($file)
+			|| (in_array($target, ['file', 'both'], true) && $fileEtag !== null && $fileEtag !== (string)$file->getEtag());
+		if (!$stale) {
+			return $book;
+		}
+		try {
+			return $this->library->indexFile($userId, $file, true) ?? $book;
+		} catch (\Throwable $e) {
+			$this->logger->info('Book ' . $file->getId() . ' could not be refreshed before saving: ' . $e->getMessage(), ['app' => Application::APP_ID]);
+			return $book;
+		}
+	}
+
+	/**
+	 * Where this user's metadata edits of a book go. A book another user shared with the user through the app is not
+	 * theirs: its file and sidecar belong to the owner, so edits stay in the user's own library (overrides).
+	 *
+	 * @param array<string, mixed> $config user settings
+	 */
+	private function targetFor(string $userId, int $fileId, array $config): string {
+		return $this->library->isSharedWithUser($userId, $fileId) ? 'library' : $this->targetOf($config);
+	}
+
+	/**
+	 * Names (lower case) of the user's app-only tags of a book. They exist only in the library of this user: never
+	 * written into the book file or the sidecar, never copied to other users.
+	 *
+	 * @return array<string, true>
+	 */
+	private function appTagKeys(Book $book): array {
+		$keys = [];
+		foreach ($this->library->getTags($book->getId()) as $t) {
+			if ($t->getType() === Tag::TYPE_TAG && $t->getSource() === Tag::SOURCE_APP) {
+				$keys[mb_strtolower($t->getName())] = true;
+			}
+		}
+		return $keys;
+	}
+
+	/**
+	 * Metadata as it goes into the sidecar or the book file: without the app-only tags.
+	 *
+	 * @param array<string, mixed> $meta
+	 * @param array<string, true> $appKeys
+	 * @return array<string, mixed>
+	 */
+	private function forFile(array $meta, array $appKeys): array {
+		if ($appKeys === [] || !is_array($meta['tags'] ?? null)) {
+			return $meta;
+		}
+		$meta['tags'] = array_values(array_filter($meta['tags'], static fn (mixed $t): bool => !isset($appKeys[mb_strtolower((string)$t)])));
+		return $meta;
+	}
+
+	/**
+	 * The library metadata of a book as it belongs into the book file / sidecar (no app-only tags).
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function fileMetadataOf(Book $book): array {
+		return $this->forFile($this->metadataOf($book), $this->appTagKeys($book));
+	}
+
+	/**
+	 * @param array<string, true> $appKeys
+	 */
+	private function withFileMetadata(EditRequest $req, array $appKeys): EditRequest {
+		return new EditRequest(
+			etag: $req->etag,
+			saveAsCopy: $req->saveAsCopy,
+			metadata: $this->forFile($req->metadata ?? [], $appKeys),
+			cover: $req->cover,
+			order: $req->order,
+			removed: $req->removed,
+			toc: $req->toc,
+		);
+	}
+
+	/**
+	 * After the tags went into the file: the app-only tags the user kept stay (and the removed ones are gone); the
+	 * re-index after the file write only knows the file's tags.
+	 *
+	 * @param array<array-key, mixed> $requestedTags the complete tag list of the user's edit
+	 * @param array<string, true> $appKeys
+	 */
+	private function syncAppTags(Book $book, array $requestedTags, array $appKeys): void {
+		if ($appKeys === []) {
+			return;
+		}
+		$keep = array_values(array_filter(array_map('strval', $requestedTags), static fn (string $t): bool => isset($appKeys[mb_strtolower($t)])));
+		$this->library->setTags($book->getId(), Tag::TYPE_TAG, $keep, Tag::SOURCE_APP);
 	}
 
 	/**
@@ -320,7 +469,7 @@ class EditorService {
 		$format = $this->formatOf($file);
 		$this->flushPendingWrite($userId, $fileId);
 		$book = $this->library->getBook($userId, $fileId);
-		$db = $this->metadataOf($book);
+		$db = $this->fileMetadataOf($book);
 
 		$path = $this->archiveCache->localPath($file);
 		try {
@@ -362,6 +511,9 @@ class EditorService {
 		if (!in_array($format, self::WRITABLE, true)) {
 			throw new EditorException('Dieses Format kann nicht in der Datei bearbeitet werden.', 415);
 		}
+		if ($this->library->isSharedWithUser($userId, $fileId)) {
+			throw new EditForbiddenException('Dieses Buch wurde mit dir geteilt; deine Änderungen bleiben in deiner Bibliothek und werden nicht in die Datei des Besitzers geschrieben.');
+		}
 		if (!$file->isUpdateable()) {
 			throw new EditForbiddenException('Die Datei ist schreibgeschützt.');
 		}
@@ -395,7 +547,7 @@ class EditorService {
 		if ($book === null) {
 			return false;
 		}
-		$db = $this->metadataOf($book);
+		$db = $this->fileMetadataOf($book);
 		if (!$file->isUpdateable() || !$this->sizeOk($file)) {
 			// the file can not be written (any more): the edits stay in the library for good
 			$comparable = $this->comparable($db, false);
@@ -844,7 +996,8 @@ class EditorService {
 		$current = $file->getName();
 		$candidate = $base . $ext;
 		if ($candidate !== $current) {
-			if (!$file->isUpdateable() || !$file->isDeletable()) {
+			// renaming a shared file would rename the owner's file
+			if (!$file->isUpdateable() || !$file->isDeletable() || FileOwnership::isShared($file)) {
 				throw new EditForbiddenException('Die Datei darf nicht umbenannt werden.');
 			}
 			$n = 1;
@@ -993,10 +1146,24 @@ class EditorService {
 			return;
 		}
 		try {
-			$target = $this->targetOf($this->settings->get($userId));
+			$target = $this->targetFor($userId, $file->getId(), $this->settings->get($userId));
+			$create = $target === 'sidecar' || $target === 'both';
 			$book = $this->findBook($userId, $file->getId());
-			$base = $book !== null ? $this->metadataOf($book) : $this->emptyMetadata();
-			$this->sidecar->write($file, array_merge($base, $req->metadata), $target === 'sidecar' || $target === 'both');
+			$base = $book !== null ? $this->fileMetadataOf($book) : $this->emptyMetadata();
+			$patch = $this->forFile($req->metadata, $book !== null ? $this->appTagKeys($book) : []);
+			try {
+				$this->sidecar->write($file, array_merge($base, $patch), $create, $book?->getSidecarEtag(), true);
+			} catch (SidecarChangedException) {
+				// somebody else changed the sidecar since this user's row was indexed: it is the base, not the row
+				$data = $this->sidecar->read($file);
+				$other = $data === null ? $base : array_merge($base, [
+					'title' => $data->metadata->title, 'authors' => $data->metadata->authors, 'series' => $data->metadata->series,
+					'seriesIndex' => $data->metadata->seriesIndex, 'description' => $data->metadata->description,
+					'language' => $data->metadata->language, 'publisher' => $data->metadata->publisher, 'isbn' => $data->metadata->isbn,
+					'publishedAt' => $data->metadata->publishedAt, 'genres' => $data->metadata->genres, 'tags' => $data->metadata->tags,
+				]);
+				$this->sidecar->write($file, array_merge($other, $patch), $create);
+			}
 		} catch (\Throwable $e) {
 			$this->logger->info('Sidecar not refreshed for file ' . $file->getId() . ': ' . $e->getMessage(), ['app' => Application::APP_ID]);
 		}
@@ -1336,8 +1503,9 @@ class EditorService {
 	 * values are (about to be) written into the file.
 	 * @param array<string, mixed> $meta complete metadata
 	 * @param list<string> $addOverrides fields to flag as "edited in the app only" (survive re-indexing)
+	 * @param array<string, true> $appTagKeys tags (lower case) that stay app-only tags of this user although $source is "file"
 	 */
-	private function updateDatabase(Book $book, array $meta, string $source, array $addOverrides = []): Book {
+	private function updateDatabase(Book $book, array $meta, string $source, array $addOverrides = [], array $appTagKeys = []): Book {
 		$authors = is_array($meta['authors'] ?? null) ? array_values(array_map('strval', $meta['authors'])) : [];
 		$book->setTitle(isset($meta['title']) ? (string)$meta['title'] : null);
 		$book->setAuthorsArray($authors);
@@ -1356,6 +1524,15 @@ class EditorService {
 
 		foreach ([Tag::TYPE_GENRE => 'genres', Tag::TYPE_TAG => 'tags'] as $type => $key) {
 			$names = is_array($meta[$key] ?? null) ? array_values(array_map('strval', $meta[$key])) : [];
+			if ($type === Tag::TYPE_TAG && $appTagKeys !== [] && $source === Tag::SOURCE_FILE) {
+				// app-only tags stay app-only: they are not part of the file (or sidecar) and not visible to other users
+				$this->library->setTags($book->getId(), $type, [], Tag::SOURCE_FILE);
+				$this->library->setTags($book->getId(), $type, [], Tag::SOURCE_APP);
+				$isApp = static fn (string $n): bool => isset($appTagKeys[mb_strtolower($n)]);
+				$this->library->setTags($book->getId(), $type, array_values(array_filter($names, static fn (string $n): bool => !$isApp($n))), Tag::SOURCE_FILE);
+				$this->library->setTags($book->getId(), $type, array_values(array_filter($names, $isApp)), Tag::SOURCE_APP);
+				continue;
+			}
 			// the user's list is authoritative: clear entries of the other source and store everything under $source
 			$other = $source === Tag::SOURCE_FILE ? Tag::SOURCE_APP : Tag::SOURCE_FILE;
 			$this->library->setTags($book->getId(), $type, [], $other);

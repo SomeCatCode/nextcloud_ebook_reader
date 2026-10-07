@@ -43,6 +43,41 @@ class AnnotationMapper extends QBMapper {
 		return $this->findEntities($qb);
 	}
 
+	/** @return list<Annotation> live (not deleted) annotations of a file of all users */
+	public function findLiveByFileId(int $fileId): array {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('*')->from($this->getTableName())
+			->where($qb->expr()->eq('file_id', $qb->createNamedParameter($fileId, IQueryBuilder::PARAM_INT)))
+			->andWhere($qb->expr()->eq('deleted', $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT)));
+		return $this->findEntities($qb);
+	}
+
+	/**
+	 * Annotations of books the user has no book row for any more (not even a tombstone): the book was purged, so nothing
+	 * else knows about them. Id-paged.
+	 * @return list<array{id: int, user_id: string, file_id: int}>
+	 */
+	public function findWithoutBook(int $afterId = 0, int $limit = 1000): array {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('a.id', 'a.user_id', 'a.file_id')
+			->from($this->getTableName(), 'a')
+			->leftJoin('a', 'ebookreader_books', 'b', $qb->expr()->andX(
+				$qb->expr()->eq('b.user_id', 'a.user_id'),
+				$qb->expr()->eq('b.file_id', 'a.file_id'),
+			))
+			->where($qb->expr()->isNull('b.id'))
+			->andWhere($qb->expr()->gt('a.id', $qb->createNamedParameter($afterId, IQueryBuilder::PARAM_INT)))
+			->orderBy('a.id', 'ASC')
+			->setMaxResults($limit);
+		$res = $qb->executeQuery();
+		$out = [];
+		while ($row = $res->fetch()) {
+			$out[] = ['id' => (int)$row['id'], 'user_id' => (string)$row['user_id'], 'file_id' => (int)$row['file_id']];
+		}
+		$res->closeCursor();
+		return $out;
+	}
+
 	public function countLiveByUserAndFile(string $userId, int $fileId): int {
 		$qb = $this->db->getQueryBuilder();
 		$qb->select($qb->func()->count('*'))->from($this->getTableName())

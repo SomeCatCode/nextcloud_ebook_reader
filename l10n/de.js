@@ -661,6 +661,7 @@ OC.L10N.register(
     "_Optimizing %n comic in the background_::_Optimizing %n comics in the background_" : ["%n Comic wird im Hintergrund optimiert","%n Comics werden im Hintergrund optimiert"],
     "_Shared with %n user_::_Shared with %n users_" : ["Mit %n Person geteilt","Mit %n Personen geteilt"],
     "_Shared, but %n book could not be shared (no permission to share it)_::_Shared, but %n books could not be shared (no permission to share them)_" : ["Geteilt, aber %n Buch konnte nicht geteilt werden (keine Berechtigung zum Teilen)","Geteilt, aber %n Bücher konnten nicht geteilt werden (keine Berechtigung zum Teilen)"],
+    "_This book was shared with you and is not deleted, as that would delete the file of its owner. Remove the share in the Files app instead._::_These %n books were shared with you and are not deleted, as that would delete the files of their owners. Remove the shares in the Files app instead._" : ["Dieses Buch wurde mit dir geteilt und wird nicht gelöscht, da sonst die Datei des Eigentümers gelöscht würde. Entferne stattdessen die Freigabe in der Dateien-App.","Diese %n Bücher wurden mit dir geteilt und werden nicht gelöscht, da sonst die Dateien der Eigentümer gelöscht würden. Entferne stattdessen die Freigaben in der Dateien-App."],
     "_and %n more_::_and %n more_" : ["und %n weiteres","und %n weitere"],
     "_{count} task running on the server…_::_{count} tasks running on the server…_" : ["{count} Aufgabe läuft auf dem Server…","{count} Aufgaben laufen auf dem Server…"],
     "_… and %n more book_::_… and %n more books_" : ["… und %n weiteres Buch","… und %n weitere Bücher"],
@@ -685,6 +686,7 @@ OC.L10N.register(
     "{n} table of contents entries pointing to removed items will be dropped" : "{n} Einträge im Inhaltsverzeichnis, die auf entfernte Elemente verweisen, werden verworfen",
     "{percent}% read" : "{percent} % gelesen",
     "{read}/{total} read" : "{read}/{total} gelesen",
-    "{seconds} s elapsed." : "{seconds} s vergangen."
+    "{seconds} s elapsed." : "{seconds} s vergangen.",
+    "{title} (shared by {owner})" : "{title} (geteilt von {owner})"
 },
 "nplurals=2; plural=(n != 1);");
