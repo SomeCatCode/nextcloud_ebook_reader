@@ -20,7 +20,7 @@
 	<description lang="ja"><![CDATA[電子書籍とコミックのためのライブラリ、リーダー、メタデータ・コンテンツエディターです。読書の進捗を同期できます。]]></description>
 	<version>0.8.1</version>
 	<licence>AGPL-3.0-or-later</licence>
-	<author mail="f.kurth@lan1.de">Felix Kurth</author>
+	<author mail="it@wasmitleder.de">Felix Kurth</author>
 	<namespace>EbookReader</namespace>
 	<category>multimedia</category>
 	<category>office</category>
