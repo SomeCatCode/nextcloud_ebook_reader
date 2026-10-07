@@ -121,4 +121,11 @@ class BookQueryTest extends TestCase {
 		}
 		$this->assertCount(BookQuery::MAX_FILTER_ENTRIES, BookQuery::fromRequestParams(['include' => $entries])->include);
 	}
+
+	public function testOcsResponseFormatIsNotABookFormatFilter(): void {
+		$this->assertNull(BookQuery::fromRequestParams(['format' => 'json'])->format);
+		$this->assertNull(BookQuery::fromRequestParams(['format' => 'XML'])->format);
+		$this->assertSame([], BookQuery::fromRequestParams(['format' => 'json'])->effectiveIncludes());
+		$this->assertSame('epub', BookQuery::fromRequestParams(['format' => 'epub'])->format);
+	}
 }
