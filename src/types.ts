@@ -61,6 +61,10 @@ export interface Book {
 	editable: boolean
 	/** false for view-only shares with download disabled: content can not be read in the app */
 	downloadable: boolean
+	/** Nextcloud user id of the file owner (the own user id for own files) */
+	owner: string
+	/** The file reached the user through a share of another user: it must not be deleted, moved or renamed */
+	shared: boolean
 	/** Metadata fields edited in the app only (they survive re-indexing of the file) */
 	overrides: MetadataOverrideField[]
 	/** A hidden sidecar file ".<book>.opf" next to the book holds (part of) the metadata */

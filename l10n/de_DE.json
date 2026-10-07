@@ -738,6 +738,10 @@
 			"Geteilt, aber %n Buch konnte nicht geteilt werden (keine Berechtigung zum Teilen)",
 			"Geteilt, aber %n Bücher konnten nicht geteilt werden (keine Berechtigung zum Teilen)"
 		],
+		"_This book was shared with you and is not deleted, as that would delete the file of its owner. Remove the share in the Files app instead._::_These %n books were shared with you and are not deleted, as that would delete the files of their owners. Remove the shares in the Files app instead._": [
+			"Dieses Buch wurde mit Ihnen geteilt und wird nicht gelöscht, da sonst die Datei des Eigentümers gelöscht würde. Entfernen Sie stattdessen die Freigabe in der Dateien-App.",
+			"Diese %n Bücher wurden mit Ihnen geteilt und werden nicht gelöscht, da sonst die Dateien der Eigentümer gelöscht würden. Entfernen Sie stattdessen die Freigaben in der Dateien-App."
+		],
 		"_and %n more_::_and %n more_": [
 			"und %n weiteres",
 			"und %n weitere"
@@ -771,7 +775,8 @@
 		"{n} table of contents entries pointing to removed items will be dropped": "{n} Einträge im Inhaltsverzeichnis, die auf entfernte Elemente verweisen, werden verworfen",
 		"{percent}% read": "{percent} % gelesen",
 		"{read}/{total} read": "{read}/{total} gelesen",
-		"{seconds} s elapsed.": "{seconds} s vergangen."
+		"{seconds} s elapsed.": "{seconds} s vergangen.",
+		"{title} (shared by {owner})": "{title} (geteilt von {owner})"
 	},
 	"pluralForm": "nplurals=2; plural=(n != 1);"
 }

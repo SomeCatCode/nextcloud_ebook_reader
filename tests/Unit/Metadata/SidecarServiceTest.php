@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace OCA\EbookReader\Tests\Unit\Metadata;
 
+use OCA\EbookReader\Metadata\SidecarChangedException;
 use OCA\EbookReader\Metadata\SidecarService;
 use OCP\Files\File;
 use OCP\Files\Folder;
@@ -201,6 +202,29 @@ class SidecarServiceTest extends TestCase {
 		$sc = $this->sidecarNode($folder2, SidecarService::build(['title' => 'Old']), false);
 		$sc->expects($this->never())->method('putContent');
 		$this->assertFalse($this->service->write($book2, ['title' => 'New']));
+	}
+
+	public function testVerifiedWriteRefusesToOverwriteASidecarThatChangedMeanwhile(): void {
+		[$book, $folder] = $this->book();
+		$sc = $this->sidecarNode($folder, SidecarService::build(['title' => 'By the owner'], 'u-1'));
+		$sc->expects($this->never())->method('putContent');
+		$this->expectException(SidecarChangedException::class);
+		// the caller based its metadata on the state "old:1", the sidecar is "abc:42" now
+		$this->service->write($book, ['title' => 'By the recipient'], true, 'old:1', true);
+	}
+
+	public function testVerifiedWriteGoesThroughWhileTheSidecarIsInTheExpectedState(): void {
+		[$book, $folder] = $this->book();
+		$sc = $this->sidecarNode($folder, SidecarService::build(['title' => 'Old'], 'u-1'));
+		$sc->expects($this->once())->method('putContent');
+		$this->assertTrue($this->service->write($book, ['title' => 'New'], true, 'abc:42', true));
+	}
+
+	public function testWriteWithoutVerificationIgnoresTheState(): void {
+		[$book, $folder] = $this->book();
+		$sc = $this->sidecarNode($folder, SidecarService::build(['title' => 'Old'], 'u-1'));
+		$sc->expects($this->once())->method('putContent');
+		$this->assertTrue($this->service->write($book, ['title' => 'New'], true, 'something else'));
 	}
 
 	public function testWriteWithoutCreateOnlyUpdatesAnExistingSidecar(): void {

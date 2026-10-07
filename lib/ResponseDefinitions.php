@@ -72,6 +72,8 @@ namespace OCA\EbookReader;
  *     updatedAt: int,
  *     editable: bool,
  *     downloadable: bool,
+ *     owner: string,
+ *     shared: bool,
  *     overrides: list<string>,
  *     hasSidecar: bool,
  *     completion: 'ongoing'|'completed'|null,

@@ -88,7 +88,7 @@ class LibraryService {
 
 		if ($existing !== null && !$force && $existing->getDeletedAt() === null
 			&& $existing->getFileMtime() === $mtime && $existing->getFileEtag() === $etag && $existing->getSidecarEtag() === $sidecarEtag
-			&& !$this->sharedOwnerChangedSince($userId, $fileId, $existing->getUpdatedAt())) {
+			&& !$this->sharedOwnerChangedSince($userId, $fileId, $existing->getMetaUpdatedAt())) {
 			if ($existing->getPath() !== $path || $existing->getFormat() !== $format) {
 				$existing->setPath($path);
 				$existing->setFormat($format);
@@ -160,6 +160,8 @@ class LibraryService {
 		$book->setSidecarEtag($sidecarEtag);
 		$book->setDeletedAt(null);
 		$book->setUpdatedAt($now);
+		// descriptive data was read again (also what a recipient of a shared book is compared against)
+		$book->setMetaUpdatedAt($now);
 
 		// cover
 		if ($meta->coverData !== null) {
@@ -207,6 +209,7 @@ class LibraryService {
 				$other->setSidecarEtag($sidecarEtag);
 				$other->setDeletedAt(null);
 				$other->setUpdatedAt($now);
+				$other->setMetaUpdatedAt($now);
 				$book = $this->bookMapper->update($other);
 			}
 		} else {
@@ -238,9 +241,12 @@ class LibraryService {
 			$genres = [];
 			$tags = [];
 			foreach ($this->tagMapper->findByBook($source->getId()) as $tag) {
+				if ($tag->getSource() !== Tag::SOURCE_FILE) {
+					continue; // app-only genres and tags of the owner are never shared
+				}
 				if ($tag->getType() === Tag::TYPE_GENRE) {
 					$genres[] = $tag->getName();
-				} elseif ($tag->getSource() === Tag::SOURCE_FILE) {
+				} else {
 					$tags[] = $tag->getName();
 				}
 			}
@@ -278,6 +284,15 @@ class LibraryService {
 		return $out;
 	}
 
+	/** Whether the app (its own share feature, not a Nextcloud share) shared the file with the user: the book is not theirs. */
+	public function isSharedWithUser(string $userId, int $fileId): bool {
+		try {
+			return $this->sharedOwners($userId, $fileId) !== [];
+		} catch (\Throwable) {
+			return false;
+		}
+	}
+
 	/**
 	 * File ids the app shared with the user (they belong to the library wherever the share is mounted).
 	 * @return list<int>
@@ -298,7 +313,10 @@ class LibraryService {
 		}
 	}
 
-	/** Whether a user who shared the file with $userId through the app changed their book row after $sinceMs. */
+	/**
+	 * Whether a user who shared the file with $userId through the app changed the descriptive data of their book row
+	 * (metadata, cover, file: meta_updated_at, not rating/status) after $sinceMs.
+	 */
 	private function sharedOwnerChangedSince(string $userId, int $fileId, int $sinceMs): bool {
 		try {
 			$qb = $this->db->getQueryBuilder();
@@ -311,7 +329,7 @@ class LibraryService {
 				->where($qb->expr()->eq('fs.recipient_id', $qb->createNamedParameter($userId)))
 				->andWhere($qb->expr()->eq('fs.file_id', $qb->createNamedParameter($fileId, IQueryBuilder::PARAM_INT)))
 				->andWhere($qb->expr()->isNull('ob.deleted_at'))
-				->andWhere($qb->expr()->gt('ob.updated_at', $qb->createNamedParameter($sinceMs, IQueryBuilder::PARAM_INT)))
+				->andWhere($qb->expr()->gt('ob.meta_updated_at', $qb->createNamedParameter($sinceMs, IQueryBuilder::PARAM_INT)))
 				->setMaxResults(1);
 			$res = $qb->executeQuery();
 			$found = $res->fetchOne();
@@ -323,14 +341,15 @@ class LibraryService {
 	}
 
 	/**
-	 * Newest change of the sharing users' rows per shared file, to re-index the recipient's copy when the owner edited it.
-	 * @return array<int, int> file id => updated_at (ms)
+	 * Newest change of the descriptive data (meta_updated_at) of the sharing users' rows per shared file, to re-index the
+	 * recipient's copy when the owner edited it. Rating/status changes of the owner do not count.
+	 * @return array<int, int> file id => meta_updated_at (ms)
 	 */
 	private function sharedOwnerStamps(string $userId): array {
 		try {
 			$qb = $this->db->getQueryBuilder();
 			$qb->select('fs.file_id')
-				->selectAlias($qb->func()->max('ob.updated_at'), 'stamp')
+				->selectAlias($qb->func()->max('ob.meta_updated_at'), 'stamp')
 				->from(self::FILE_SHARES, 'fs')
 				->innerJoin('fs', self::BOOKS, 'ob', $qb->expr()->andX(
 					$qb->expr()->eq('ob.user_id', 'fs.owner_id'),
@@ -463,10 +482,18 @@ class LibraryService {
 		}
 	}
 
-	/** Re-indexes a file for all users having it (after editing). */
-	public function reindexFileForAllUsers(int $fileId): void {
+	/**
+	 * Re-indexes a file for all users having it (after editing), so that users sharing the file (native share or the
+	 * app's own share) see a change of the file or its sidecar right away.
+	 *
+	 * @param ?string $exceptUserId user whose row the caller has just updated itself
+	 */
+	public function reindexFileForAllUsers(int $fileId, ?string $exceptUserId = null): void {
 		foreach ($this->bookMapper->findByFileId($fileId) as $book) {
 			$userId = $book->getUserId();
+			if ($exceptUserId !== null && $userId === $exceptUserId) {
+				continue;
+			}
 			try {
 				$file = $this->getFileForUser($userId, $fileId);
 				$this->indexFile($userId, $file, true);
@@ -674,7 +701,7 @@ class LibraryService {
 				|| $b->getFileEtag() !== (string)$file->getEtag() || $b->getFormat() !== $format
 				|| $b->getSidecarEtag() !== $sidecarEtag;
 			// a shared book whose owner changed the metadata since the recipient's copy was indexed (indexFile sees it too)
-			$stale = $stale || ($b !== null && isset($ownerStamps[$id]) && $ownerStamps[$id] > $b->getUpdatedAt());
+			$stale = $stale || ($b !== null && isset($ownerStamps[$id]) && $ownerStamps[$id] > $b->getMetaUpdatedAt());
 			$forced = $forceFormats !== null && ($forceFormats === [] || in_array($format, $forceFormats, true));
 			$stale = $stale || $forced;
 			if ($progress !== null) {
@@ -1336,11 +1363,16 @@ class LibraryService {
 				$this->insertTag($bookId, $type, $name, $source);
 			}
 		}
+		$now = self::nowMs();
 		$qb = $this->db->getQueryBuilder();
 		$qb->update(self::BOOKS)
-			->set('updated_at', $qb->createNamedParameter(self::nowMs(), IQueryBuilder::PARAM_INT))
-			->where($qb->expr()->eq('id', $qb->createNamedParameter($bookId, IQueryBuilder::PARAM_INT)))
-			->executeStatement();
+			->set('updated_at', $qb->createNamedParameter($now, IQueryBuilder::PARAM_INT))
+			->where($qb->expr()->eq('id', $qb->createNamedParameter($bookId, IQueryBuilder::PARAM_INT)));
+		if ($type === Tag::TYPE_GENRE || $source === Tag::SOURCE_FILE) {
+			// genres and file tags are part of what a recipient of a shared book sees (app-only tags are not)
+			$qb->set('meta_updated_at', $qb->createNamedParameter($now, IQueryBuilder::PARAM_INT));
+		}
+		$qb->executeStatement();
 	}
 
 	/**
@@ -1375,10 +1407,15 @@ class LibraryService {
 	 * user right away; other users of a shared file follow via the node-deleted event.
 	 *
 	 * @throws NotFoundException the user can not see the file
+	 * @throws SharedBookException the file belongs to another user (reached via a share): never deleted
 	 * @throws NotPermittedException the user may not delete it (e.g. read-only share)
 	 */
 	public function deleteFileForUser(string $userId, int $fileId): void {
 		$file = $this->getFileForUser($userId, $fileId);
+		// a share with delete permission would delete the owner's file: the recipient can only remove the share itself
+		if (FileOwnership::isShared($file)) {
+			throw new SharedBookException(FileOwnership::shareOwner($file) ?? '');
+		}
 		if (!$file->isDeletable()) {
 			throw new NotPermittedException('File can not be deleted');
 		}

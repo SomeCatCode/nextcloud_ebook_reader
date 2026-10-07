@@ -392,10 +392,13 @@ class SidecarService {
 	 *
 	 * @param array<string, mixed> $meta see build()
 	 * @param bool $createIfMissing false = only update an existing sidecar
+	 * @param bool $verifyState true = the existing sidecar must still be in $expectedState (see etagOf()); the metadata the
+	 *                          caller passes is based on that state. Two users of a shared folder write the same file.
+	 * @throws SidecarChangedException $verifyState is set and the sidecar changed in the meantime
 	 * @return bool true if the sidecar holds this metadata afterwards (written or already identical, or nothing to do);
 	 *              false if it could not be written (read-only folder or share)
 	 */
-	public function write(File $book, array $meta, bool $createIfMissing = true): bool {
+	public function write(File $book, array $meta, bool $createIfMissing = true, ?string $expectedState = null, bool $verifyState = false): bool {
 		try {
 			$parent = $book->getParent();
 			$name = self::nameFor($book->getName());
@@ -421,6 +424,9 @@ class SidecarService {
 					$this->logger->info('Sidecar is read-only: ' . $name, ['app' => 'ebookreader']);
 					return false;
 				}
+				if ($verifyState && self::stateOf($existing) !== $expectedState) {
+					throw new SidecarChangedException('Sidecar changed: ' . $name);
+				}
 				$this->guarded($existing->getPath(), static function () use ($existing, $xml): void {
 					$existing->putContent($xml);
 				});
@@ -434,6 +440,8 @@ class SidecarService {
 				$parent->newFile($name, $xml);
 			});
 			return true;
+		} catch (SidecarChangedException $e) {
+			throw $e;
 		} catch (\Throwable $e) {
 			$this->logger->warning('Sidecar could not be written: ' . $e->getMessage(), ['app' => 'ebookreader', 'exception' => $e]);
 			return false;
