@@ -16,6 +16,7 @@ use OCA\EbookReader\Http\BookSerializer;
 use OCA\EbookReader\Service\BookQuery;
 use OCA\EbookReader\Service\LibraryService;
 use OCA\EbookReader\Service\ProgressService;
+use OCA\EbookReader\Service\SharedBookException;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\ApiRoute;
@@ -132,7 +133,7 @@ class BooksController extends AbstractOCSController {
 	 * @param int $fileId Nextcloud file id
 	 * @return DataResponse<Http::STATUS_OK, array{deleted: int}, array{}>
 	 * @throws OCSNotFoundException Book not found
-	 * @throws OCSForbiddenException Not logged in or no permission to delete the file
+	 * @throws OCSForbiddenException Not logged in, no permission to delete the file, or the book belongs to another user (shared with you: remove the share instead)
 	 *
 	 * 200: File deleted
 	 */
@@ -146,6 +147,8 @@ class BooksController extends AbstractOCSController {
 			$this->library->deleteFileForUser($userId, $fileId);
 		} catch (NotFoundException) {
 			throw new OCSNotFoundException('Book not found');
+		} catch (SharedBookException $e) {
+			throw new OCSForbiddenException($e->getMessage());
 		} catch (NotPermittedException) {
 			throw new OCSForbiddenException('No permission to delete this file');
 		}
@@ -153,7 +156,7 @@ class BooksController extends AbstractOCSController {
 	}
 
 	/**
-	 * Delete several books (max. 100); files go to the trash bin (if enabled)
+	 * Delete several books (max. 100); files go to the trash bin (if enabled). Books owned by another user (shared) are never deleted and reported as failed with error 'shared'
 	 *
 	 * @param list<int> $fileIds Nextcloud file ids
 	 * @return DataResponse<Http::STATUS_OK, array{deleted: list<int>, failed: list<array{fileId: int, error: string}>}, array{}>
@@ -180,6 +183,8 @@ class BooksController extends AbstractOCSController {
 				$deleted[] = $id;
 			} catch (OCSNotFoundException|NotFoundException) {
 				$failed[] = ['fileId' => $id, 'error' => 'not_found'];
+			} catch (SharedBookException) {
+				$failed[] = ['fileId' => $id, 'error' => 'shared'];
 			} catch (NotPermittedException) {
 				$failed[] = ['fileId' => $id, 'error' => 'forbidden'];
 			} catch (\Throwable) {

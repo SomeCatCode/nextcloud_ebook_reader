@@ -117,6 +117,8 @@
                     "updatedAt",
                     "editable",
                     "downloadable",
+                    "owner",
+                    "shared",
                     "overrides",
                     "hasSidecar",
                     "completion",
@@ -226,6 +228,12 @@
                         "type": "boolean"
                     },
                     "downloadable": {
+                        "type": "boolean"
+                    },
+                    "owner": {
+                        "type": "string"
+                    },
+                    "shared": {
                         "type": "boolean"
                     },
                     "overrides": {
@@ -2599,7 +2607,7 @@
                         }
                     },
                     "403": {
-                        "description": "Not logged in or no permission to delete the file",
+                        "description": "Not logged in, no permission to delete the file, or the book belongs to another user (shared with you: remove the share instead)",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -2660,7 +2668,7 @@
         "/ocs/v2.php/apps/ebookreader/api/v1/books/delete": {
             "post": {
                 "operationId": "books-destroy-many",
-                "summary": "Delete several books (max. 100); files go to the trash bin (if enabled)",
+                "summary": "Delete several books (max. 100); files go to the trash bin (if enabled). Books owned by another user (shared) are never deleted and reported as failed with error 'shared'",
                 "tags": [
                     "books"
                 ],

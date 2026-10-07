@@ -661,6 +661,7 @@ OC.L10N.register(
     "_Optimizing %n comic in the background_::_Optimizing %n comics in the background_" : ["%n 冊のコミックをバックグラウンドで最適化しています"],
     "_Shared with %n user_::_Shared with %n users_" : ["%n 人と共有"],
     "_Shared, but %n book could not be shared (no permission to share it)_::_Shared, but %n books could not be shared (no permission to share them)_" : ["共有しましたが、%n 冊は共有できませんでした（共有する権限がありません）"],
+    "_This book was shared with you and is not deleted, as that would delete the file of its owner. Remove the share in the Files app instead._::_These %n books were shared with you and are not deleted, as that would delete the files of their owners. Remove the shares in the Files app instead._" : ["これらの%n冊の本はあなたと共有されたもので、削除すると所有者のファイルが削除されてしまうため削除されません。代わりにファイルアプリで共有を解除してください。"],
     "_and %n more_::_and %n more_" : ["ほか %n 冊"],
     "_{count} task running on the server…_::_{count} tasks running on the server…_" : ["サーバーで {count} 件のタスクを実行しています…"],
     "_… and %n more book_::_… and %n more books_" : ["… ほか %n 冊"],
@@ -685,6 +686,7 @@ OC.L10N.register(
     "{n} table of contents entries pointing to removed items will be dropped" : "削除された項目を指す {n} 件の目次項目は削除されます",
     "{percent}% read" : "{percent}% 読了",
     "{read}/{total} read" : "{read}/{total} 冊読了",
-    "{seconds} s elapsed." : "{seconds} 秒経過しました。"
+    "{seconds} s elapsed." : "{seconds} 秒経過しました。",
+    "{title} (shared by {owner})" : "{title}（{owner} が共有）"
 },
 "nplurals=1; plural=0;");

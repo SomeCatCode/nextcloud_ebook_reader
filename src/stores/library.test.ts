@@ -60,6 +60,8 @@ function book(fileId: number, extra: Partial<Book> = {}): Book {
 		updatedAt: 0,
 		editable: true,
 		downloadable: true,
+		owner: 'me',
+		shared: false,
 		overrides: [],
 		hasSidecar: false,
 		completion: null,

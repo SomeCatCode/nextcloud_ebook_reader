@@ -8,21 +8,32 @@
 		:noClose="busy"
 		:closeOnClickOutside="!busy"
 		@update:open="(open: boolean) => !open && !busy && $emit('close')">
-		<p v-if="books.length === 1">
-			{{ t('ebookreader', 'Delete "{title}"?', { title: label(books[0]) }) }}
+		<p v-if="own.length === 1 && !shared.length">
+			{{ t('ebookreader', 'Delete "{title}"?', { title: label(own[0]) }) }}
 		</p>
-		<template v-else>
-			<p>{{ n('ebookreader', 'Delete the selected book?', 'Delete these %n books?', books.length) }}</p>
+		<template v-else-if="own.length">
+			<p>{{ n('ebookreader', 'Delete the selected book?', 'Delete these %n books?', own.length) }}</p>
 			<ul class="delete-books__list">
-				<li v-for="b in books.slice(0, 8)" :key="b.fileId">
+				<li v-for="b in own.slice(0, 8)" :key="b.fileId">
 					{{ label(b) }}
 				</li>
-				<li v-if="books.length > 8" class="delete-books__muted">
-					{{ n('ebookreader', 'and %n more', 'and %n more', books.length - 8) }}
+				<li v-if="own.length > 8" class="delete-books__muted">
+					{{ n('ebookreader', 'and %n more', 'and %n more', own.length - 8) }}
 				</li>
 			</ul>
 		</template>
-		<NcNoteCard type="info">
+		<NcNoteCard v-if="shared.length" type="warning">
+			<p>{{ n('ebookreader', 'This book was shared with you and is not deleted, as that would delete the file of its owner. Remove the share in the Files app instead.', 'These %n books were shared with you and are not deleted, as that would delete the files of their owners. Remove the shares in the Files app instead.', shared.length) }}</p>
+			<ul class="delete-books__list">
+				<li v-for="b in shared.slice(0, 8)" :key="b.fileId">
+					{{ t('ebookreader', '{title} (shared by {owner})', { title: label(b), owner: b.owner }) }}
+				</li>
+				<li v-if="shared.length > 8" class="delete-books__muted">
+					{{ n('ebookreader', 'and %n more', 'and %n more', shared.length - 8) }}
+				</li>
+			</ul>
+		</NcNoteCard>
+		<NcNoteCard v-if="own.length" type="info">
 			{{ t('ebookreader', 'The files are moved to the Nextcloud trash bin and can be restored under Files → Deleted files. Reading progress, rating and app-only tags are removed.') }}
 		</NcNoteCard>
 		<NcNoteCard v-if="failed.length" type="error">
@@ -31,9 +42,13 @@
 
 		<template #actions>
 			<NcButton variant="tertiary" :disabled="busy" @click="$emit('close')">
-				{{ t('ebookreader', 'Cancel') }}
+				{{ own.length ? t('ebookreader', 'Cancel') : t('ebookreader', 'Close') }}
 			</NcButton>
-			<NcButton variant="error" :disabled="busy" @click="run">
+			<NcButton
+				v-if="own.length"
+				variant="error"
+				:disabled="busy"
+				@click="run">
 				<template #icon>
 					<NcLoadingIcon v-if="busy" :size="20" />
 					<NcIconSvgWrapper v-else :path="mdiDeleteOutline" />
@@ -50,17 +65,20 @@ import type { Book } from '../../types.ts'
 import { mdiDeleteOutline } from '@mdi/js'
 import { showError, showSuccess } from '@nextcloud/dialogs'
 import { n, t } from '@nextcloud/l10n'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
+import { splitDeletable } from '../../deletable.ts'
 import { deleteBooks } from '../../services/api.ts'
 
 const props = defineProps<{ books: Book[] }>()
 const emit = defineEmits<{ close: [], deleted: [fileIds: number[]] }>()
 
+const own = computed(() => splitDeletable(props.books).own)
+const shared = computed(() => splitDeletable(props.books).shared)
 const busy = ref(false)
 const failed = ref<number[]>([])
 
@@ -79,7 +97,7 @@ async function run(): Promise<void> {
 	failed.value = []
 	const deleted: number[] = []
 	try {
-		const ids = props.books.map((b) => b.fileId)
+		const ids = own.value.map((b) => b.fileId)
 		for (let i = 0; i < ids.length; i += 100) {
 			const res = await deleteBooks(ids.slice(i, i + 100))
 			deleted.push(...res.deleted)

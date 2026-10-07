@@ -259,7 +259,7 @@ class ConvertService {
 		if (!$parent->isCreatable()) {
 			throw new ConvertException(self::REASON_FOLDER, 403);
 		}
-		if ($deleteOriginal && !$file->isDeletable()) {
+		if ($deleteOriginal && (!$file->isDeletable() || FileOwnership::isShared($file))) {
 			throw new ConvertException('The original cannot be deleted', 403);
 		}
 		$targetName = self::targetName($file->getName(), $source, $target);
@@ -388,7 +388,7 @@ class ConvertService {
 		if (!$newFile instanceof File || $newFile->getId() === $file->getId()) {
 			throw new ConvertException('The converted file was not found next to the original', 404);
 		}
-		if ($deleteOriginal && !$file->isDeletable()) {
+		if ($deleteOriginal && (!$file->isDeletable() || FileOwnership::isShared($file))) {
 			throw new ConvertException('The original cannot be deleted', 403);
 		}
 		$limit = static fn (array $names): array => array_values(array_slice(array_filter($names, static fn ($n): bool => is_string($n) && $n !== '' && strlen($n) <= 1024), 0, 5000));
