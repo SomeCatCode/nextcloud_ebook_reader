@@ -9,6 +9,10 @@ name: Release
 #   APP_PRIVATE_KEY  - Nextcloud App Store signing key (ebookreader.key); adds ebookreader.tar.gz.sig
 #   APPSTORE_TOKEN   - Nextcloud App Store API token; publishes the release to apps.nextcloud.com
 #                      (requires APP_PRIVATE_KEY and a registered app certificate)
+#
+# Repository variable:
+#   APPSTORE_PUBLISH - set to 'true' to publish to the App Store; anything else skips that step
+#                      (the GitHub release is created either way)
 
 on:
   push:
@@ -116,7 +120,7 @@ jobs:
       - name: Publish to Nextcloud App Store
         env:
           APPSTORE_TOKEN: ${{ secrets.APPSTORE_TOKEN }}
-        if: env.APPSTORE_TOKEN != '' && steps.sign.outputs.signed == 'true'
+        if: vars.APPSTORE_PUBLISH == 'true' && env.APPSTORE_TOKEN != '' && steps.sign.outputs.signed == 'true'
         run: |
           DOWNLOAD="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${APP_ID}.tar.gz"
           SIGNATURE="$(cat build/artifacts/${APP_ID}.tar.gz.sig)"
