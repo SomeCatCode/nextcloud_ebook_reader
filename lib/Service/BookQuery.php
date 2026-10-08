@@ -60,6 +60,10 @@ final class BookQuery {
 		public readonly bool $hideFinished = false,
 		/** one of SHARED_MODES, null = no restriction (see LibraryService::sharedCondition) */
 		public readonly ?string $shared = null,
+		/** user-relative folder path with a leading slash ("/Books/Saga"): only books whose parent folder is this one */
+		public readonly ?string $folder = null,
+		/** true: also the books of all subfolders of $folder */
+		public readonly bool $folderRecursive = false,
 	) {
 	}
 
@@ -154,6 +158,28 @@ final class BookQuery {
 	}
 
 	/**
+	 * Normalises a folder path of a request: leading slash, no trailing slash, no empty or "." segments. Null for an
+	 * empty value or a path with "..".
+	 */
+	public static function normaliseFolder(mixed $raw): ?string {
+		if (!is_string($raw) || trim($raw) === '') {
+			return null;
+		}
+		$segments = [];
+		foreach (explode('/', str_replace('\\', '/', trim($raw))) as $segment) {
+			$segment = trim($segment);
+			if ($segment === '' || $segment === '.') {
+				continue;
+			}
+			if ($segment === '..' || preg_match('/[\x00-\x1F\x7F]/', $segment) === 1) {
+				return null;
+			}
+			$segments[] = $segment;
+		}
+		return '/' . implode('/', $segments);
+	}
+
+	/**
 	 * Builds a sanitised query from (untrusted) request parameters.
 	 * @param array<string, mixed> $params
 	 */
@@ -204,6 +230,8 @@ final class BookQuery {
 			inSeries: self::parseInSeries($params['inSeries'] ?? null),
 			hideFinished: in_array($params['hideFinished'] ?? null, [1, '1', true, 'true'], true),
 			shared: self::parseShared($params['shared'] ?? null),
+			folder: self::normaliseFolder($params['folder'] ?? null),
+			folderRecursive: in_array($params['folderRecursive'] ?? null, [1, '1', true, 'true'], true),
 		);
 	}
 }

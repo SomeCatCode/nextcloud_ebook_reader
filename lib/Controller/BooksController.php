@@ -71,6 +71,8 @@ class BooksController extends AbstractOCSController {
 	 * @param int<0, 1>|null $inSeries 0 = only books without a series, 1 = only books in a series
 	 * @param int<0, 1> $hideFinished 1 = leave out finished books (ignored when status is given)
 	 * @param 'incoming'|'outgoing'|'any'|null $shared incoming = books of other users shared with the user, outgoing = own books the user shares through the app (book, shelf, series or folder share), any = either; absent = no restriction
+	 * @param string|null $folder Only books whose parent folder is this folder, path relative to the user's home with a leading slash (e.g. "/Books/Comics/Saga")
+	 * @param bool $folderRecursive true = with folder: also the books of all subfolders
 	 * @return DataResponse<Http::STATUS_OK, EbookReaderBookList, array{}>
 	 * @throws OCSForbiddenException Not logged in
 	 *
@@ -96,6 +98,8 @@ class BooksController extends AbstractOCSController {
 		?int $inSeries = null,
 		int $hideFinished = 0,
 		?string $shared = null,
+		?string $folder = null,
+		bool $folderRecursive = false,
 	): DataResponse {
 		$userId = $this->uid();
 		$query = BookQuery::fromRequestParams([
@@ -103,7 +107,7 @@ class BooksController extends AbstractOCSController {
 			'author' => $author, 'series' => $series, 'status' => $status, 'hideFinished' => $hideFinished, 'shared' => $shared,
 			'sort' => $sort, 'order' => $order, 'limit' => $limit, 'offset' => $offset,
 			'include' => $include, 'exclude' => $exclude, 'match' => $match,
-			'inSeries' => $inSeries,
+			'inSeries' => $inSeries, 'folder' => $folder, 'folderRecursive' => $folderRecursive,
 		]);
 		$result = $this->library->findBooks($userId, $query);
 		return new DataResponse([

@@ -482,11 +482,43 @@ class LibraryServiceTest extends TestCase {
 		$userFolder->method('get')->willReturnCallback(static fn (string $p) => $p === 'Books' ? $folder : throw new \OCP\Files\NotFoundException());
 		$this->root->method('getUserFolder')->willReturn($userFolder);
 		$this->metadata->method('detectFormat')->willReturn('epub');
+		$real = new SidecarService($this->createMock(LoggerInterface::class));
+		$this->sidecar->method('inListing')->willReturnCallback(static fn (Folder $f, iterable $c): array => $real->inListing($f, $c));
 
 		$seen = [];
 		$this->service->walkLibrary('u', function (File $f, string $format, ?string $marker) use (&$seen): void {
 			$seen[$f->getId()] = $marker;
 		});
 		$this->assertSame([1 => 'x:7', 3 => null], $seen);
+	}
+
+	public function testWalkReadsSidecarsFromTheMetaFolderAndNeverEntersIt(): void {
+		$book = $this->createMock(File::class);
+		$book->method('getName')->willReturn('a.epub');
+		$book->method('getMimeType')->willReturn('application/epub+zip');
+		$book->method('getId')->willReturn(1);
+		$sidecar = $this->createMock(File::class);
+		$sidecar->method('getName')->willReturn('a.epub.opf');
+		$sidecar->method('getId')->willReturn(2);
+		$sidecar->method('getEtag')->willReturn('m');
+		$sidecar->method('getMTime')->willReturn(9);
+		$meta = $this->createMock(Folder::class);
+		$meta->method('getName')->willReturn('.meta');
+		$meta->expects($this->once())->method('getDirectoryListing')->willReturn([$sidecar]);
+		$folder = $this->createMock(Folder::class);
+		$folder->method('getDirectoryListing')->willReturn([$book, $meta]);
+		$userFolder = $this->createMock(Folder::class);
+		$userFolder->method('get')->willReturnCallback(static fn (string $p) => $p === 'Books' ? $folder : throw new \OCP\Files\NotFoundException());
+		$this->root->method('getUserFolder')->willReturn($userFolder);
+		$this->metadata->method('detectFormat')->willReturn('epub');
+		$real = new SidecarService($this->createMock(LoggerInterface::class));
+		$this->sidecar->method('inListing')->willReturnCallback(static fn (Folder $f, iterable $c): array => $real->inListing($f, $c));
+
+		$seen = [];
+		$this->service->walkLibrary('u', function (File $f, string $format, ?string $marker) use (&$seen): void {
+			$seen[$f->getId()] = $marker;
+		});
+		// .meta is listed once (for the sidecars) and not walked as a library folder: its listing is not read a second time
+		$this->assertSame([1 => 'm:9'], $seen);
 	}
 }

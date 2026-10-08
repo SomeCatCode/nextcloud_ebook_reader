@@ -103,6 +103,17 @@ namespace OCA\EbookReader;
  *     genreList: ?list<string>,
  *     metadataWriteMode: string,
  *     metadataTarget: string,
+ *     sidecarLocation: string,
+ * }
+ *
+ * @psalm-type EbookReaderFolder = array{
+ *     path: string,
+ *     name: string,
+ *     parent: ?string,
+ *     bookCount: int,
+ *     totalCount: int,
+ *     sharedWith: int,
+ *     shared: bool,
  * }
  *
  * @psalm-type EbookReaderSyncResult = array{

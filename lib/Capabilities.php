@@ -36,7 +36,7 @@ class Capabilities implements ICapability {
 				'annotations' => true,
 				'sharing' => true,
 				// optional features clients can check for (the list grows over time)
-				'features' => ['shared-filter', 'series-shares', 'folder-shares'],
+				'features' => ['shared-filter', 'series-shares', 'folder-shares', 'folders', 'sidecar-meta'],
 			],
 		];
 	}

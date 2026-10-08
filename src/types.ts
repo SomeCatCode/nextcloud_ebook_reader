@@ -301,6 +301,9 @@ export type MetadataWriteMode = 'background' | 'immediate'
 /** Where metadata changes are stored: sidecar file (default), inside the book, both, or only in the library */
 export type MetadataTarget = 'sidecar' | 'file' | 'both' | 'library'
 
+/** Where sidecar files are stored: hidden file next to the book (default) or in a hidden ".meta" folder per directory */
+export type SidecarLocation = 'beside' | 'meta'
+
 export interface Settings {
 	libraryFolders: string[]
 	reader: ReaderSettings
@@ -314,8 +317,6 @@ export interface Settings {
 	/** Where companion (sidecar) files are stored: next to the book or in a hidden ".meta" folder per directory (server 0.10+) */
 	sidecarLocation?: SidecarLocation
 }
-
-export type SidecarLocation = 'beside' | 'meta'
 
 export interface StructureCapabilities {
 	metadata: boolean
