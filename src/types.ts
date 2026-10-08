@@ -65,6 +65,8 @@ export interface Book {
 	owner: string
 	/** The file reached the user through a share of another user: it must not be deleted, moved or renamed */
 	shared: boolean
+	/** Own book the user shares through the app with at least one user (book, shelf, series or folder share); absent on servers before 0.10 */
+	sharedOut?: boolean
 	/** Metadata fields edited in the app only (they survive re-indexing of the file) */
 	overrides: MetadataOverrideField[]
 	/** A hidden sidecar file ".<book>.opf" next to the book holds (part of) the metadata */
@@ -94,6 +96,8 @@ export interface FilterTerm {
 
 export type MatchMode = 'all' | 'any'
 
+export type SharedFilter = 'incoming' | 'outgoing' | 'any'
+
 export interface BookQuery {
 	search?: string
 	include?: FilterTerm[]
@@ -106,6 +110,8 @@ export interface BookQuery {
 	inSeries?: 0 | 1
 	/** 1: leave out finished books (ignored when status is set) */
 	hideFinished?: 1
+	/** incoming: books of other users shared with the user; outgoing: own books the user shares; any: either */
+	shared?: SharedFilter
 	limit?: number
 	offset?: number
 }
@@ -488,6 +494,10 @@ export interface SeriesEntry {
 	coverFileIds: number[]
 	firstFileId: number
 	lastAddedAt: number
+	/** the series contains books of other users (shared with the user) */
+	shared?: boolean
+	/** number of users the user shares this series with */
+	sharedWith?: number
 }
 
 export type SeriesQuery = Omit<BookQuery, 'inSeries' | 'limit' | 'offset' | 'sort'> & { sort?: 'name' | 'added' }
@@ -534,13 +544,17 @@ export interface AnnotationPatch {
 
 // ---- Sharing (CONTRACTS-v5) --------------------------------------------------
 
-export type ShareType = 'book' | 'shelf'
+export type ShareType = 'book' | 'shelf' | 'series' | 'folder'
 
-/** A book or shelf shared through the app (outgoing: with `recipient`; incoming: by `owner`). */
+/** A book, shelf, series or folder shared through the app (outgoing: with `recipient`; incoming: by `owner`). */
 export interface Share {
 	type: ShareType
 	fileId: number | null
 	shelfId: number | null
+	/** series name (type `series`) */
+	series?: string | null
+	/** folder path in the owner's home (type `folder`, outgoing only) */
+	path?: string | null
 	name: string
 	owner: string
 	ownerDisplayName: string
