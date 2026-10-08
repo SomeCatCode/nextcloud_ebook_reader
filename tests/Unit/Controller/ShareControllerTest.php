@@ -128,4 +128,51 @@ class ShareControllerTest extends TestCase {
 		$controller->index();
 		$this->assertSame(['index', 'list'], $order);
 	}
+
+	public function testSeriesShareAndRemoval(): void {
+		$this->service->expects($this->once())->method('shareSeries')->with('alice', 'Saga', 'bob')->willReturn(['share' => self::share(), 'skipped' => 1]);
+		$this->assertSame(['share' => self::share(), 'skipped' => 1], $this->controller->shareSeries('Saga', 'bob')->getData());
+		$this->service->expects($this->once())->method('unshareSeries')->with('alice', 'Saga', 'bob');
+		$this->assertSame(['removed' => 1], $this->controller->unshareSeries('Saga', 'bob')->getData());
+	}
+
+	public function testFolderShareAndRemoval(): void {
+		$this->service->expects($this->once())->method('shareFolder')->with('alice', '/Books/Saga', 'bob')->willReturn(['share' => self::share(), 'skipped' => 0]);
+		$this->assertSame(0, $this->controller->shareFolder('/Books/Saga', 'bob')->getData()['skipped']);
+		$this->service->expects($this->once())->method('unshareFolder')->with('alice', '/Books/Saga', 'bob');
+		$this->assertSame(['removed' => 1], $this->controller->unshareFolder('/Books/Saga', 'bob')->getData());
+	}
+
+	public function testSeriesAndFolderErrorsAreMapped(): void {
+		$cases = [
+			ShareException::NOT_FOUND => OCSNotFoundException::class,
+			ShareException::INVALID => OCSBadRequestException::class,
+			ShareException::FORBIDDEN => OCSForbiddenException::class,
+		];
+		foreach ($cases as $reason => $class) {
+			$service = $this->createMock(ShareService::class);
+			$service->method('shareSeries')->willThrowException(new ShareException('s', $reason));
+			$service->method('shareFolder')->willThrowException(new ShareException('f', $reason));
+			$service->method('unshareFolder')->willThrowException(new ShareException('u', $reason));
+			$controller = new ShareController($this->request, 'alice', $service);
+			foreach ([
+				static fn () => $controller->shareSeries('Saga', 'bob'),
+				static fn () => $controller->shareFolder('/Books', 'bob'),
+				static fn () => $controller->unshareFolder('/Books', 'bob'),
+			] as $call) {
+				try {
+					$call();
+					$this->fail('exception expected');
+				} catch (\Exception $e) {
+					$this->assertInstanceOf($class, $e);
+				}
+			}
+		}
+	}
+
+	public function testSeriesAndFolderSharingNeedsALogin(): void {
+		$controller = new ShareController($this->request, null, $this->service);
+		$this->expectException(OCSForbiddenException::class);
+		$controller->shareFolder('/Books', 'bob');
+	}
 }

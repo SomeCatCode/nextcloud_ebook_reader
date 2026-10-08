@@ -50,4 +50,40 @@ class BookSerializerFlagsTest extends TestCase {
 		$this->assertNull($data['completion']);
 		$this->assertNull($data['ageRating']);
 	}
+
+	private function bookWithFile(int $fileId): Book {
+		$b = new Book();
+		$b->setId($fileId);
+		$b->setFileId($fileId);
+		return $b;
+	}
+
+	public function testSharedOutIsBatchedOncePerPage(): void {
+		$library = $this->createMock(LibraryService::class);
+		$library->method('getFileForUser')->willThrowException(new NotFoundException());
+		$books = [$this->bookWithFile(1), $this->bookWithFile(2), $this->bookWithFile(3)];
+		// ONE lookup for the whole page, however many books it has
+		$library->expects($this->once())->method('sharedOutFileIds')->with('u', $books)->willReturn([2 => true]);
+		$tags = $this->createMock(TagMapper::class);
+		$tags->method('findByBooks')->willReturn([]);
+		$progress = $this->createMock(ProgressMapper::class);
+		$progress->method('findByUserAndFiles')->willReturn([]);
+		$out = (new BookSerializer($library, $tags, $progress))->serializeMany('u', $books);
+		$this->assertSame([false, true, false], array_map(static fn (array $b): bool => $b['sharedOut'], $out));
+	}
+
+	public function testSingleBookAsksForItsOwnSharedOutFlag(): void {
+		$library = $this->createMock(LibraryService::class);
+		$library->method('getFileForUser')->willThrowException(new NotFoundException());
+		$library->method('sharedOutFileIds')->willReturn([7 => true]);
+		$serializer = new BookSerializer($library, $this->createMock(TagMapper::class), $this->createMock(ProgressMapper::class));
+		$this->assertTrue($serializer->serialize('u', $this->bookWithFile(7), [])['sharedOut']);
+		$this->assertFalse($serializer->serialize('u', $this->bookWithFile(8), [])['sharedOut']);
+	}
+
+	public function testOwnerAndSharedKeepTheirMeaning(): void {
+		$data = $this->serialize(new Book());
+		$this->assertFalse($data['shared']);
+		$this->assertFalse($data['sharedOut']);
+	}
 }

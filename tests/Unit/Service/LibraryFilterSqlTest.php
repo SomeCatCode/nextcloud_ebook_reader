@@ -292,4 +292,53 @@ class LibraryFilterSqlTest extends TestCase {
 		$c = $this->conditions(BookQuery::fromRequestParams(['include' => ['shelf:8']]));
 		$this->assertSame(['(1 = 0)'], $c);
 	}
+
+	/** @param array<int, string> $paths shared folders of user "u": folder id => path */
+	private function withSharedFolders(array $paths): void {
+		$cache = new \ReflectionProperty(LibraryService::class, 'sharedFolderCache');
+		$cache->setValue($this->service, ['u' => $paths]);
+	}
+
+	public function testSharedIncomingIsAPlainColumnCheck(): void {
+		$this->assertSame(['isNotNull(b.shared_owner)'], $this->conditions(BookQuery::fromRequestParams(['shared' => 'incoming'])));
+	}
+
+	public function testSharedOutgoingNeedsOwnBookWithAnAppShare(): void {
+		$this->withSharedFolders([]);
+		$c = $this->conditions(BookQuery::fromRequestParams(['shared' => 'outgoing']));
+		$this->assertCount(1, $c);
+		$this->assertStringContainsString('isNull(b.shared_owner)', $c[0]);
+		$this->assertStringContainsString('in(b.file_id,', $c[0]);
+		$this->assertStringContainsString("eq(fso.owner_id,'u')", $c[0]);
+		$this->assertStringNotContainsString('like(', $c[0]);
+	}
+
+	public function testSharedOutgoingIncludesBooksBelowSharedFolders(): void {
+		$this->withSharedFolders([7 => '/Books/Saga', 8 => '/Books/100%_Fun']);
+		$c = $this->conditions(BookQuery::fromRequestParams(['shared' => 'outgoing']));
+		$this->assertStringContainsString("like(b.path,'/Books/Saga/%')", $c[0]);
+		// LIKE wildcards in folder names are escaped; the prefix always ends at a folder boundary
+		$this->assertStringContainsString("like(b.path,'/Books/100\%\_Fun/%')", $c[0]);
+		$this->assertStringContainsString('isNull(b.shared_owner)', $c[0]);
+	}
+
+	public function testSharedAnyIsIncomingOrOutgoing(): void {
+		$this->withSharedFolders([7 => '/Books/Saga']);
+		$c = $this->conditions(BookQuery::fromRequestParams(['shared' => 'any']));
+		$this->assertCount(1, $c);
+		$this->assertStringStartsWith('(isNotNull(b.shared_owner) OR ', $c[0]);
+		$this->assertStringContainsString("like(b.path,'/Books/Saga/%')", $c[0]);
+	}
+
+	public function testSharedFilterCombinesWithOtherFilters(): void {
+		$this->withSharedFolders([]);
+		$c = $this->conditions(BookQuery::fromRequestParams(['shared' => 'incoming', 'status' => 'unread', 'search' => 'x']));
+		$this->assertCount(3, $c);
+		$this->assertContains('isNotNull(b.shared_owner)', $c);
+	}
+
+	public function testUnknownSharedValueMeansNoRestriction(): void {
+		$this->assertSame([], $this->conditions(BookQuery::fromRequestParams(['shared' => 'bogus'])));
+		$this->assertSame([], $this->conditions(BookQuery::fromRequestParams([])));
+	}
 }

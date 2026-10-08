@@ -25,4 +25,13 @@ class CapabilitiesTest extends TestCase {
 		$this->assertContains('cbr', $caps['formats']);
 		$this->assertTrue($caps['sharing']);
 	}
+
+	public function testListsTheSharingFeatures(): void {
+		$appManager = $this->createMock(IAppManager::class);
+		$appManager->method('getAppVersion')->willReturn('0.10.0');
+		$features = (new Capabilities($appManager))->getCapabilities()['ebookreader']['features'];
+		foreach (['shared-filter', 'series-shares', 'folder-shares'] as $feature) {
+			$this->assertContains($feature, $features);
+		}
+	}
 }
