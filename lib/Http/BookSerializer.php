@@ -35,9 +35,10 @@ class BookSerializer {
 	 * @param list<Tag>|null $tags preloaded tags (else loaded via LibraryService::getTags)
 	 * @param Progress|null $progress preloaded progress; null = not read yet
 	 * @param bool|null $editable null = determined from the file (isUpdateable)
+	 * @param bool|null $sharedOut null = determined for this book alone (serializeMany passes the batched answer)
 	 * @return EbookReaderBook
 	 */
-	public function serialize(string $userId, Book $book, ?array $tags = null, ?Progress $progress = null, ?bool $editable = null): array {
+	public function serialize(string $userId, Book $book, ?array $tags = null, ?Progress $progress = null, ?bool $editable = null, ?bool $sharedOut = null): array {
 		$tags ??= $this->library->getTags($book->getId());
 		$genres = [];
 		$plain = [];
@@ -50,6 +51,7 @@ class BookSerializer {
 		}
 		[$fileEditable, $downloadable, $owner, $shared] = $this->fileFlags($userId, $book->getFileId());
 		$editable ??= $fileEditable;
+		$sharedOut ??= isset($this->library->sharedOutFileIds($userId, [$book])[$book->getFileId()]);
 		$status = match ($book->getReadStatus()) {
 			Book::STATUS_READING => Book::STATUS_READING,
 			Book::STATUS_FINISHED => Book::STATUS_FINISHED,
@@ -83,6 +85,7 @@ class BookSerializer {
 			'downloadable' => $downloadable,
 			'owner' => $owner,
 			'shared' => $shared,
+			'sharedOut' => $sharedOut,
 			'overrides' => $book->getOverridesArray(),
 			'hasSidecar' => $book->getSidecarEtag() !== null,
 			'completion' => self::completionOf($book),
@@ -132,9 +135,10 @@ class BookSerializer {
 		}
 		$tags = $this->tags->findByBooks(array_map(static fn (Book $b): int => $b->getId(), $books));
 		$progress = $this->progress->findByUserAndFiles($userId, array_map(static fn (Book $b): int => $b->getFileId(), $books));
+		$sharedOut = $this->library->sharedOutFileIds($userId, $books);
 		$out = [];
 		foreach ($books as $book) {
-			$out[] = $this->serialize($userId, $book, $tags[$book->getId()] ?? [], $progress[$book->getFileId()] ?? null);
+			$out[] = $this->serialize($userId, $book, $tags[$book->getId()] ?? [], $progress[$book->getFileId()] ?? null, null, isset($sharedOut[$book->getFileId()]));
 		}
 		return $out;
 	}

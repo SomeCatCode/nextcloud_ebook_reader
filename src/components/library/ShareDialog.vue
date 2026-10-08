@@ -4,7 +4,7 @@
 -->
 <template>
 	<NcDialog
-		:name="target.type === 'book' ? t('ebookreader', 'Share book') : t('ebookreader', 'Share shelf')"
+		:name="dialogTitle"
 		:open="true"
 		size="normal"
 		closeOnClickOutside
@@ -14,9 +14,7 @@
 				{{ target.name }}
 			</p>
 			<p class="share-dialog__hint">
-				{{ target.type === 'book'
-					? t('ebookreader', 'The book is shared read-only. Everybody keeps their own reading progress, rating and notes.')
-					: t('ebookreader', 'The shelf is shared read-only and stays up to date: books you add to or remove from it are shared or unshared automatically. Everybody keeps their own reading progress.') }}
+				{{ hint }}
 			</p>
 
 			<NcSelectUsers
@@ -47,7 +45,7 @@
 					<NcAvatar :user="entry.recipient" :displayName="entry.recipientDisplayName" :size="32" />
 					<span class="share-dialog__who">
 						<strong>{{ entry.recipientDisplayName }}</strong>
-						<span v-if="entry.type === 'shelf'" class="share-dialog__sub">
+						<span v-if="entry.type === 'shelf' || entry.type === 'series'" class="share-dialog__sub">
 							{{ n('ebookreader', '%n book shared', '%n books shared', entry.bookCount) }}
 						</span>
 					</span>
@@ -99,6 +97,24 @@ let searchSeq = 0
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 
 const recipients = computed(() => shares.recipientsOf(props.target))
+
+const dialogTitle = computed(() => {
+	switch (props.target.type) {
+		case 'book': return t('ebookreader', 'Share book')
+		case 'shelf': return t('ebookreader', 'Share shelf')
+		case 'series': return t('ebookreader', 'Share series')
+		default: return t('ebookreader', 'Share folder')
+	}
+})
+
+const hint = computed(() => {
+	switch (props.target.type) {
+		case 'book': return t('ebookreader', 'The book is shared read-only. Everybody keeps their own reading progress, rating and notes.')
+		case 'shelf': return t('ebookreader', 'The shelf is shared read-only and stays up to date: books you add to or remove from it are shared or unshared automatically. Everybody keeps their own reading progress.')
+		case 'series': return t('ebookreader', 'All books of the series are shared read-only and the share stays up to date: volumes you add to the series later are shared automatically. Everybody keeps their own reading progress.')
+		default: return t('ebookreader', 'The folder is shared read-only as one Nextcloud share, including its books and subfolders. Everybody keeps their own reading progress.')
+	}
+})
 
 /** search results without the users it is already shared with */
 const options = computed(() => {

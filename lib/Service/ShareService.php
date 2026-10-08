@@ -15,6 +15,10 @@ use OCA\EbookReader\Db\Book;
 use OCA\EbookReader\Db\BookMapper;
 use OCA\EbookReader\Db\FileShare;
 use OCA\EbookReader\Db\FileShareMapper;
+use OCA\EbookReader\Db\FolderShare;
+use OCA\EbookReader\Db\FolderShareMapper;
+use OCA\EbookReader\Db\SeriesShare;
+use OCA\EbookReader\Db\SeriesShareMapper;
 use OCA\EbookReader\Db\Shelf;
 use OCA\EbookReader\Db\ShelfBookMapper;
 use OCA\EbookReader\Db\ShelfMapper;
@@ -26,7 +30,10 @@ use OCP\BackgroundJob\IJobList;
 use OCP\Constants;
 use OCP\DB\Exception as DbException;
 use OCP\Files\File;
+use OCP\Files\Folder;
+use OCP\Files\Node;
 use OCP\Files\NotFoundException;
+use OCP\IConfig;
 use OCP\IUserManager;
 use OCP\Share\Exceptions\AlreadySharedException;
 use OCP\Share\Exceptions\GenericShareException;
@@ -36,7 +43,7 @@ use OCP\Share\IShare;
 use Psr\Log\LoggerInterface;
 
 /**
- * Sharing books and shelves with other users of the instance.
+ * Sharing books, shelves, series and folders with other users of the instance.
  *
  * Every shared book is a real, read-only Nextcloud user share of the book file, created through the share manager, so all
  * admin sharing policies (sharing disabled, excluded groups, "share only with group members", resharing, the file's own
@@ -49,6 +56,12 @@ use Psr\Log\LoggerInterface;
  * 15 minutes). Recipients keep their own book rows (own progress, rating, status, annotations); they never see the
  * owner's.
  *
+ * A shared series is live in the same way: the owner's books with that series name are shared (SeriesShare; the files
+ * carry the negative series share id as reason), books added to the series later by the 15 minute sync.
+ *
+ * A shared folder is ONE read-only Nextcloud share of the folder (FolderShare), not one share per book. The recipient's
+ * library picks the books up wherever the mount sits (LibraryService walks the incoming folder mounts).
+ *
  * @psalm-import-type EbookReaderShare from \OCA\EbookReader\ResponseDefinitions
  */
 class ShareService {
@@ -60,6 +73,12 @@ class ShareService {
 	public const INLINE_NEW_SHARES = 100;
 	/** Incoming books indexed inline per request when they are missing in the recipient's library */
 	public const INLINE_INDEX = 25;
+	/** Max. number of recipients of one series or folder */
+	public const MAX_SERIES_FOLDER_RECIPIENTS = 50;
+	/** Seconds between two walks of the incoming shared folders by ensureIncomingIndexed (per user) */
+	public const INCOMING_FOLDER_SCAN_INTERVAL = 300;
+	/** Max. books of an unshared folder whose recipients are re-checked at once (the rest follows with the next rescan) */
+	public const MAX_UNSHARE_CHECKS = 5000;
 
 	public function __construct(
 		private IManager $shareManager,
@@ -73,6 +92,9 @@ class ShareService {
 		private IJobList $jobList,
 		private ITimeFactory $time,
 		private LoggerInterface $logger,
+		private SeriesShareMapper $seriesShares,
+		private FolderShareMapper $folderShares,
+		private ?IConfig $config = null,
 	) {
 	}
 
@@ -97,6 +119,7 @@ class ShareService {
 		if ($row === null) {
 			$shareId = $this->ensureFileShare($owner, $recipient, $file);
 			$row = $this->insertRow($owner, $recipient, $fileId, FileShare::DIRECT, $shareId);
+			$this->touchOwnerBooks($owner, [$fileId]);
 			$this->queueIndex($recipient, [$fileId]);
 		}
 		return $this->bookShareToApi($row, $book->getTitle());
@@ -235,8 +258,25 @@ class ShareService {
 		}
 
 		[$desired, $overLimit] = $this->desiredFileIds($owner, $shelf);
+		$result = $this->syncFiles($owner, $recipient, $share->getId(), $desired, $overLimit, $maxNew, 'shelf ' . $shelf->getId());
+		if ($result['pending']) {
+			$this->jobList->add(SyncShelfShareJob::class, ['shelfShareId' => $share->getId()]);
+		}
+		$share->setSyncedAt($this->nowMs());
+		$this->shelfShares->update($share);
+		return ['added' => $result['added'], 'removed' => $result['removed'], 'skipped' => $result['skipped']];
+	}
+
+	/**
+	 * Brings the file shares of one reason (shelf share id, or FileShare::seriesReason) in line with the wanted files:
+	 * shares the new ones (at most $maxNew now, `pending` = more are left) and drops those no longer wanted.
+	 * @param list<int> $desired file ids that should be shared
+	 * @param int $overLimit files left out by the caller (limit), counted as skipped
+	 * @return array{added: int, removed: int, skipped: int, pending: bool}
+	 */
+	private function syncFiles(string $owner, string $recipient, int $reason, array $desired, int $overLimit, ?int $maxNew, string $label): array {
 		$current = [];
-		foreach ($this->fileShares->findByShelfShare($share->getId()) as $row) {
+		foreach ($this->fileShares->findByShelfShare($reason) as $row) {
 			$current[$row->getFileId()] = $row;
 		}
 		$wanted = array_flip($desired);
@@ -264,21 +304,17 @@ class ShareService {
 				$file = $this->ownerFile($owner, $fileId);
 				$this->assertShareable($file);
 				$shareId = $this->ensureFileShare($owner, $recipient, $file);
-				$this->insertRow($owner, $recipient, $fileId, $share->getId(), $shareId);
+				$this->insertRow($owner, $recipient, $fileId, $reason, $shareId);
 				$new[] = $fileId;
 				$added++;
 			} catch (ShareException $e) {
-				$this->logger->info('Book ' . $fileId . ' of shelf ' . $shelf->getId() . ' not shared: ' . $e->getMessage(), ['app' => 'ebookreader']);
+				$this->logger->info('Book ' . $fileId . ' of ' . $label . ' not shared: ' . $e->getMessage(), ['app' => 'ebookreader']);
 				$skipped++;
 			}
 		}
+		$this->touchOwnerBooks($owner, $new);
 		$this->queueIndex($recipient, $new);
-		if ($pending) {
-			$this->jobList->add(SyncShelfShareJob::class, ['shelfShareId' => $share->getId()]);
-		}
-		$share->setSyncedAt($this->nowMs());
-		$this->shelfShares->update($share);
-		return ['added' => $added, 'removed' => count($gone), 'skipped' => $skipped];
+		return ['added' => $added, 'removed' => count($gone), 'skipped' => $skipped, 'pending' => $pending];
 	}
 
 	/**
@@ -295,6 +331,19 @@ class ShareService {
 					$this->syncShelfShare($share);
 				} catch (\Throwable $e) {
 					$this->logger->warning('Shelf share sync failed for share ' . $share->getId() . ': ' . $e->getMessage(), ['app' => 'ebookreader', 'exception' => $e]);
+				}
+				$count++;
+			}
+		} while (count($page) >= $pageSize);
+		$afterId = 0;
+		do {
+			$page = $this->seriesShares->findPage($afterId, $pageSize);
+			foreach ($page as $share) {
+				$afterId = $share->getId();
+				try {
+					$this->syncSeriesShare($share);
+				} catch (\Throwable $e) {
+					$this->logger->warning('Series share sync failed for share ' . $share->getId() . ': ' . $e->getMessage(), ['app' => 'ebookreader', 'exception' => $e]);
 				}
 				$count++;
 			}
@@ -341,6 +390,270 @@ class ShareService {
 		return [array_slice($ids, 0, self::MAX_SHELF_BOOKS), max(0, $total - self::MAX_SHELF_BOOKS)];
 	}
 
+	// ---- series ---------------------------------------------------------------------------------------------------
+
+	/**
+	 * Shares a series live with a user: all of the owner's own books with that series name now, and books that join the
+	 * series later (SyncSharedShelvesJob, every 15 minutes).
+	 * @return array{share: EbookReaderShare, skipped: int} skipped = books that could not be shared (no share permission, limit)
+	 * @throws ShareException
+	 */
+	public function shareSeries(string $owner, string $series, string $recipient): array {
+		$series = trim($series);
+		if ($series === '') {
+			throw new ShareException('series is required', ShareException::INVALID);
+		}
+		$this->assertCanShare($owner);
+		$recipient = $this->validateRecipient($owner, $recipient);
+		$key = SeriesShare::keyOf($series);
+		try {
+			$share = $this->seriesShares->findByOwnerSeriesAndRecipient($owner, $key, $recipient);
+		} catch (DoesNotExistException) {
+			$own = $this->ownSeriesBooks($owner, $series);
+			if ($own === []) {
+				throw new ShareException('Series not found', ShareException::NOT_FOUND);
+			}
+			if (count($this->seriesShares->findByOwnerAndSeries($owner, $key)) >= self::MAX_SERIES_FOLDER_RECIPIENTS) {
+				throw new ShareException('A series can be shared with at most ' . self::MAX_SERIES_FOLDER_RECIPIENTS . ' users', ShareException::INVALID);
+			}
+			$share = new SeriesShare();
+			$share->setOwnerId($owner);
+			$share->setRecipientId($recipient);
+			// the spelling of the books wins over the one typed in
+			$share->setSeries(mb_substr(trim((string)($own[0]->getSeries() ?? $series)), 0, 512));
+			$share->setSeriesKey($key);
+			$share->setCreatedAt($this->nowMs());
+			$share->setSyncedAt(0);
+			try {
+				$share = $this->seriesShares->insert($share);
+			} catch (DbException $e) {
+				if ($e->getReason() !== DbException::REASON_UNIQUE_CONSTRAINT_VIOLATION) {
+					throw $e;
+				}
+				$share = $this->seriesShares->findByOwnerSeriesAndRecipient($owner, $key, $recipient);
+			}
+		}
+		$result = $this->syncSeriesShare($share, self::INLINE_NEW_SHARES);
+		return ['share' => $this->seriesShareToApi($share, null), 'skipped' => $result['skipped']];
+	}
+
+	/**
+	 * Owner stops sharing a series with a user; the files shared for it are unshared unless another app share needs them.
+	 * @throws ShareException
+	 */
+	public function unshareSeries(string $owner, string $series, string $recipient): void {
+		try {
+			$share = $this->seriesShares->findByOwnerSeriesAndRecipient($owner, SeriesShare::keyOf($series), trim($recipient));
+		} catch (DoesNotExistException) {
+			throw new ShareException('Share not found', ShareException::NOT_FOUND);
+		}
+		$this->removeSeriesShare($share);
+	}
+
+	/**
+	 * Shares the books that are in the series now and unshares those that left it.
+	 * @param ?int $maxNew create at most this many new file shares now, queue a SyncShelfShareJob for the rest (null = all)
+	 * @return array{added: int, removed: int, skipped: int}
+	 */
+	public function syncSeriesShare(SeriesShare $share, ?int $maxNew = null): array {
+		$owner = $share->getOwnerId();
+		$recipient = $share->getRecipientId();
+		if (!$this->users->userExists($recipient) || !$this->users->userExists($owner)) {
+			$this->removeSeriesShare($share);
+			return ['added' => 0, 'removed' => 0, 'skipped' => 0];
+		}
+		$ids = array_values(array_unique(array_map(static fn (Book $b): int => $b->getFileId(), $this->ownSeriesBooks($owner, $share->getSeries()))));
+		sort($ids);
+		$result = $this->syncFiles($owner, $recipient, FileShare::seriesReason($share->getId()), array_slice($ids, 0, self::MAX_SHELF_BOOKS), max(0, count($ids) - self::MAX_SHELF_BOOKS), $maxNew, 'series ' . $share->getSeries());
+		if ($result['pending']) {
+			$this->jobList->add(SyncShelfShareJob::class, ['seriesShareId' => $share->getId()]);
+		}
+		$share->setSyncedAt($this->nowMs());
+		$this->seriesShares->update($share);
+		return ['added' => $result['added'], 'removed' => $result['removed'], 'skipped' => $result['skipped']];
+	}
+
+	public function syncSeriesById(int $seriesShareId): void {
+		try {
+			$share = $this->seriesShares->findById($seriesShareId);
+		} catch (DoesNotExistException) {
+			return;
+		}
+		$this->syncSeriesShare($share);
+	}
+
+	/**
+	 * Number of recipients per series of an owner.
+	 * @return array<string, int> series key (SeriesShare::keyOf of the name) => count
+	 */
+	public function seriesShareCounts(string $owner): array {
+		return $this->seriesShares->countsByOwner($owner);
+	}
+
+	/**
+	 * The owner's own (non-deleted, not incoming) books of a series.
+	 * @return list<Book>
+	 */
+	private function ownSeriesBooks(string $owner, string $series): array {
+		return array_values(array_filter(
+			$this->books->findBySeries($owner, [$series]),
+			static fn (Book $b): bool => $b->getSharedOwner() === null,
+		));
+	}
+
+	private function removeSeriesShare(SeriesShare $share): void {
+		$reason = FileShare::seriesReason($share->getId());
+		$this->removeRows($this->fileShares->findByShelfShare($reason));
+		$this->fileShares->deleteByShelfShare($reason);
+		try {
+			$this->seriesShares->delete($share);
+		} catch (\Throwable $e) {
+			$this->logger->debug('Series share already gone: ' . $e->getMessage(), ['app' => 'ebookreader']);
+		}
+	}
+
+	// ---- folders --------------------------------------------------------------------------------------------------
+
+	/**
+	 * Shares a folder of the owner's library with a user as ONE read-only Nextcloud user share of the folder. The recipient's
+	 * library indexes the books inside wherever the share is mounted. Sharing again is a no-op.
+	 * @return array{share: EbookReaderShare, skipped: int}
+	 * @throws ShareException
+	 */
+	public function shareFolder(string $owner, string $path, string $recipient): array {
+		$path = self::normalizeFolderPath($path);
+		$this->assertCanShare($owner);
+		$recipient = $this->validateRecipient($owner, $recipient);
+		if (!$this->library->isPathInLibrary($owner, $path)) {
+			throw new ShareException('Only folders inside your library folders can be shared', ShareException::FORBIDDEN);
+		}
+		$folder = $this->ownerFolder($owner, $path);
+		$this->assertFolderShareable($folder);
+		try {
+			$row = $this->folderShares->findByTriple($owner, $folder->getId(), $recipient);
+		} catch (DoesNotExistException) {
+			if (count($this->folderShares->findByFolder($owner, $folder->getId())) >= self::MAX_SERIES_FOLDER_RECIPIENTS) {
+				throw new ShareException('A folder can be shared with at most ' . self::MAX_SERIES_FOLDER_RECIPIENTS . ' users', ShareException::INVALID);
+			}
+			$shareId = $this->createOrFindNodeShare($owner, $recipient, $folder);
+			$row = new FolderShare();
+			$row->setOwnerId($owner);
+			$row->setRecipientId($recipient);
+			$row->setFolderId($folder->getId());
+			$row->setPath($path);
+			$row->setShareId($shareId);
+			$row->setCreatedAt($this->nowMs());
+			try {
+				$row = $this->folderShares->insert($row);
+			} catch (DbException $e) {
+				if ($e->getReason() !== DbException::REASON_UNIQUE_CONSTRAINT_VIOLATION) {
+					throw $e;
+				}
+				$row = $this->folderShares->findByTriple($owner, $folder->getId(), $recipient);
+			}
+			$this->library->resetSharedFolderCache();
+			$this->touchOwnerFolder($owner, $path);
+			// the recipient's library picks the books up (ScanFileJob on a folder indexes everything inside)
+			$this->jobList->add(ScanFileJob::class, ['userId' => $recipient, 'fileId' => $folder->getId()]);
+		}
+		return ['share' => $this->folderShareToApi($row, $path, $this->library->countBooksBelow($owner, $path)), 'skipped' => 0];
+	}
+
+	/**
+	 * Owner stops sharing a folder with a user: the Nextcloud share of the folder is deleted when the app created it.
+	 * @throws ShareException
+	 */
+	public function unshareFolder(string $owner, string $path, string $recipient): void {
+		$path = self::normalizeFolderPath($path);
+		$recipient = trim($recipient);
+		$row = null;
+		try {
+			$row = $this->folderShares->findByTriple($owner, $this->ownerFolder($owner, $path)->getId(), $recipient);
+		} catch (DoesNotExistException|ShareException) {
+			// the folder is gone or was never shared: look for a row remembering the path
+			foreach ($this->folderShares->findByOwner($owner) as $candidate) {
+				if ($candidate->getRecipientId() === $recipient && $candidate->getPath() === $path) {
+					$row = $candidate;
+					break;
+				}
+			}
+		}
+		if ($row === null) {
+			throw new ShareException('Share not found', ShareException::NOT_FOUND);
+		}
+		$this->removeFolderShare($row);
+	}
+
+	/**
+	 * Number of recipients per folder of an owner (the folders as they are named now).
+	 * @return array<string, int> path (relative to the home, leading slash) => count
+	 */
+	public function folderShareCounts(string $owner): array {
+		$paths = $this->library->sharedFolderPaths($owner);
+		$out = [];
+		foreach ($this->folderShares->countsByOwner($owner) as $folderId => $count) {
+			if (isset($paths[$folderId])) {
+				$out[$paths[$folderId]] = ($out[$paths[$folderId]] ?? 0) + $count;
+			}
+		}
+		return $out;
+	}
+
+	private function removeFolderShare(FolderShare $row): void {
+		$this->queueFolderRecipientCheck($row);
+		$this->touchFolderShareBooks($row);
+		$this->folderShares->delete($row);
+		$this->library->resetSharedFolderCache();
+		$shareId = $row->getShareId();
+		if ($shareId !== null && $this->folderShares->findByShareId($shareId) === [] && $this->fileShares->findByShareId($shareId) === []) {
+			$this->deleteNextcloudShare($shareId);
+		}
+	}
+
+	/**
+	 * After a folder share ended, the recipient's books from it are checked (ScanFileJob tombstones books that are no longer
+	 * reachable). The files are those of the owner's library below the folder.
+	 */
+	private function queueFolderRecipientCheck(FolderShare $row): void {
+		try {
+			$path = $this->library->sharedFolderPaths($row->getOwnerId())[$row->getFolderId()] ?? $row->getPath();
+			if ($path === null || $path === '') {
+				return;
+			}
+			$this->queueIndex($row->getRecipientId(), $this->library->findFileIdsBelow($row->getOwnerId(), $path, self::MAX_UNSHARE_CHECKS));
+		} catch (\Throwable $e) {
+			$this->logger->info('Could not queue the check after unsharing a folder: ' . $e->getMessage(), ['app' => 'ebookreader']);
+		}
+	}
+
+	/** @throws ShareException */
+	private static function normalizeFolderPath(string $path): string {
+		$parts = array_values(array_filter(explode('/', str_replace('\\', '/', trim($path))), static fn (string $p): bool => $p !== '' && $p !== '.'));
+		if ($parts === [] || in_array('..', $parts, true)) {
+			throw new ShareException('path must name a folder inside the library', ShareException::INVALID);
+		}
+		return '/' . implode('/', $parts);
+	}
+
+	/** @throws ShareException */
+	private function ownerFolder(string $owner, string $path): Folder {
+		try {
+			return $this->library->getFolderForUser($owner, $path);
+		} catch (NotFoundException) {
+			throw new ShareException('Folder not found', ShareException::NOT_FOUND);
+		}
+	}
+
+	/** @throws ShareException */
+	private function assertFolderShareable(Folder $folder): void {
+		if (FileOwnership::isShared($folder)) {
+			throw new ShareException('Folders shared with you cannot be shared', ShareException::FORBIDDEN);
+		}
+		if (!$folder->isShareable() || ($folder->getPermissions() & Constants::PERMISSION_SHARE) === 0) {
+			throw new ShareException('You are not allowed to share this folder (no share permission, resharing may be disabled)', ShareException::FORBIDDEN);
+		}
+	}
+
 	// ---- recipient side -------------------------------------------------------------------------------------------
 
 	/**
@@ -374,6 +687,36 @@ class ShareService {
 	 * @return int number of books indexed
 	 */
 	public function ensureIncomingIndexed(string $recipient, int $max = self::INLINE_INDEX, float $budgetSeconds = 5.0): int {
+		$indexed = $this->ensureSharedFilesIndexed($recipient, $max, $budgetSeconds);
+		return $indexed + $this->ensureIncomingFoldersIndexed($recipient, $max - $indexed, $budgetSeconds);
+	}
+
+	/**
+	 * Books inside folders other users shared with the user (app or Files shares, wherever they are mounted) that are missing
+	 * in the library. Walking the folders costs, so it happens at most every INCOMING_FOLDER_SCAN_INTERVAL seconds per user.
+	 */
+	private function ensureIncomingFoldersIndexed(string $recipient, int $max, float $budgetSeconds): int {
+		if ($max <= 0) {
+			return 0;
+		}
+		$now = $this->time->now()->getTimestamp();
+		if ($this->config !== null) {
+			$last = (int)$this->config->getUserValue($recipient, 'ebookreader', 'incoming_folder_scan', '0');
+			if ($now - $last < self::INCOMING_FOLDER_SCAN_INTERVAL) {
+				return 0;
+			}
+			$this->config->setUserValue($recipient, 'ebookreader', 'incoming_folder_scan', (string)$now);
+		}
+		try {
+			return (int)($this->library->indexIncomingFolders($recipient, $max, $budgetSeconds)['indexed'] ?? 0);
+		} catch (\Throwable $e) {
+			$this->logger->info('Indexing incoming shared folders failed: ' . $e->getMessage(), ['app' => 'ebookreader']);
+			return 0;
+		}
+	}
+
+	/** Books the app shared with the user one by one (book, shelf and series shares) that are missing in the library. */
+	private function ensureSharedFilesIndexed(string $recipient, int $max, float $budgetSeconds): int {
 		$ids = $this->fileShares->findIncomingFileIds($recipient);
 		if ($ids === []) {
 			return 0;
@@ -443,6 +786,21 @@ class ShareService {
 				$outgoing[] = $this->shelfShareToApi($share, $shelf, $counts[$share->getId()] ?? 0);
 			}
 		}
+		$ownSeries = $this->seriesShares->findByOwner($userId);
+		$counts = $this->fileShares->countsByShelfShares(array_map(static fn (SeriesShare $s): int => FileShare::seriesReason($s->getId()), $ownSeries));
+		foreach ($ownSeries as $share) {
+			$outgoing[] = $this->seriesShareToApi($share, $counts[FileShare::seriesReason($share->getId())] ?? 0);
+		}
+		$paths = $this->library->sharedFolderPaths($userId);
+		foreach ($this->folderShares->findByOwner($userId) as $row) {
+			$path = $paths[$row->getFolderId()] ?? null;
+			if ($path === null) {
+				// the folder is gone (Nextcloud already removed its share): the record goes as well
+				$this->folderShares->delete($row);
+				continue;
+			}
+			$outgoing[] = $this->folderShareToApi($row, $path, $this->library->countBooksBelow($userId, $path));
+		}
 
 		$incoming = [];
 		$direct = $this->fileShares->findDirectByRecipient($userId);
@@ -455,6 +813,18 @@ class ShareService {
 		$counts = $this->fileShares->countsByShelfShares(array_map(static fn (array $e): int => $e['share']->getId(), $in));
 		foreach ($in as $entry) {
 			$incoming[] = $this->shelfShareToApi($entry['share'], $entry['shelf'], $counts[$entry['share']->getId()] ?? 0);
+		}
+		$inSeries = $this->seriesShares->findByRecipient($userId);
+		$counts = $this->fileShares->countsByShelfShares(array_map(static fn (SeriesShare $s): int => FileShare::seriesReason($s->getId()), $inSeries));
+		foreach ($inSeries as $share) {
+			$incoming[] = $this->seriesShareToApi($share, $counts[FileShare::seriesReason($share->getId())] ?? 0);
+		}
+		foreach ($this->folderShares->findByRecipient($userId) as $row) {
+			$path = $this->library->sharedFolderPaths($row->getOwnerId())[$row->getFolderId()] ?? null;
+			if ($path !== null) {
+				// the recipient sees the name, never the owner's path
+				$incoming[] = $this->folderShareToApi($row, $path, $this->library->countBooksBelow($row->getOwnerId(), $path), false);
+			}
 		}
 		return ['outgoing' => $outgoing, 'incoming' => $incoming];
 	}
@@ -483,18 +853,30 @@ class ShareService {
 		if ($id === null) {
 			return;
 		}
+		foreach ($this->folderShares->findByShareId($id) as $folderRow) {
+			// the Nextcloud share of a shared folder is gone (deleted in Files, or left by the recipient)
+			$this->queueFolderRecipientCheck($folderRow);
+			$this->touchFolderShareBooks($folderRow);
+			$this->folderShares->delete($folderRow);
+			$this->library->resetSharedFolderCache();
+		}
 		$rows = $this->fileShares->findByShareId($id);
 		if ($rows === []) {
 			return;
 		}
 		$recipients = [];
+		$owners = [];
 		foreach ($rows as $row) {
+			$owners[$row->getOwnerId()][] = $row->getFileId();
 			$recipients[$row->getRecipientId()][] = $row->getFileId();
 			if ($row->isDirect()) {
 				$this->fileShares->delete($row);
 			}
 		}
 		$this->fileShares->detachShare($id);
+		foreach ($owners as $owner => $fileIds) {
+			$this->touchOwnerBooks((string)$owner, $fileIds);
+		}
 		foreach ($recipients as $recipient => $fileIds) {
 			$this->queueIndex((string)$recipient, $fileIds);
 		}
@@ -506,6 +888,10 @@ class ShareService {
 		if ($id === null) {
 			return;
 		}
+		foreach ($this->folderShares->findByShareId($id) as $folderRow) {
+			$this->jobList->add(ScanFileJob::class, ['userId' => $folderRow->getRecipientId(), 'fileId' => $folderRow->getFolderId()]);
+			return;
+		}
 		foreach ($this->fileShares->findByShareId($id) as $row) {
 			$this->queueIndex($row->getRecipientId(), [$row->getFileId()]);
 			return;
@@ -514,11 +900,30 @@ class ShareService {
 
 	/** Removes the share records of a deleted user (Nextcloud deletes the user's shares itself). */
 	public function deleteAllForUser(string $userId): void {
+		// the owners of what was shared with the user lose a recipient (sharedOut may change)
+		$touch = [];
+		foreach ($this->fileShares->findByUser($userId) as $row) {
+			if ($row->getRecipientId() === $userId) {
+				$touch[$row->getOwnerId()][] = $row->getFileId();
+			}
+		}
+		foreach ($touch as $owner => $fileIds) {
+			$this->touchOwnerBooks((string)$owner, $fileIds);
+		}
+		foreach ($this->folderShares->findByRecipient($userId) as $row) {
+			$this->touchFolderShareBooks($row);
+		}
 		foreach ($this->fileShares->findByUser($userId) as $row) {
 			$this->fileShares->delete($row);
 		}
 		foreach ([...$this->shelfShares->findByOwner($userId), ...$this->shelfShares->findByRecipient($userId)] as $share) {
 			$this->shelfShares->delete($share);
+		}
+		foreach ([...$this->seriesShares->findByOwner($userId), ...$this->seriesShares->findByRecipient($userId)] as $share) {
+			$this->seriesShares->delete($share);
+		}
+		foreach ([...$this->folderShares->findByOwner($userId), ...$this->folderShares->findByRecipient($userId)] as $row) {
+			$this->folderShares->delete($row);
 		}
 	}
 
@@ -545,8 +950,10 @@ class ShareService {
 		}
 		$shareIds = [];
 		$byRecipient = [];
+		$byOwner = [];
 		foreach ($rows as $row) {
 			$this->fileShares->delete($row);
+			$byOwner[$row->getOwnerId()][] = $row->getFileId();
 			if ($row->getShareId() !== null) {
 				$shareIds[$row->getShareId()] = true;
 			}
@@ -556,6 +963,9 @@ class ShareService {
 			if ($this->fileShares->findByShareId((string)$shareId) === []) {
 				$this->deleteNextcloudShare((string)$shareId);
 			}
+		}
+		foreach ($byOwner as $owner => $fileIds) {
+			$this->touchOwnerBooks((string)$owner, $fileIds);
 		}
 		foreach ($byRecipient as $recipient => $fileIds) {
 			$this->queueIndex((string)$recipient, $fileIds);
@@ -591,6 +1001,16 @@ class ShareService {
 				$this->fileShares->detachShare($id);
 			}
 		}
+		return $this->createOrFindNodeShare($owner, $recipient, $file);
+	}
+
+	/**
+	 * A read-only user share of the node: an existing share of the owner with the recipient is used (returns null: not ours,
+	 * never deleted), else one is created.
+	 * @return ?string full id of the app's share, null if the user's own share is used
+	 * @throws ShareException the share manager refused (policy, permissions)
+	 */
+	private function createOrFindNodeShare(string $owner, string $recipient, Node $file): ?string {
 		try {
 			foreach ($this->shareManager->getSharesBy($owner, IShare::TYPE_USER, $file, false, -1) as $existing) {
 				if ($existing->getSharedWith() === $recipient) {
@@ -660,6 +1080,44 @@ class ShareService {
 			}
 		}
 		return null;
+	}
+
+	/**
+	 * The set of app shares of the owner's books changed: moves updated_at of those books so the delta sync delivers their
+	 * (derived) sharedOut again. Recipients' rows are not touched.
+	 * @param list<int> $fileIds
+	 */
+	private function touchOwnerBooks(string $owner, array $fileIds): void {
+		if ($fileIds === []) {
+			return;
+		}
+		try {
+			$this->books->touch($owner, $fileIds, $this->nowMs());
+		} catch (\Throwable $e) {
+			$this->logger->warning('Could not touch the books of a changed share: ' . $e->getMessage(), ['app' => 'ebookreader', 'exception' => $e]);
+		}
+	}
+
+	/** Like touchOwnerBooks() for the owner's books below a folder. */
+	private function touchOwnerFolder(string $owner, string $path): void {
+		if (trim($path, '/') === '') {
+			return;
+		}
+		try {
+			$this->books->touchBelow($owner, $path, $this->nowMs());
+		} catch (\Throwable $e) {
+			$this->logger->warning('Could not touch the books of a changed folder share: ' . $e->getMessage(), ['app' => 'ebookreader', 'exception' => $e]);
+		}
+	}
+
+	/** Call before the folder share record is deleted (the current folder path is looked up through it). */
+	private function touchFolderShareBooks(FolderShare $row): void {
+		try {
+			$path = $this->library->sharedFolderPaths($row->getOwnerId())[$row->getFolderId()] ?? $row->getPath();
+		} catch (\Throwable) {
+			$path = $row->getPath();
+		}
+		$this->touchOwnerFolder($row->getOwnerId(), (string)$path);
 	}
 
 	/** @param list<int> $fileIds */
@@ -766,6 +1224,8 @@ class ShareService {
 			'type' => 'book',
 			'fileId' => $row->getFileId(),
 			'shelfId' => null,
+			'series' => null,
+			'path' => null,
 			'name' => $title ?? ('#' . $row->getFileId()),
 			'owner' => $row->getOwnerId(),
 			'ownerDisplayName' => $this->displayName($row->getOwnerId()),
@@ -786,12 +1246,58 @@ class ShareService {
 			'type' => 'shelf',
 			'fileId' => null,
 			'shelfId' => $share->getShelfId(),
+			'series' => null,
+			'path' => null,
 			'name' => $shelf->getName(),
 			'owner' => $share->getOwnerId(),
 			'ownerDisplayName' => $this->displayName($share->getOwnerId()),
 			'recipient' => $share->getRecipientId(),
 			'recipientDisplayName' => $this->displayName($share->getRecipientId()),
 			'createdAt' => $share->getCreatedAt(),
+			'bookCount' => $count,
+		];
+	}
+
+	/**
+	 * @param ?int $count shared books (null = counted now)
+	 * @return EbookReaderShare
+	 */
+	private function seriesShareToApi(SeriesShare $share, ?int $count): array {
+		$count ??= $this->fileShares->countsByShelfShares([FileShare::seriesReason($share->getId())])[FileShare::seriesReason($share->getId())] ?? 0;
+		return [
+			'type' => 'series',
+			'fileId' => null,
+			'shelfId' => null,
+			'series' => $share->getSeries(),
+			'path' => null,
+			'name' => $share->getSeries(),
+			'owner' => $share->getOwnerId(),
+			'ownerDisplayName' => $this->displayName($share->getOwnerId()),
+			'recipient' => $share->getRecipientId(),
+			'recipientDisplayName' => $this->displayName($share->getRecipientId()),
+			'createdAt' => $share->getCreatedAt(),
+			'bookCount' => $count,
+		];
+	}
+
+	/**
+	 * @param string $path current path of the folder in the owner's home
+	 * @param bool $withPath false for the recipient: they only see the folder name
+	 * @return EbookReaderShare
+	 */
+	private function folderShareToApi(FolderShare $row, string $path, int $count, bool $withPath = true): array {
+		return [
+			'type' => 'folder',
+			'fileId' => null,
+			'shelfId' => null,
+			'series' => null,
+			'path' => $withPath ? $path : null,
+			'name' => basename($path),
+			'owner' => $row->getOwnerId(),
+			'ownerDisplayName' => $this->displayName($row->getOwnerId()),
+			'recipient' => $row->getRecipientId(),
+			'recipientDisplayName' => $this->displayName($row->getRecipientId()),
+			'createdAt' => $row->getCreatedAt(),
 			'bookCount' => $count,
 		];
 	}

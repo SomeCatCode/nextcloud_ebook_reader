@@ -73,4 +73,18 @@ class SeriesAggregatorTest extends TestCase {
 		$this->assertCount(3, SeriesAggregator::aggregate($rows, 'name', 'asc', 3));
 		$this->assertSame(2000, SeriesAggregator::MAX_SERIES);
 	}
+
+	public function testSeriesWithIncomingBooksIsMarkedShared(): void {
+		$rows = [
+			self::row(1, 'Saga', 1.0),
+			self::row(2, 'Saga', 2.0) + ['shared_owner' => 'bob'],
+			self::row(3, 'Own', 1.0) + ['shared_owner' => null],
+			self::row(4, 'Empty owner', 1.0) + ['shared_owner' => ''],
+		];
+		$byName = [];
+		foreach (SeriesAggregator::aggregate($rows) as $s) {
+			$byName[$s['name']] = $s['shared'];
+		}
+		$this->assertSame(['Empty owner' => false, 'Own' => false, 'Saga' => true], $byName);
+	}
 }

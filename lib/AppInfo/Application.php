@@ -24,6 +24,7 @@ use OCP\AppFramework\App;
 use OCP\AppFramework\Bootstrap\IBootContext;
 use OCP\AppFramework\Bootstrap\IBootstrap;
 use OCP\AppFramework\Bootstrap\IRegistrationContext;
+use OCP\Files\Events\Node\NodeCopiedEvent;
 use OCP\Files\Events\Node\NodeCreatedEvent;
 use OCP\Files\Events\Node\NodeDeletedEvent;
 use OCP\Files\Events\Node\NodeRenamedEvent;
@@ -62,6 +63,7 @@ class Application extends App implements IBootstrap {
 		$context->registerPreviewProvider(EbookCoverProvider::class, EbookCoverProvider::MIME_REGEX);
 
 		$context->registerEventListener(NodeCreatedEvent::class, FileEventListener::class);
+		$context->registerEventListener(NodeCopiedEvent::class, FileEventListener::class);
 		$context->registerEventListener(NodeWrittenEvent::class, FileEventListener::class);
 		$context->registerEventListener(NodeDeletedEvent::class, FileEventListener::class);
 		$context->registerEventListener(NodeRenamedEvent::class, FileEventListener::class);

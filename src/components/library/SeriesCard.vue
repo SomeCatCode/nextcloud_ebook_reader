@@ -36,6 +36,25 @@
 				</div>
 			</div>
 		</div>
+		<ShareBadge
+			class="series-card__share"
+			:shared="series.shared === true"
+			:sharedOut="(series.sharedWith ?? 0) > 0"
+			:sharedWith="series.sharedWith ?? 0" />
+		<div
+			v-if="canShare"
+			class="series-card__menu"
+			@click.stop
+			@keydown.stop>
+			<NcActions :aria-label="t('ebookreader', 'Actions for the series “{name}”', { name: series.name })">
+				<NcActionButton closeAfterClick @click="$emit('share', series)">
+					<template #icon>
+						<NcIconSvgWrapper :path="mdiShareVariant" />
+					</template>
+					{{ t('ebookreader', 'Share…') }}
+				</NcActionButton>
+			</NcActions>
+		</div>
 		<div class="series-card__title" :title="series.name">
 			{{ series.name }}
 		</div>
@@ -52,15 +71,22 @@
 <script setup lang="ts">
 import type { SeriesEntry } from '../../types.ts'
 
+import { mdiShareVariant } from '@mdi/js'
 import { n, t } from '@nextcloud/l10n'
 import { computed, reactive } from 'vue'
+import NcActionButton from '@nextcloud/vue/components/NcActionButton'
+import NcActions from '@nextcloud/vue/components/NcActions'
+import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
+import ShareBadge from './ShareBadge.vue'
 import { coverUrl } from '../../services/api.ts'
+import { hasFeature } from '../../services/features.ts'
 import { hue, initials } from './utils.ts'
 
 const props = defineProps<{ series: SeriesEntry }>()
 
-defineEmits<{ click: [series: SeriesEntry] }>()
+defineEmits<{ click: [series: SeriesEntry], share: [series: SeriesEntry] }>()
 
+const canShare = hasFeature('series-shares')
 const failed = reactive(new Set<number>())
 /** back to front: the last cover is the front one */
 const stackIds = computed(() => props.series.coverFileIds.slice(0, 3).slice().reverse())
@@ -74,6 +100,7 @@ const stackIds = computed(() => props.series.coverFileIds.slice(0, 3).slice().re
 	min-width: 0;
 	padding: 6px;
 	border-radius: var(--border-radius-large);
+	position: relative;
 	cursor: pointer;
 	outline: none;
 
@@ -84,6 +111,35 @@ const stackIds = computed(() => props.series.coverFileIds.slice(0, 3).slice().re
 
 	&:focus-visible {
 		outline: 2px solid var(--color-primary-element);
+	}
+
+	&__share {
+		position: absolute;
+		top: 12px;
+		left: 12px;
+		z-index: 1;
+	}
+
+	&__menu {
+		position: absolute;
+		top: 8px;
+		right: 8px;
+		z-index: 2;
+		opacity: 0;
+		border-radius: var(--border-radius-element, 8px);
+		background: var(--color-main-background);
+	}
+
+	&:hover &__menu,
+	&:focus-within &__menu {
+		opacity: 1;
+	}
+
+	// touch devices have no hover: keep the menu reachable
+	@media (hover: none) {
+		&__menu {
+			opacity: 1;
+		}
 	}
 
 	&__stack {

@@ -128,4 +128,15 @@ class BookQueryTest extends TestCase {
 		$this->assertSame([], BookQuery::fromRequestParams(['format' => 'json'])->effectiveIncludes());
 		$this->assertSame('epub', BookQuery::fromRequestParams(['format' => 'epub'])->format);
 	}
+
+	public function testSharedParam(): void {
+		$this->assertNull(BookQuery::fromRequestParams([])->shared);
+		$this->assertSame('incoming', BookQuery::fromRequestParams(['shared' => 'incoming'])->shared);
+		$this->assertSame('outgoing', BookQuery::fromRequestParams(['shared' => ' Outgoing '])->shared);
+		$this->assertSame('any', BookQuery::fromRequestParams(['shared' => 'ANY'])->shared);
+		$this->assertNull(BookQuery::fromRequestParams(['shared' => 'bogus'])->shared);
+		$this->assertNull(BookQuery::fromRequestParams(['shared' => ''])->shared);
+		$this->assertNull(BookQuery::fromRequestParams(['shared' => 1])->shared);
+		$this->assertNull(BookQuery::fromRequestParams(['shared' => ['any']])->shared);
+	}
 }

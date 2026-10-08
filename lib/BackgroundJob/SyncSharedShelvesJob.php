@@ -15,7 +15,7 @@ use OCP\BackgroundJob\TimedJob;
 use Psr\Log\LoggerInterface;
 
 /**
- * Keeps shared shelves live: smart shelves change with the library (new books, edited metadata, read status), so every
+ * Keeps shared shelves and series live: smart shelves change with the library (new books, edited metadata, read status), so every
  * 15 minutes the file shares of all shelf shares are brought in line with the current books. Manual shelves are synced
  * right away on changes; the job also repairs them (books deleted or no longer shareable).
  */

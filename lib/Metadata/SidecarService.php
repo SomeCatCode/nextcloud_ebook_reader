@@ -10,14 +10,22 @@ declare(strict_types=1);
 namespace OCA\EbookReader\Metadata;
 
 use OCA\EbookReader\Editor\EditorUtil;
+use OCA\EbookReader\Service\SettingsService;
 use OCP\Files\File;
 use OCP\Files\Folder;
+use OCP\Files\Node;
 use OCP\Files\NotFoundException;
 use Psr\Log\LoggerInterface;
 
 /**
- * Sidecar metadata files ("Begleitdatei"): a hidden Calibre compatible OPF 2.0 file next to the book, named
- * "." + <full book file name> + ".opf" (".Golden Boy 01.cbz.opf").
+ * Sidecar metadata files ("Begleitdatei"): a Calibre compatible OPF 2.0 file for a book. Two layouts exist (user setting
+ * "sidecarLocation"):
+ *  - "beside" (default): a hidden file next to the book, named "." + <full book file name> + ".opf" (".Golden Boy 01.cbz.opf")
+ *  - "meta": one hidden folder per directory, "<folder>/.meta/<full book file name>.opf" (".meta/Golden Boy 01.cbz.opf")
+ *
+ * Reading looks in both places (the configured one first). Writing goes to the configured place; a sidecar found in the
+ * other place is moved there (never duplicated). The layout is the one the owner of the folder chose: the sidecar lives in
+ * the owner's files. Empty ".meta" folders are removed when the last sidecar leaves.
  *
  * Writing uses the DOM (escaping), reading uses XmlUtil::load (no DTD / entities) and a size cap.
  */
@@ -27,14 +35,22 @@ class SidecarService {
 	public const OPF_NS = 'http://www.idpf.org/2007/opf';
 	public const DC_NS = 'http://purl.org/dc/elements/1.1/';
 
+	public const LOCATION_BESIDE = 'beside';
+	public const LOCATION_META = 'meta';
+	/** Name of the hidden folder that holds the sidecars of its parent folder in the "meta" layout */
+	public const META_DIR = '.meta';
+
 	/** Name of a sidecar: a dot, a book file name with a known extension, ".opf" */
 	private const NAME_PATTERN = '/^\.(?<book>.+\.(?:epub|mobi|azw3|fb2|fbz|fb2\.zip|cbz|cbr|cb7|cbt))\.opf$/is';
+	/** Name of a sidecar inside a ".meta" folder: a book file name with a known extension, ".opf" */
+	private const META_NAME_PATTERN = '/^(?<book>.+\.(?:epub|mobi|azw3|fb2|fbz|fb2\.zip|cbz|cbr|cb7|cbt))\.opf$/is';
 
 	/** @var array<string, int> paths of sidecars this process is writing/moving/deleting right now (event loop guard) */
 	private static array $guard = [];
 
 	public function __construct(
 		private LoggerInterface $logger,
+		private ?SettingsService $settings = null,
 	) {
 	}
 
@@ -46,6 +62,47 @@ class SidecarService {
 
 	public static function isSidecarName(string $name): bool {
 		return preg_match(self::NAME_PATTERN, $name) === 1;
+	}
+
+	/** Name of the sidecar of a book inside a ".meta" folder. */
+	public static function metaNameFor(string $bookName): string {
+		return $bookName . '.opf';
+	}
+
+	/** File name of the book a sidecar in a ".meta" folder belongs to, null if the name is not a sidecar name. */
+	public static function bookNameOfMeta(string $sidecarName): ?string {
+		if (preg_match(self::META_NAME_PATTERN, $sidecarName, $m) !== 1) {
+			return null;
+		}
+		return $m['book'];
+	}
+
+	/**
+	 * For a node that is a sidecar in either layout: the folder that holds its book and the book's file name; null if the
+	 * node is no sidecar. (The book itself may not exist.)
+	 *
+	 * @return ?array{0: Folder, 1: string}
+	 */
+	public static function bookOf(File $sidecar): ?array {
+		if (!str_ends_with(strtolower($sidecar->getName()), '.opf')) {
+			return null; // cheap check first: this runs for every file event
+		}
+		try {
+			$parent = $sidecar->getParent();
+			if ($parent->getName() === self::META_DIR) {
+				$book = self::bookNameOfMeta($sidecar->getName());
+				return $book === null ? null : [$parent->getParent(), $book];
+			}
+			$book = self::bookNameOf($sidecar->getName());
+			return $book === null ? null : [$parent, $book];
+		} catch (\Throwable) {
+			return null;
+		}
+	}
+
+	/** Whether a file is a sidecar of either layout. */
+	public static function isSidecarFile(File $file): bool {
+		return self::bookOf($file) !== null;
 	}
 
 	/** File name of the book a sidecar belongs to, null if the name is not a sidecar name. */
@@ -75,6 +132,70 @@ class SidecarService {
 		}
 	}
 
+	// ------------------------------------------------------------------ layout
+
+	/** The layout the owner of the node chose ("beside" when unknown). */
+	public function locationFor(Node $node): string {
+		if ($this->settings === null) {
+			return self::LOCATION_BESIDE;
+		}
+		try {
+			$uid = $node->getOwner()?->getUID();
+			return $uid === null || $uid === '' ? self::LOCATION_BESIDE : $this->settings->sidecarLocation($uid);
+		} catch (\Throwable) {
+			return self::LOCATION_BESIDE;
+		}
+	}
+
+	/** @return list<string> both layouts, the configured one first */
+	private function layouts(Node $node): array {
+		return $this->locationFor($node) === self::LOCATION_META
+			? [self::LOCATION_META, self::LOCATION_BESIDE]
+			: [self::LOCATION_BESIDE, self::LOCATION_META];
+	}
+
+	/** The ".meta" folder of a folder; null if there is none (and $create is false or it can not be created). */
+	private function metaDir(Folder $parent, bool $create = false): ?Folder {
+		try {
+			if ($parent->nodeExists(self::META_DIR)) {
+				$node = $parent->get(self::META_DIR);
+				return $node instanceof Folder ? $node : null;
+			}
+		} catch (\Throwable) {
+			return null;
+		}
+		if (!$create || !$parent->isCreatable()) {
+			return null;
+		}
+		$dir = null;
+		$this->guarded($parent->getPath() . '/' . self::META_DIR, static function () use ($parent, &$dir): void {
+			$dir = $parent->newFolder(self::META_DIR);
+		});
+		return $dir;
+	}
+
+	/** Removes the ".meta" folder of a folder once it is empty (it goes to the trash bin like any folder). */
+	public function cleanupMeta(Folder $parent): void {
+		$dir = $this->metaDir($parent);
+		if ($dir !== null) {
+			$this->dropIfEmpty($dir);
+		}
+	}
+
+	/** Removes a ".meta" folder that holds nothing (any other folder is left alone). */
+	private function dropIfEmpty(Folder $dir): void {
+		try {
+			if ($dir->getName() !== self::META_DIR || $dir->getDirectoryListing() !== [] || !$dir->isDeletable()) {
+				return;
+			}
+			$this->guarded($dir->getPath(), static function () use ($dir): void {
+				$dir->delete();
+			});
+		} catch (\Throwable $e) {
+			$this->logger->info('Empty .meta folder not removed: ' . $e->getMessage(), ['app' => 'ebookreader']);
+		}
+	}
+
 	// ------------------------------------------------------------------ lookup
 
 	public function find(File $book): ?File {
@@ -86,6 +207,25 @@ class SidecarService {
 	}
 
 	public function findIn(Folder $parent, string $bookName): ?File {
+		return $this->locate($parent, $bookName)[0] ?? null;
+	}
+
+	/**
+	 * The sidecar of a book in either layout (the configured layout wins when both exist) and the layout it was found in.
+	 *
+	 * @return ?array{0: File, 1: string}
+	 */
+	public function locate(Folder $parent, string $bookName): ?array {
+		foreach ($this->layouts($parent) as $layout) {
+			$node = $layout === self::LOCATION_META ? $this->findMeta($parent, $bookName) : $this->findBeside($parent, $bookName);
+			if ($node !== null) {
+				return [$node, $layout];
+			}
+		}
+		return null;
+	}
+
+	private function findBeside(Folder $parent, string $bookName): ?File {
 		$name = self::nameFor($bookName);
 		try {
 			if (!$parent->nodeExists($name)) {
@@ -96,6 +236,62 @@ class SidecarService {
 			return null;
 		}
 		return $node instanceof File && $node->isReadable() ? $node : null;
+	}
+
+	private function findMeta(Folder $parent, string $bookName): ?File {
+		$dir = $this->metaDir($parent);
+		if ($dir === null) {
+			return null;
+		}
+		$name = self::metaNameFor($bookName);
+		try {
+			if (!$dir->nodeExists($name)) {
+				return null;
+			}
+			$node = $dir->get($name);
+		} catch (\Throwable) {
+			return null;
+		}
+		return $node instanceof File && $node->isReadable() ? $node : null;
+	}
+
+	/**
+	 * The sidecars of all books in a folder from its directory listing (what a library scan has at hand): book file name
+	 * => sidecar. Looks into the ".meta" folder with one listing; where both layouts hold a sidecar the configured one wins.
+	 *
+	 * @param iterable<Node> $children getDirectoryListing() of $folder
+	 * @return array<string, File>
+	 */
+	public function inListing(Folder $folder, iterable $children): array {
+		$beside = [];
+		$meta = [];
+		foreach ($children as $child) {
+			if ($child instanceof File) {
+				$book = self::bookNameOf($child->getName());
+				if ($book !== null) {
+					$beside[$book] = $child;
+				}
+			} elseif ($child instanceof Folder && $child->getName() === self::META_DIR) {
+				try {
+					foreach ($child->getDirectoryListing() as $entry) {
+						$book = $entry instanceof File ? self::bookNameOfMeta($entry->getName()) : null;
+						if ($book !== null && $entry instanceof File) {
+							$meta[$book] = $entry;
+						}
+					}
+				} catch (\Throwable $e) {
+					$this->logger->info('.meta folder not listed: ' . $e->getMessage(), ['app' => 'ebookreader']);
+				}
+			}
+		}
+		if ($meta === []) {
+			return $beside;
+		}
+		if ($beside === []) {
+			return $meta;
+		}
+		$preferMeta = $this->locationFor($folder) === self::LOCATION_META;
+		return $preferMeta ? $meta + $beside : $beside + $meta;
 	}
 
 	public function exists(File $book): bool {
@@ -388,7 +584,8 @@ class SidecarService {
 	}
 
 	/**
-	 * Writes the sidecar of a book. The file is only touched when its content changes.
+	 * Writes the sidecar of a book to the configured place (see locationFor()). The file is only touched when its content
+	 * changes; a sidecar that exists in the other layout is moved to the configured place when it is written.
 	 *
 	 * @param array<string, mixed> $meta see build()
 	 * @param bool $createIfMissing false = only update an existing sidecar
@@ -401,8 +598,10 @@ class SidecarService {
 	public function write(File $book, array $meta, bool $createIfMissing = true, ?string $expectedState = null, bool $verifyState = false): bool {
 		try {
 			$parent = $book->getParent();
-			$name = self::nameFor($book->getName());
-			$existing = $this->findIn($parent, $book->getName());
+			$bookName = $book->getName();
+			$layout = $this->locationFor($parent);
+			$located = $this->locate($parent, $bookName);
+			$existing = $located[0] ?? null;
 			if ($existing === null && !$createIfMissing) {
 				return true;
 			}
@@ -421,11 +620,15 @@ class SidecarService {
 					return true;
 				}
 				if (!$existing->isUpdateable()) {
-					$this->logger->info('Sidecar is read-only: ' . $name, ['app' => 'ebookreader']);
+					$this->logger->info('Sidecar is read-only: ' . $existing->getName(), ['app' => 'ebookreader']);
 					return false;
 				}
 				if ($verifyState && self::stateOf($existing) !== $expectedState) {
-					throw new SidecarChangedException('Sidecar changed: ' . $name);
+					throw new SidecarChangedException('Sidecar changed: ' . $existing->getName());
+				}
+				if (($located[1] ?? $layout) !== $layout) {
+					// the node object follows the move; if it can not move, it is updated where it is
+					$this->place($existing, $parent, $bookName, $layout, true);
 				}
 				$this->guarded($existing->getPath(), static function () use ($existing, $xml): void {
 					$existing->putContent($xml);
@@ -436,8 +639,18 @@ class SidecarService {
 				$this->logger->info('Sidecar can not be created, folder is read-only: ' . $parent->getPath(), ['app' => 'ebookreader']);
 				return false;
 			}
-			$this->guarded($parent->getPath() . '/' . $name, static function () use ($parent, $name, $xml): void {
-				$parent->newFile($name, $xml);
+			$container = $parent;
+			$name = self::nameFor($bookName);
+			if ($layout === self::LOCATION_META) {
+				$container = $this->metaDir($parent, true);
+				if ($container === null) {
+					$this->logger->info('The .meta folder can not be created: ' . $parent->getPath(), ['app' => 'ebookreader']);
+					return false;
+				}
+				$name = self::metaNameFor($bookName);
+			}
+			$this->guarded($container->getPath() . '/' . $name, static function () use ($container, $name, $xml): void {
+				$container->newFile($name, $xml);
 			});
 			return true;
 		} catch (SidecarChangedException $e) {
@@ -450,7 +663,10 @@ class SidecarService {
 
 	// ------------------------------------------------------------------ lifecycle
 
-	/** Moves the sidecar of a book along when the book was renamed/moved. Skips if there is none or the target exists. */
+	/**
+	 * Moves the sidecar of a book along when the book was renamed/moved (to the configured layout of the target folder).
+	 * Skips if there is none or the target exists.
+	 */
 	public function moveAlong(Folder $fromParent, string $fromName, Folder $toParent, string $toName): bool {
 		return $this->transfer($fromParent, $fromName, $toParent, $toName, true);
 	}
@@ -460,52 +676,120 @@ class SidecarService {
 		return $this->transfer($fromParent, $fromName, $toParent, $toName, false);
 	}
 
+	/**
+	 * Moves the sidecar of a book to the given layout ("beside" or "meta") when it is in the other one (setting change).
+	 * Does nothing if there is none, it is there already, or the target place holds a sidecar of the book already.
+	 *
+	 * @return bool whether a sidecar was moved
+	 */
+	public function relocate(File $book, string $layout): bool {
+		try {
+			$parent = $book->getParent();
+			$name = $book->getName();
+			$located = $this->locate($parent, $name);
+			if ($located === null || $located[1] === $layout) {
+				return false;
+			}
+			$here = $layout === self::LOCATION_META ? $this->findMeta($parent, $name) : $this->findBeside($parent, $name);
+			if ($here !== null) {
+				return false;
+			}
+			return $this->place($located[0], $parent, $name, $layout, true);
+		} catch (\Throwable $e) {
+			$this->logger->info('Sidecar could not be relocated: ' . $e->getMessage(), ['app' => 'ebookreader']);
+			return false;
+		}
+	}
+
 	private function transfer(Folder $fromParent, string $fromName, Folder $toParent, string $toName, bool $move): bool {
 		try {
 			$sidecar = $this->findIn($fromParent, $fromName);
 			if ($sidecar === null) {
 				return false;
 			}
-			$targetName = self::nameFor($toName);
-			$targetPath = $toParent->getPath() . '/' . $targetName;
-			if ($sidecar->getPath() === $targetPath || $toParent->nodeExists($targetName)) {
+			$layout = $this->locationFor($toParent);
+			// a target that has a sidecar in either layout keeps it
+			$targetName = $layout === self::LOCATION_META ? self::metaNameFor($toName) : self::nameFor($toName);
+			if ($layout === self::LOCATION_META) {
+				$dir = $this->metaDir($toParent);
+				if ($dir !== null && $dir->nodeExists($targetName)) {
+					return false;
+				}
+			} elseif ($toParent->nodeExists($targetName)) {
 				return false;
 			}
-			if ($move ? !$sidecar->isDeletable() : !$toParent->isCreatable()) {
+			$other = $this->locate($toParent, $toName);
+			if ($other !== null) {
 				return false;
 			}
-			$this->guarded($sidecar->getPath(), function () use ($sidecar, $targetPath, $move): void {
-				$this->guarded($targetPath, static function () use ($sidecar, $targetPath, $move): void {
-					if ($move) {
-						$sidecar->move($targetPath);
-					} else {
-						$sidecar->copy($targetPath);
-					}
-				});
-			});
-			return true;
+			return $this->place($sidecar, $toParent, $toName, $layout, $move);
 		} catch (\Throwable $e) {
 			$this->logger->info('Sidecar could not be ' . ($move ? 'moved' : 'copied') . ': ' . $e->getMessage(), ['app' => 'ebookreader']);
 			return false;
 		}
 	}
 
-	/** Deletes the sidecar of a book (goes to the trash bin like any file). */
-	public function deleteFor(Folder $parent, string $bookName): bool {
-		try {
-			$sidecar = $this->findIn($parent, $bookName);
-			if ($sidecar === null || !$sidecar->isDeletable()) {
-				return false;
-			}
-			$this->guarded($sidecar->getPath(), static function () use ($sidecar): void {
-				$sidecar->delete();
-			});
-			return true;
-		} catch (NotFoundException) {
-			return false;
-		} catch (\Throwable $e) {
-			$this->logger->info('Sidecar could not be deleted: ' . $e->getMessage(), ['app' => 'ebookreader']);
+	/**
+	 * Moves or copies a sidecar node to the sidecar place of the book $toName in $toParent, in the given layout.
+	 * The caller made sure that the target is free.
+	 */
+	private function place(File $sidecar, Folder $toParent, string $toName, string $layout, bool $move): bool {
+		$meta = $layout === self::LOCATION_META;
+		$targetName = $meta ? self::metaNameFor($toName) : self::nameFor($toName);
+		$containerPath = $toParent->getPath() . ($meta ? '/' . self::META_DIR : '');
+		$targetPath = $containerPath . '/' . $targetName;
+		if ($sidecar->getPath() === $targetPath) {
 			return false;
 		}
+		if ($move ? !$sidecar->isDeletable() : !$toParent->isCreatable()) {
+			return false;
+		}
+		if ($meta && $this->metaDir($toParent) === null && !$toParent->isCreatable()) {
+			return false;
+		}
+		$source = $sidecar->getPath();
+		$oldContainer = $move ? $sidecar->getParent() : null;
+		$this->guarded($source, function () use ($sidecar, $toParent, $targetPath, $move, $meta): void {
+			$this->guarded($targetPath, function () use ($sidecar, $toParent, $targetPath, $move, $meta): void {
+				if ($meta && $this->metaDir($toParent, true) === null) {
+					throw new \RuntimeException('The .meta folder can not be created');
+				}
+				if ($move) {
+					$sidecar->move($targetPath);
+				} else {
+					$sidecar->copy($targetPath);
+				}
+			});
+		});
+		if ($oldContainer !== null) {
+			// the last sidecar left its .meta folder
+			$this->dropIfEmpty($oldContainer);
+		}
+		return true;
+	}
+
+	/** Deletes the sidecar of a book, wherever it is (goes to the trash bin like any file); removes an emptied .meta folder. */
+	public function deleteFor(Folder $parent, string $bookName): bool {
+		$deleted = false;
+		try {
+			foreach ($this->layouts($parent) as $layout) {
+				$sidecar = $layout === self::LOCATION_META ? $this->findMeta($parent, $bookName) : $this->findBeside($parent, $bookName);
+				if ($sidecar === null || !$sidecar->isDeletable()) {
+					continue;
+				}
+				$this->guarded($sidecar->getPath(), static function () use ($sidecar): void {
+					$sidecar->delete();
+				});
+				$deleted = true;
+			}
+		} catch (NotFoundException) {
+			return $deleted;
+		} catch (\Throwable $e) {
+			$this->logger->info('Sidecar could not be deleted: ' . $e->getMessage(), ['app' => 'ebookreader']);
+		}
+		if ($deleted) {
+			$this->cleanupMeta($parent);
+		}
+		return $deleted;
 	}
 }

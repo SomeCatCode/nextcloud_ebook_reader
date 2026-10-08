@@ -65,6 +65,7 @@ class SettingsController extends AbstractOCSController {
 	 * @param list<string>|null $genreList Custom genre list, null resets to the default list
 	 * @param string|null $metadataWriteMode When metadata edits are written into the book file (targets "file" and "both"): "background" (default) or "immediate"; the legacy value "never" is stored as metadataTarget "library"
 	 * @param string|null $metadataTarget Where metadata changes are stored: "sidecar" (default, hidden .<book>.opf file), "file", "both" or "library"
+	 * @param string|null $sidecarLocation Where sidecar files are stored: "beside" (default, hidden .<book>.opf next to the book) or "meta" (hidden .meta folder per directory); changing it moves the existing sidecars in the background
 	 * @return DataResponse<Http::STATUS_OK, EbookReaderSettings, array{}>
 	 * @throws OCSBadRequestException Invalid settings
 	 * @throws OCSForbiddenException Not logged in
@@ -74,7 +75,7 @@ class SettingsController extends AbstractOCSController {
 	#[NoAdminRequired]
 	#[UserRateLimit(limit: 30, period: 60)]
 	#[ApiRoute(verb: 'PUT', url: '/api/v1/settings')]
-	public function put(?array $libraryFolders = null, ?array $reader = null, ?string $filenamePattern = null, ?array $genreList = null, ?string $metadataWriteMode = null, ?string $metadataTarget = null): DataResponse {
+	public function put(?array $libraryFolders = null, ?array $reader = null, ?string $filenamePattern = null, ?array $genreList = null, ?string $metadataWriteMode = null, ?string $metadataTarget = null, ?string $sidecarLocation = null): DataResponse {
 		$userId = $this->uid();
 		$params = $this->request->getParams();
 		$update = [];
@@ -115,6 +116,12 @@ class SettingsController extends AbstractOCSController {
 				throw new OCSBadRequestException('metadataTarget must be one of: ' . implode(', ', SettingsService::METADATA_TARGETS));
 			}
 			$update['metadataTarget'] = $metadataTarget;
+		}
+		if (array_key_exists('sidecarLocation', $params)) {
+			if ($sidecarLocation === null || !in_array($sidecarLocation, SettingsService::SIDECAR_LOCATIONS, true)) {
+				throw new OCSBadRequestException('sidecarLocation must be one of: ' . implode(', ', SettingsService::SIDECAR_LOCATIONS));
+			}
+			$update['sidecarLocation'] = $sidecarLocation;
 		}
 
 		/** @var EbookReaderSettings $result */

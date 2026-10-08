@@ -68,6 +68,25 @@
 				</div>
 			</section>
 
+			<section v-if="sidecarSupported && usesSidecar">
+				<h3>{{ t('ebookreader', 'Where to store companion files') }}</h3>
+				<p class="hint">
+					{{ t('ebookreader', 'The sidecar files with the metadata of your books. Changing this moves the existing files in the background.') }}
+				</p>
+				<div v-for="option in sidecarOptions" :key="option.value">
+					<NcCheckboxRadioSwitch
+						v-model="sidecarLocation"
+						type="radio"
+						name="sidecar-location"
+						:value="option.value">
+						{{ option.label }}
+					</NcCheckboxRadioSwitch>
+					<p class="hint library-settings__option-help">
+						{{ option.help }}
+					</p>
+				</div>
+			</section>
+
 			<section v-if="usesBookFile">
 				<h3>{{ t('ebookreader', 'Writing metadata into the book file') }}</h3>
 				<p class="hint">
@@ -146,7 +165,7 @@
 
 <script setup lang="ts">
 import type { OpdsState } from '../../services/opdsApi.ts'
-import type { MetadataTarget, MetadataWriteMode } from '../../types.ts'
+import type { MetadataTarget, MetadataWriteMode, SidecarLocation } from '../../types.ts'
 
 import { mdiClose, mdiContentCopy, mdiFolderPlusOutline } from '@mdi/js'
 import { getFilePickerBuilder, showError, showSuccess } from '@nextcloud/dialogs'
@@ -158,6 +177,7 @@ import NcDialog from '@nextcloud/vue/components/NcDialog'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import NcTextArea from '@nextcloud/vue/components/NcTextArea'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
+import { hasFeature } from '../../services/features.ts'
 import { getOpds, putOpds } from '../../services/opdsApi.ts'
 import { useSettingsStore } from '../../stores/settings.ts'
 import { resolveTarget, resolveWriteMode, writesBookFile } from './metadataStorage.ts'
@@ -177,6 +197,13 @@ const targets = computed(() => [
 	{ value: 'file' as const, label: t('ebookreader', 'Inside the book'), help: t('ebookreader', 'Other readers see the changes, but the book file is rewritten.') },
 	{ value: 'both' as const, label: t('ebookreader', 'Sidecar file and inside the book'), help: t('ebookreader', 'Both of the above.') },
 	{ value: 'library' as const, label: t('ebookreader', 'Library only'), help: t('ebookreader', 'Only stored in this library, files and folders stay untouched.') },
+])
+const sidecarSupported = hasFeature('sidecar-meta')
+const sidecarLocation = ref<SidecarLocation>(initial.sidecarLocation === 'meta' ? 'meta' : 'beside')
+const usesSidecar = computed(() => target.value === 'sidecar' || target.value === 'both')
+const sidecarOptions = computed(() => [
+	{ value: 'beside' as const, label: t('ebookreader', 'Next to the book (recommended)'), help: t('ebookreader', 'A hidden file ".<book>.opf" in the same folder as the book.') },
+	{ value: 'meta' as const, label: t('ebookreader', 'In a hidden .meta folder per directory'), help: t('ebookreader', 'The folders stay tidy: all companion files of a directory go into its hidden ".meta" folder.') },
 ])
 const writeModes = computed(() => [
 	{ value: 'background' as const, label: t('ebookreader', 'In the background (recommended)'), help: t('ebookreader', 'Saved instantly in the library and written into the file shortly afterwards in one go.') },
@@ -306,6 +333,7 @@ async function save(): Promise<void> {
 			genreList: genres.length ? genres : null,
 			metadataTarget: target.value,
 			metadataWriteMode: writeMode.value,
+			...(sidecarSupported ? { sidecarLocation: sidecarLocation.value } : {}),
 		})
 		showSuccess(t('ebookreader', 'Settings saved'))
 		emit('saved')

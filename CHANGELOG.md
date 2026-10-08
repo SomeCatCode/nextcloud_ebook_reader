@@ -5,6 +5,26 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+## 0.10.0 – 2026-10-08
+
+### Hinzugefügt
+- **Navigation neu geordnet:** Alle Bücher, Weiterlesen, Ungelesen, Gelesen, **Serien**, **Geteilt**, **Ordner**, danach die Regale. „Serien“ zeigt direkt alle Serien (Klick öffnet die Bände) und ist kein Filter-Eintrag mehr; der Schalter „Serien gruppieren“ entfällt.
+- **Ansicht „Geteilt“:** alle geteilten Bücher als Raster oder Liste mit Endlos-Scrollen, eingrenzbar auf „Mit mir geteilt“ / „Von mir geteilt“; gefiltert wird in der Datenbank, damit es auch bei sehr großen (Community-)Bibliotheken schnell bleibt. Die Freigaben-Übersicht ist über „Freigaben verwalten“ erreichbar.
+- **Ordneransicht:** Bücher nach Ordnerstruktur durchsuchen (Pfadleiste, Unterordner mit Anzahl, optional inklusive Unterordnern), Ordner teilen und in der Dateien-App öffnen.
+- **Serien teilen:** live und nur lesend – später zur Serie hinzukommende Bände werden beim nächsten Abgleich (alle 15 Minuten) automatisch mitgeteilt.
+- **Ordner teilen:** ein Ordner der Bibliothek wird als *eine* schreibgeschützte Nextcloud-Freigabe geteilt (nicht eine Freigabe pro Buch).
+- **Teilen-Symbol** auf Büchern, Serien und Ordnern, die du teilst oder die mit dir geteilt wurden (unterschiedliche Symbole und Tooltips).
+- **Einstellung „Begleitdateien speichern“:** wie bisher als versteckte Datei neben dem Buch (`.<Buch>.opf`) oder gesammelt in einem versteckten `.meta`-Ordner pro Verzeichnis (`.meta/<Buch>.opf`) – übersichtlicher z. B. im Windows-Explorer über den Sync-Client. Beim Umstellen verschiebt ein Hintergrundjob die vorhandenen eigenen Begleitdateien; gelesen werden immer beide Orte, leere `.meta`-Ordner werden entfernt.
+- API: `GET /books` kennt `shared=incoming|outgoing|any`, `folder` und `folderRecursive`; das Buch-JSON hat `sharedOut`; neue Endpunkte `GET /folders`, `POST/DELETE /series/shares`, `POST/DELETE /folders/shares`; `GET /series` liefert `sharedWith`/`shared`; `GET /shares` listet Serien- und Ordnerfreigaben (`type: series|folder`); Einstellung `sidecarLocation`; Capabilities melden `features` (`shared-filter`, `series-shares`, `folder-shares`, `folders`, `sidecar-meta`). Neue Tabellen `ebookreader_series_shares`, `ebookreader_folder_shares` und Spalte `books.shared_owner` (Migration `Version1008Date20261008100000`).
+
+### Geändert
+- **Geteilte Ordner erscheinen automatisch in der Bibliothek:** Bücher in Ordnern, die andere Benutzer geteilt haben (über die App oder ganz normal in der Dateien-App), werden indexiert – egal, wo die Freigabe eingebunden ist, auch außerhalb der Bibliotheksordner. Liegt die Freigabe in einem Bibliotheksordner, gibt es keine Duplikate. Lesestatus, Fortschritt und Markierungen bleiben pro Benutzer; Dateien des Eigentümers werden weiterhin nie verändert.
+- Release-Workflow: Die Veröffentlichung im Nextcloud App Store läuft nur noch, wenn die Repository-Variable `APPSTORE_PUBLISH` auf `true` steht. Solange die App dort nicht registriert ist, schlägt das Release dadurch nicht mehr fehl; das GitHub-Release wird wie bisher erstellt.
+
+### Behoben
+- Beim Kopieren eines Buchs in der Dateien-App (oder per WebDAV COPY) wird die Begleitdatei jetzt mitkopiert. Verschieben, Umbenennen, Löschen, Organisieren und Konvertieren behandeln beide Ablageorte der Begleitdateien.
+- Delta-Sync (`GET /sync`): Änderungen an Freigaben (Buch, Regal, Serie oder Ordner geteilt bzw. nicht mehr geteilt, Freigabe in der Dateien-App gelöscht, Empfänger gelöscht) setzen jetzt `updated_at` der betroffenen Bücher des Eigentümers neu. Die Android-App erhält so den neuen Wert von `sharedOut` im nächsten Abgleich und braucht dafür keinen vollständigen Neuabgleich mehr.
+
 ## 0.9.0 – 2026-10-07
 
 ### Geändert

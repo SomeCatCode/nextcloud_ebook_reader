@@ -15,6 +15,10 @@ use OCA\EbookReader\Db\Book;
 use OCA\EbookReader\Db\BookMapper;
 use OCA\EbookReader\Db\FileShare;
 use OCA\EbookReader\Db\FileShareMapper;
+use OCA\EbookReader\Db\FolderShare;
+use OCA\EbookReader\Db\FolderShareMapper;
+use OCA\EbookReader\Db\SeriesShare;
+use OCA\EbookReader\Db\SeriesShareMapper;
 use OCA\EbookReader\Db\Shelf;
 use OCA\EbookReader\Db\ShelfBookMapper;
 use OCA\EbookReader\Db\ShelfMapper;
@@ -28,6 +32,8 @@ use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\IJobList;
 use OCP\Constants;
 use OCP\Files\File;
+use OCP\Files\Folder;
+use OCP\Files\Node;
 use OCP\Files\NotFoundException;
 use OCP\IUserManager;
 use OCP\Share\Exceptions\GenericShareException;
@@ -65,7 +71,19 @@ class ShareServiceTest extends TestCase {
 	private array $queued = [];
 	/** @var array<string, list<int>> book rows per user when they differ from the reachable files */
 	private array $bookRows = [];
+	/** @var array<int, SeriesShare> */
+	private array $seriesShareStore = [];
+	/** @var array<int, FolderShare> */
+	private array $folderShareStore = [];
+	/** @var array<int, string> file id => series name of alice's books */
+	private array $seriesOf = [1 => 'Saga', 2 => 'saga', 3 => 'Saga', 4 => 'Other'];
+	/** @var array<string, int> alice's folders: path => folder (file) id */
+	private array $folders = ['/Books/Saga' => 500, '/Books' => 501, '/Music' => 502];
+	/** @var array<int, int> folder id => permissions */
+	private array $folderPerms = [];
 	private bool $sharingEnabled = true;
+	/** @var list<array{0: string, 1: list<int>|string, 2: int}> touched owner books: [owner, file ids or folder path, updated_at] */
+	private array $touched = [];
 	private int $nextId = 1;
 
 	protected function setUp(): void {
@@ -111,6 +129,31 @@ class ShareServiceTest extends TestCase {
 			return $file;
 		});
 		$this->library->method('canReadContent')->willReturn(true);
+		$this->library->method('isPathInLibrary')->willReturnCallback(static fn (string $u, string $p): bool => str_starts_with($p, '/Books'));
+		$this->library->method('getFolderForUser')->willReturnCallback(function (string $u, string $path): Folder {
+			if ($u !== 'alice' || !isset($this->folders[$path])) {
+				throw new NotFoundException();
+			}
+			$id = $this->folders[$path];
+			$folder = $this->createMock(Folder::class);
+			$folder->method('getId')->willReturn($id);
+			$perm = $this->folderPerms[$id] ?? Constants::PERMISSION_ALL;
+			$folder->method('getPermissions')->willReturn($perm);
+			$folder->method('isShareable')->willReturn(($perm & Constants::PERMISSION_SHARE) !== 0);
+			return $folder;
+		});
+		$this->library->method('sharedFolderPaths')->willReturnCallback(function (string $owner): array {
+			$out = [];
+			foreach ($this->folderShareStore as $row) {
+				$path = array_search($row->getFolderId(), $this->folders, true);
+				if ($row->getOwnerId() === $owner && $path !== false) {
+					$out[$row->getFolderId()] = $path;
+				}
+			}
+			return $out;
+		});
+		$this->library->method('countBooksBelow')->willReturn(3);
+		$this->library->method('findFileIdsBelow')->willReturn([1, 2]);
 
 		$books = $this->createMock(BookMapper::class);
 		$books->method('findByUserAndFile')->willReturnCallback(function (string $u, int $id): Book {
@@ -118,6 +161,25 @@ class ShareServiceTest extends TestCase {
 				throw new DoesNotExistException('');
 			}
 			return $this->book($id);
+		});
+		$books->method('touch')->willReturnCallback(function (string $u, array $ids, int $now): int {
+			$this->touched[] = [$u, $ids, $now];
+			return count($ids);
+		});
+		$books->method('touchBelow')->willReturnCallback(function (string $u, string $path, int $now): int {
+			$this->touched[] = [$u, $path, $now];
+			return 1;
+		});
+		$books->method('findBySeries')->willReturnCallback(function (string $u, array $series): array {
+			$out = [];
+			foreach ($this->library_[$u] ?? [] as $id) {
+				foreach ($series as $name) {
+					if (isset($this->seriesOf[$id]) && mb_strtolower($this->seriesOf[$id]) === mb_strtolower($name)) {
+						$out[] = $this->book($id);
+					}
+				}
+			}
+			return $out;
 		});
 		$books->method('findByUserAndFiles')->willReturnCallback(fn (string $u, array $ids): array => array_values(array_map(
 			fn (int $id): Book => $this->book($id),
@@ -148,6 +210,8 @@ class ShareServiceTest extends TestCase {
 			$this->jobs(),
 			$this->time(),
 			$this->createMock(\Psr\Log\LoggerInterface::class),
+			$this->seriesShareMapper(),
+			$this->folderShareMapper(),
 		);
 	}
 
@@ -156,6 +220,7 @@ class ShareServiceTest extends TestCase {
 		$b->setFileId($id);
 		$b->setTitle('Book ' . $id);
 		$b->setPath('/Books/' . $id . '.epub');
+		$b->setSeries($this->seriesOf[$id] ?? null);
 		return $b;
 	}
 
@@ -168,7 +233,7 @@ class ShareServiceTest extends TestCase {
 				return $share;
 			});
 		}
-		$share->method('getNode')->willReturnCallback(function () use (&$data): File {
+		$share->method('getNode')->willReturnCallback(function () use (&$data): Node {
 			return $data['node'];
 		});
 		$share->method('getSharedWith')->willReturnCallback(function () use (&$data): string {
@@ -276,6 +341,80 @@ class ShareServiceTest extends TestCase {
 		$m->method('findByOwner')->willReturnCallback(fn (string $o): array => $filter(static fn (ShelfShare $s): bool => $s->getOwnerId() === $o));
 		$m->method('findByRecipient')->willReturnCallback(fn (string $r): array => $filter(static fn (ShelfShare $s): bool => $s->getRecipientId() === $r));
 		$m->method('findPage')->willReturnCallback(fn (int $after, int $limit): array => array_slice($filter(static fn (ShelfShare $s): bool => $s->getId() > $after), 0, $limit));
+		return $m;
+	}
+
+	private function seriesShareMapper(): SeriesShareMapper {
+		$m = $this->createMock(SeriesShareMapper::class);
+		$m->method('insert')->willReturnCallback(function (SeriesShare $s): SeriesShare {
+			$s->setId($this->nextId++);
+			$this->seriesShareStore[$s->getId()] = $s;
+			return $s;
+		});
+		$m->method('update')->willReturnArgument(0);
+		$m->method('delete')->willReturnCallback(function (SeriesShare $s): SeriesShare {
+			unset($this->seriesShareStore[$s->getId()]);
+			return $s;
+		});
+		$m->method('findByOwnerSeriesAndRecipient')->willReturnCallback(function (string $o, string $key, string $r): SeriesShare {
+			foreach ($this->seriesShareStore as $s) {
+				if ($s->getOwnerId() === $o && $s->getSeriesKey() === $key && $s->getRecipientId() === $r) {
+					return $s;
+				}
+			}
+			throw new DoesNotExistException('');
+		});
+		$m->method('findById')->willReturnCallback(fn (int $id): SeriesShare => $this->seriesShareStore[$id] ?? throw new DoesNotExistException(''));
+		$filter = fn (callable $fn): array => array_values(array_filter($this->seriesShareStore, $fn));
+		$m->method('findByOwnerAndSeries')->willReturnCallback(fn (string $o, string $key): array => $filter(static fn (SeriesShare $s): bool => $s->getOwnerId() === $o && $s->getSeriesKey() === $key));
+		$m->method('findByOwner')->willReturnCallback(fn (string $o): array => $filter(static fn (SeriesShare $s): bool => $s->getOwnerId() === $o));
+		$m->method('findByRecipient')->willReturnCallback(fn (string $r): array => $filter(static fn (SeriesShare $s): bool => $s->getRecipientId() === $r));
+		$m->method('findPage')->willReturnCallback(fn (int $after, int $limit): array => array_slice($filter(static fn (SeriesShare $s): bool => $s->getId() > $after), 0, $limit));
+		$m->method('countsByOwner')->willReturnCallback(function (string $o): array {
+			$out = [];
+			foreach ($this->seriesShareStore as $s) {
+				if ($s->getOwnerId() === $o) {
+					$out[$s->getSeriesKey()] = ($out[$s->getSeriesKey()] ?? 0) + 1;
+				}
+			}
+			return $out;
+		});
+		return $m;
+	}
+
+	private function folderShareMapper(): FolderShareMapper {
+		$m = $this->createMock(FolderShareMapper::class);
+		$m->method('insert')->willReturnCallback(function (FolderShare $s): FolderShare {
+			$s->setId($this->nextId++);
+			$this->folderShareStore[$s->getId()] = $s;
+			return $s;
+		});
+		$m->method('delete')->willReturnCallback(function (FolderShare $s): FolderShare {
+			unset($this->folderShareStore[$s->getId()]);
+			return $s;
+		});
+		$filter = fn (callable $fn): array => array_values(array_filter($this->folderShareStore, $fn));
+		$m->method('findByTriple')->willReturnCallback(function (string $o, int $folderId, string $r): FolderShare {
+			foreach ($this->folderShareStore as $s) {
+				if ($s->getOwnerId() === $o && $s->getFolderId() === $folderId && $s->getRecipientId() === $r) {
+					return $s;
+				}
+			}
+			throw new DoesNotExistException('');
+		});
+		$m->method('findByFolder')->willReturnCallback(fn (string $o, int $id): array => $filter(static fn (FolderShare $s): bool => $s->getOwnerId() === $o && $s->getFolderId() === $id));
+		$m->method('findByOwner')->willReturnCallback(fn (string $o): array => $filter(static fn (FolderShare $s): bool => $s->getOwnerId() === $o));
+		$m->method('findByRecipient')->willReturnCallback(fn (string $r): array => $filter(static fn (FolderShare $s): bool => $s->getRecipientId() === $r));
+		$m->method('findByShareId')->willReturnCallback(fn (string $id): array => $filter(static fn (FolderShare $s): bool => $s->getShareId() === $id));
+		$m->method('countsByOwner')->willReturnCallback(function (string $o): array {
+			$out = [];
+			foreach ($this->folderShareStore as $s) {
+				if ($s->getOwnerId() === $o) {
+					$out[$s->getFolderId()] = ($out[$s->getFolderId()] ?? 0) + 1;
+				}
+			}
+			return $out;
+		});
 		return $m;
 	}
 
@@ -587,5 +726,366 @@ class ShareServiceTest extends TestCase {
 		$this->service->deleteAllForUser('bob');
 		$this->assertSame([], $this->shelfShareStore);
 		$this->assertCount(1, $this->rows);
+	}
+
+	// ---- sharedOut reaches the delta sync (owner's rows are touched) --------------------------------------------------
+
+	public function testSharingABookTouchesTheOwnersRowOnlyOnceWithMilliseconds(): void {
+		$this->service->shareBook('alice', 1, 'bob');
+		$this->assertSame([['alice', [1], 1800000000000]], $this->touched);
+		$this->touched = [];
+		$this->service->shareBook('alice', 1, 'bob');
+		$this->assertSame([], $this->touched);
+	}
+
+	public function testUnsharingABookAndLeavingItTouchTheOwnersRow(): void {
+		$this->service->shareBook('alice', 1, 'bob');
+		$this->service->shareBook('alice', 2, 'bob');
+		$this->touched = [];
+		$this->service->unshareBook('alice', 1, 'bob');
+		$this->assertSame([['alice', [1], 1800000000000]], $this->touched);
+		$this->touched = [];
+		$this->service->leaveBook('bob', 2);
+		$this->assertSame([['alice', [2], 1800000000000]], $this->touched);
+	}
+
+	public function testShelfAndSeriesSyncTouchAddedAndRemovedBooks(): void {
+		$this->shelf(10, 'alice', Shelf::TYPE_MANUAL, [1, 2]);
+		$this->service->shareShelf('alice', 10, 'bob');
+		$this->assertSame([['alice', [1, 2], 1800000000000]], $this->touched);
+		$this->touched = [];
+		$this->assigned[10] = [2];
+		$this->service->syncShelf(10);
+		$this->assertSame([['alice', [1], 1800000000000]], $this->touched);
+		$this->touched = [];
+		$this->service->unshareShelf('alice', 10, 'bob');
+		$this->assertSame([['alice', [2], 1800000000000]], $this->touched);
+		$this->touched = [];
+		$this->service->shareSeries('alice', 'Saga', 'bob');
+		$this->assertSame([['alice', [1, 2, 3], 1800000000000]], $this->touched);
+		$this->touched = [];
+		$this->service->unshareSeries('alice', 'Saga', 'bob');
+		$this->assertCount(1, $this->touched);
+		$this->assertSame('alice', $this->touched[0][0]);
+		$this->assertEqualsCanonicalizing([1, 2, 3], $this->touched[0][1]);
+	}
+
+	public function testFolderShareAndUnshareTouchTheOwnersBooksBelowTheFolder(): void {
+		$this->service->shareFolder('alice', '/Books/Saga', 'bob');
+		$this->assertSame([['alice', '/Books/Saga', 1800000000000]], $this->touched);
+		$this->touched = [];
+		$this->service->shareFolder('alice', '/Books/Saga', 'bob');
+		$this->assertSame([], $this->touched);
+		$this->service->unshareFolder('alice', '/Books/Saga', 'bob');
+		$this->assertSame([['alice', '/Books/Saga', 1800000000000]], $this->touched);
+	}
+
+	public function testShareDeletedInFilesTouchesTheOwnersBooks(): void {
+		$this->service->shareBook('alice', 1, 'bob');
+		$this->service->shareFolder('alice', '/Books/Saga', 'carol');
+		$this->touched = [];
+		$id = (string)array_key_first($this->ncShares);
+		$event = $this->createMock(IShare::class);
+		$event->method('getFullId')->willReturn($id);
+		$this->service->onShareDeleted($event);
+		$this->assertSame([['alice', [1], 1800000000000]], $this->touched);
+
+		$this->touched = [];
+		$folderShareId = (string)array_key_last($this->ncShares);
+		$event = $this->createMock(IShare::class);
+		$event->method('getFullId')->willReturn($folderShareId);
+		$this->service->onShareDeleted($event);
+		$this->assertSame([['alice', '/Books/Saga', 1800000000000]], $this->touched);
+	}
+
+	public function testDeletingARecipientTouchesTheOwnersBooksButNotTheRecipientsRows(): void {
+		$this->service->shareBook('alice', 1, 'bob');
+		$this->service->shareFolder('alice', '/Books/Saga', 'bob');
+		$this->touched = [];
+		$this->service->deleteAllForUser('bob');
+		$this->assertSame([['alice', [1], 1800000000000], ['alice', '/Books/Saga', 1800000000000]], $this->touched);
+	}
+
+	public function testDeletingAnOwnerTouchesNothing(): void {
+		$this->service->shareBook('alice', 1, 'bob');
+		$this->touched = [];
+		$this->service->deleteAllForUser('alice');
+		$this->assertSame([], $this->touched);
+	}
+
+	// ---- series shares ----------------------------------------------------------------------------------------------
+
+	public function testShareSeriesSharesAllOwnBooksOfTheSeriesCaseInsensitively(): void {
+		$result = $this->service->shareSeries('alice', ' SAGA ', 'bob');
+		$this->assertSame('series', $result['share']['type']);
+		$this->assertSame('Saga', $result['share']['series']);
+		$this->assertSame('Saga', $result['share']['name']);
+		$this->assertSame(3, $result['share']['bookCount']);
+		$this->assertSame(0, $result['skipped']);
+		// books 1, 2 and 3 ("Saga", "saga", "Saga"); book 4 belongs to another series
+		$this->assertSame([1, 2, 3], array_values(array_map(static fn (FileShare $r): int => $r->getFileId(), $this->rows)));
+		$this->assertCount(3, $this->ncShares);
+		foreach ($this->rows as $row) {
+			$this->assertFalse($row->isDirect());
+			$this->assertLessThan(0, $row->getShelfShareId(), 'series reasons are negative');
+		}
+		$this->assertSame([1, 2, 3], $this->queuedScans('bob'));
+	}
+
+	public function testShareSeriesIsIdempotentAndKeepsSharesApart(): void {
+		$this->service->shareSeries('alice', 'Saga', 'bob');
+		$this->service->shareSeries('alice', 'saga', 'bob');
+		$this->assertCount(1, $this->seriesShareStore);
+		$this->assertCount(3, $this->rows);
+		$this->assertCount(3, $this->ncShares);
+	}
+
+	public function testShareSeriesValidation(): void {
+		$this->assertShareError(ShareException::INVALID, fn () => $this->service->shareSeries('alice', '  ', 'bob'));
+		$this->assertShareError(ShareException::INVALID, fn () => $this->service->shareSeries('alice', 'Saga', 'alice'));
+		$this->assertShareError(ShareException::INVALID, fn () => $this->service->shareSeries('alice', 'Saga', 'mallory'));
+		$this->assertShareError(ShareException::NOT_FOUND, fn () => $this->service->shareSeries('alice', 'Unknown series', 'bob'));
+		// the series of another user is not shareable by name
+		$this->assertShareError(ShareException::NOT_FOUND, fn () => $this->service->shareSeries('bob', 'Saga', 'alice'));
+		$this->sharingEnabled = false;
+		$this->assertShareError(ShareException::FORBIDDEN, fn () => $this->service->shareSeries('alice', 'Saga', 'bob'));
+		$this->assertSame([], $this->ncShares);
+		$this->assertSame([], $this->seriesShareStore);
+	}
+
+	public function testSeriesIsLiveNewBooksAreSharedAndLeavingBooksUnshared(): void {
+		$this->service->shareSeries('alice', 'Saga', 'bob');
+		$this->library_['alice'][] = 5;
+		$this->seriesOf[5] = 'Saga';
+		unset($this->seriesOf[2]);
+		$this->assertSame(1, $this->service->syncAll());
+		$files = array_values(array_map(static fn (FileShare $r): int => $r->getFileId(), $this->rows));
+		sort($files);
+		$this->assertSame([1, 3, 5], $files);
+		$this->assertCount(3, $this->ncShares);
+	}
+
+	public function testSeriesShareSkipsBooksWithoutSharePermissionAndIncomingBooks(): void {
+		$this->perms[3] = Constants::PERMISSION_READ;
+		$result = $this->service->shareSeries('alice', 'Saga', 'bob');
+		$this->assertSame(1, $result['skipped']);
+		$this->assertCount(2, $this->rows);
+	}
+
+	public function testUnshareSeriesRemovesFileSharesButKeepsDirectBookShares(): void {
+		$this->service->shareBook('alice', 1, 'bob');
+		$this->service->shareSeries('alice', 'Saga', 'bob');
+		$this->queued = [];
+		$this->service->unshareSeries('alice', 'saga', 'bob');
+		$this->assertSame([], $this->seriesShareStore);
+		// book 1 stays shared directly (its Nextcloud share is reused), books 2 and 3 are unshared
+		$this->assertCount(1, $this->rows);
+		$this->assertCount(1, $this->ncShares);
+		// the recipient's library re-checks the books whose share reason went away
+		$this->assertEqualsCanonicalizing([1, 2, 3], $this->queuedScans('bob'));
+		$this->assertShareError(ShareException::NOT_FOUND, fn () => $this->service->unshareSeries('alice', 'Saga', 'bob'));
+	}
+
+	public function testSeriesAndShelfSharesNeedingTheSameFileKeepItShared(): void {
+		$this->shelf(10, 'alice', Shelf::TYPE_MANUAL, [1]);
+		$this->service->shareShelf('alice', 10, 'bob');
+		$this->service->shareSeries('alice', 'Saga', 'bob');
+		$this->assertCount(3, $this->ncShares);
+		$this->service->unshareSeries('alice', 'Saga', 'bob');
+		$this->assertCount(1, $this->ncShares);
+		$this->assertCount(1, $this->rows);
+	}
+
+	public function testSeriesShareCountsAreKeyedByCaseInsensitiveName(): void {
+		$this->service->shareSeries('alice', 'Saga', 'bob');
+		$this->service->shareSeries('alice', 'saga', 'carol');
+		$counts = $this->service->seriesShareCounts('alice');
+		$this->assertSame([SeriesShare::keyOf('SAGA') => 2], $counts);
+	}
+
+	public function testSeriesRecipientLimit(): void {
+		$this->service->shareSeries('alice', 'Saga', 'bob');
+		for ($i = 0; $i < ShareService::MAX_SERIES_FOLDER_RECIPIENTS - 1; $i++) {
+			$s = new SeriesShare();
+			$s->setOwnerId('alice');
+			$s->setRecipientId('fake' . $i);
+			$s->setSeries('Saga');
+			$s->setSeriesKey(SeriesShare::keyOf('Saga'));
+			$s->setId($this->nextId++);
+			$this->seriesShareStore[$s->getId()] = $s;
+		}
+		$this->assertShareError(ShareException::INVALID, fn () => $this->service->shareSeries('alice', 'Saga', 'carol'));
+	}
+
+	public function testOverviewListsSeriesShares(): void {
+		$this->service->shareSeries('alice', 'Saga', 'bob');
+		$out = $this->service->overview('alice')['outgoing'];
+		$series = array_values(array_filter($out, static fn (array $s): bool => $s['type'] === 'series'));
+		$this->assertCount(1, $series);
+		$this->assertSame('Saga', $series[0]['series']);
+		$this->assertSame(3, $series[0]['bookCount']);
+		$this->assertSame('bob', $series[0]['recipient']);
+		$in = $this->service->overview('bob')['incoming'];
+		$series = array_values(array_filter($in, static fn (array $s): bool => $s['type'] === 'series'));
+		$this->assertCount(1, $series);
+		$this->assertSame('alice', $series[0]['owner']);
+	}
+
+	public function testDeleteAllForUserRemovesSeriesAndFolderRecords(): void {
+		$this->service->shareSeries('alice', 'Saga', 'bob');
+		$this->service->shareFolder('alice', '/Books/Saga', 'bob');
+		$this->service->deleteAllForUser('bob');
+		$this->assertSame([], $this->seriesShareStore);
+		$this->assertSame([], $this->folderShareStore);
+	}
+
+	// ---- folder shares ----------------------------------------------------------------------------------------------
+
+	public function testShareFolderCreatesOneReadOnlyShareOfTheFolder(): void {
+		$result = $this->service->shareFolder('alice', '/Books/Saga/', 'bob');
+		$this->assertSame('folder', $result['share']['type']);
+		$this->assertSame('Saga', $result['share']['name']);
+		$this->assertSame('/Books/Saga', $result['share']['path']);
+		$this->assertSame('bob', $result['share']['recipient']);
+		$this->assertCount(1, $this->ncShares);
+		$this->assertSame(500, array_values($this->ncShares)[0]['fileId']);
+		$this->assertNotNull($this->lastShare);
+		$this->assertSame(Constants::PERMISSION_READ, $this->lastShare->getPermissions());
+		$this->assertFalse($this->lastShare->getMailSend());
+		$this->assertSame([], $this->rows, 'no per-book share rows');
+		$this->assertCount(1, $this->folderShareStore);
+		// the recipient's library picks the books up through a scan of the folder
+		$this->assertSame([500], $this->queuedScans('bob'));
+	}
+
+	public function testShareFolderIsIdempotent(): void {
+		$this->service->shareFolder('alice', '/Books/Saga', 'bob');
+		$this->service->shareFolder('alice', 'Books//Saga', 'bob');
+		$this->assertCount(1, $this->ncShares);
+		$this->assertCount(1, $this->folderShareStore);
+	}
+
+	public function testShareFolderRules(): void {
+		$this->assertShareError(ShareException::INVALID, fn () => $this->service->shareFolder('alice', '', 'bob'));
+		$this->assertShareError(ShareException::INVALID, fn () => $this->service->shareFolder('alice', '/', 'bob'));
+		$this->assertShareError(ShareException::INVALID, fn () => $this->service->shareFolder('alice', '/Books/../Music', 'bob'));
+		$this->assertShareError(ShareException::INVALID, fn () => $this->service->shareFolder('alice', '/Books/Saga', 'alice'));
+		$this->assertShareError(ShareException::INVALID, fn () => $this->service->shareFolder('alice', '/Books/Saga', 'mallory'));
+		// outside the library folders
+		$this->assertShareError(ShareException::FORBIDDEN, fn () => $this->service->shareFolder('alice', '/Music', 'bob'));
+		// not an existing folder of the user
+		$this->assertShareError(ShareException::NOT_FOUND, fn () => $this->service->shareFolder('alice', '/Books/Nothing', 'bob'));
+		$this->assertShareError(ShareException::NOT_FOUND, fn () => $this->service->shareFolder('bob', '/Books/Saga', 'alice'));
+		$this->folderPerms[500] = Constants::PERMISSION_READ;
+		$this->assertShareError(ShareException::FORBIDDEN, fn () => $this->service->shareFolder('alice', '/Books/Saga', 'bob'));
+		$this->folderPerms = [];
+		$this->sharingEnabled = false;
+		$this->assertShareError(ShareException::FORBIDDEN, fn () => $this->service->shareFolder('alice', '/Books/Saga', 'bob'));
+		$this->assertSame([], $this->ncShares);
+		$this->assertSame([], $this->folderShareStore);
+	}
+
+	public function testUnshareFolderDeletesTheShareAndQueuesTheRecipientCheck(): void {
+		$this->service->shareFolder('alice', '/Books/Saga', 'bob');
+		$this->queued = [];
+		$this->service->unshareFolder('alice', '/Books/Saga', 'bob');
+		$this->assertSame([], $this->ncShares);
+		$this->assertSame([], $this->folderShareStore);
+		// books 1 and 2 of the folder are re-checked for bob (his rows are tombstoned when unreachable)
+		$this->assertSame([1, 2], $this->queuedScans('bob'));
+		$this->assertShareError(ShareException::NOT_FOUND, fn () => $this->service->unshareFolder('alice', '/Books/Saga', 'bob'));
+	}
+
+	public function testUnshareFolderNeverDeletesAShareTheUserMadeInFiles(): void {
+		$existing = $this->createMock(IShare::class);
+		$existing->method('getSharedWith')->willReturn('bob');
+		$manager = $this->createMock(IManager::class);
+		$manager->method('shareApiEnabled')->willReturn(true);
+		$manager->method('getSharesBy')->willReturn([$existing]);
+		$manager->expects($this->never())->method('createShare');
+		$manager->expects($this->never())->method('deleteShare');
+		$service = $this->serviceWith($manager);
+		$service->shareFolder('alice', '/Books/Saga', 'bob');
+		$this->assertNull(array_values($this->folderShareStore)[0]->getShareId());
+		$service->unshareFolder('alice', '/Books/Saga', 'bob');
+		$this->assertSame([], $this->folderShareStore);
+	}
+
+	public function testFolderShareCountsAreKeyedByCurrentPath(): void {
+		$this->service->shareFolder('alice', '/Books/Saga', 'bob');
+		$this->service->shareFolder('alice', '/Books/Saga', 'carol');
+		$this->service->shareFolder('alice', '/Books', 'bob');
+		$this->assertSame(['/Books/Saga' => 2, '/Books' => 1], $this->service->folderShareCounts('alice'));
+		$this->assertSame([], $this->service->folderShareCounts('bob'));
+	}
+
+	public function testFolderRecipientLimit(): void {
+		$this->service->shareFolder('alice', '/Books/Saga', 'bob');
+		for ($i = 0; $i < ShareService::MAX_SERIES_FOLDER_RECIPIENTS - 1; $i++) {
+			$s = new FolderShare();
+			$s->setOwnerId('alice');
+			$s->setRecipientId('fake' . $i);
+			$s->setFolderId(500);
+			$s->setId($this->nextId++);
+			$this->folderShareStore[$s->getId()] = $s;
+		}
+		$this->assertShareError(ShareException::INVALID, fn () => $this->service->shareFolder('alice', '/Books/Saga', 'carol'));
+	}
+
+	public function testOverviewListsFolderSharesAndHidesThePathFromTheRecipient(): void {
+		$this->service->shareFolder('alice', '/Books/Saga', 'bob');
+		$out = array_values(array_filter($this->service->overview('alice')['outgoing'], static fn (array $s): bool => $s['type'] === 'folder'));
+		$this->assertCount(1, $out);
+		$this->assertSame('/Books/Saga', $out[0]['path']);
+		$this->assertSame(3, $out[0]['bookCount']);
+		$in = array_values(array_filter($this->service->overview('bob')['incoming'], static fn (array $s): bool => $s['type'] === 'folder'));
+		$this->assertCount(1, $in);
+		$this->assertSame('Saga', $in[0]['name']);
+		$this->assertNull($in[0]['path']);
+		$this->assertSame('alice', $in[0]['owner']);
+	}
+
+	public function testShareDeletedInFilesDropsTheFolderShareRecord(): void {
+		$this->service->shareFolder('alice', '/Books/Saga', 'bob');
+		$id = array_key_first($this->ncShares);
+		$event = $this->createMock(IShare::class);
+		$event->method('getFullId')->willReturn($id);
+		$this->service->onShareDeleted($event);
+		$this->assertSame([], $this->folderShareStore);
+		$this->assertContains(1, $this->queuedScans('bob'));
+	}
+
+	public function testAcceptingAFolderShareQueuesTheFolderScan(): void {
+		$this->service->shareFolder('alice', '/Books/Saga', 'bob');
+		$this->queued = [];
+		$event = $this->createMock(IShare::class);
+		$event->method('getFullId')->willReturn((string)array_key_first($this->ncShares));
+		$this->service->onShareAccepted($event);
+		$this->assertSame([500], $this->queuedScans('bob'));
+	}
+
+	public function testEnsureIncomingIndexedAlsoIndexesIncomingFolders(): void {
+		$this->library->expects($this->once())->method('indexIncomingFolders')->with('bob', ShareService::INLINE_INDEX, 5.0)->willReturn(['indexed' => 4, 'pending' => 0]);
+		$this->assertSame(4, $this->service->ensureIncomingIndexed('bob'));
+	}
+
+	public function testIncomingFolderWalkIsThrottled(): void {
+		$values = [];
+		$config = $this->createMock(\OCP\IConfig::class);
+		$config->method('getUserValue')->willReturnCallback(static function (string $u, string $app, string $key, string $default = '') use (&$values): string {
+			return $values[$u . $key] ?? $default;
+		});
+		$config->method('setUserValue')->willReturnCallback(static function (string $u, string $app, string $key, mixed $value) use (&$values): void {
+			$values[$u . $key] = (string)$value;
+		});
+		$r = new \ReflectionClass($this->service);
+		$args = [];
+		foreach ($r->getConstructor()?->getParameters() ?? [] as $p) {
+			$args[] = $p->getName() === 'config' ? $config : $r->getProperty($p->getName())->getValue($this->service);
+		}
+		$service = new ShareService(...$args);
+		$this->library->expects($this->once())->method('indexIncomingFolders')->willReturn(['indexed' => 0, 'pending' => 0]);
+		$service->ensureIncomingIndexed('bob');
+		$service->ensureIncomingIndexed('bob');
 	}
 }
