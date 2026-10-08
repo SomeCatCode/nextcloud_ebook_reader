@@ -7,6 +7,7 @@ import type {
 	AgeRating,
 	AppDataPatch,
 	Book,
+	BookList,
 	BookQuery,
 	BulkAppDataRequest,
 	BulkAppDataResult,
@@ -21,6 +22,7 @@ import type {
 	ReadStatus,
 	SeriesEntry,
 	SeriesQuery,
+	SharedFilter,
 	SmartQuery,
 	SortKey,
 	Task,
@@ -54,9 +56,24 @@ export interface Filters {
 
 const FILTER_TYPES: FilterType[] = ['genre', 'tag', 'author', 'series', 'format', 'shelf', 'missing', 'completion', 'age']
 const SORT_KEYS: SortKey[] = ['title', 'author', 'series', 'rating', 'added', 'read', 'shelf']
-const GROUP_SERIES_KEY = 'ebookreader.groupSeries'
 const HIDE_FINISHED_KEY = 'ebookreader.hideFinished'
 const STATUSES: ReadStatus[] = ['unread', 'reading', 'finished']
+const VIEWS: LibraryView[] = ['all', 'series', 'shared', 'folders']
+const SHARED_FILTERS: SharedFilter[] = ['any', 'incoming', 'outgoing']
+
+/** What the main area shows: books (with filters), all series, shared books, or the folder structure */
+export type LibraryView = 'all' | 'series' | 'shared' | 'folders'
+
+/** View settings that belong to the shared and folder views (see LibraryState) */
+export interface ViewState {
+	view: LibraryView
+	/** which shared books the shared view lists */
+	shared: SharedFilter
+	/** folder shown in the folder view (path relative to the home); null = top level */
+	folder: string | null
+	/** folder view: also list the books of subfolders */
+	folderRecursive: boolean
+}
 
 /**
  *
@@ -125,9 +142,25 @@ export function parseTerm(raw: string): FilterTerm | null {
  * @param extra
  * @param extra.smartShelf
  * @param extra.drillSeries
+ * @param extra.view
+ * @param extra.shared
+ * @param extra.folder
+ * @param extra.folderRecursive
  */
-export function stateToQuery(f: Filters, sort: SortKey, order: 'asc' | 'desc', extra: { smartShelf?: number | null, drillSeries?: string | null } = {}): Record<string, string | string[]> {
+export function stateToQuery(f: Filters, sort: SortKey, order: 'asc' | 'desc', extra: { smartShelf?: number | null, drillSeries?: string | null } & Partial<ViewState> = {}): Record<string, string | string[]> {
 	const q: Record<string, string | string[]> = {}
+	if (extra.view && extra.view !== 'all') {
+		q.view = extra.view
+		if (extra.view === 'shared' && extra.shared && extra.shared !== 'any') {
+			q.shared = extra.shared
+		}
+		if (extra.view === 'folders' && extra.folder) {
+			q.folder = extra.folder
+			if (extra.folderRecursive) {
+				q.recursive = '1'
+			}
+		}
+	}
 	if (extra.smartShelf) {
 		q.smart = String(extra.smartShelf)
 	}
@@ -182,12 +215,22 @@ export function queryToState(query: Record<string, unknown>): LibraryState {
 	const orderRaw = first(query.order)
 	const order = orderRaw === 'asc' || orderRaw === 'desc' ? orderRaw : defaultOrder(sort)
 	const smart = Number.parseInt(first(query.smart), 10)
+	const drillSeries = first(query.volumes) || null
+	const viewRaw = first(query.view) as LibraryView
+	// an old link with only "volumes" opens the series view
+	const view: LibraryView = VIEWS.includes(viewRaw) ? viewRaw : (drillSeries ? 'series' : 'all')
+	const sharedRaw = first(query.shared) as SharedFilter
+	const folder = first(query.folder) || null
 	return {
 		filters,
 		sort,
 		order,
 		smartShelf: Number.isInteger(smart) && smart > 0 ? smart : null,
-		drillSeries: first(query.volumes) || null,
+		drillSeries,
+		view,
+		shared: SHARED_FILTERS.includes(sharedRaw) ? sharedRaw : 'any',
+		folder: view === 'folders' ? folder : null,
+		folderRecursive: view === 'folders' && folder !== null && first(query.recursive) === '1',
 	}
 }
 
@@ -236,7 +279,7 @@ export function shelfTerm(id: number): FilterTerm {
 	return { type: 'shelf', name: String(id) }
 }
 
-export interface LibraryState {
+export interface LibraryState extends ViewState {
 	filters: Filters
 	sort: SortKey
 	order: 'asc' | 'desc'
@@ -244,17 +287,6 @@ export interface LibraryState {
 	smartShelf: number | null
 	/** series whose volumes are shown instead of the series cards */
 	drillSeries: string | null
-}
-
-/**
- * @param on
- */
-function storeGroupSeries(on: boolean): void {
-	try {
-		localStorage.setItem(GROUP_SERIES_KEY, on ? '1' : '0')
-	} catch {
-		// ignore
-	}
 }
 
 /**
@@ -276,17 +308,6 @@ function storeHideFinished(on: boolean): void {
 		localStorage.setItem(HIDE_FINISHED_KEY, on ? '1' : '0')
 	} catch {
 		// ignore
-	}
-}
-
-/**
- *
- */
-function readGroupSeries(): boolean {
-	try {
-		return localStorage.getItem(GROUP_SERIES_KEY) === '1'
-	} catch {
-		return false
 	}
 }
 
@@ -356,7 +377,13 @@ export const useLibraryStore = defineStore('library', () => {
 
 	const facets = ref<Facets>(emptyFacets())
 
-	const groupSeries = ref(readGroupSeries())
+	/** what the main area shows (not a filter: the filters apply within the view) */
+	const view = ref<LibraryView>('all')
+	/** shared view: which shared books are listed */
+	const sharedFilter = ref<SharedFilter>('any')
+	/** folder view: the open folder (null = top level, where only folders are listed) */
+	const folderPath = ref<string | null>(null)
+	const folderRecursive = ref(false)
 	/** view option, not a filter: not in the URL, not saved with smart shelves, ignored when a status filter is set */
 	const hideFinished = ref(readHideFinished())
 	/** series whose volumes are shown (back button returns to the cards) */
@@ -380,9 +407,18 @@ export const useLibraryStore = defineStore('library', () => {
 		|| filters.value.exclude.length > 0
 		|| filters.value.status !== null
 		|| filters.value.search !== '')
-	/** series cards on top, then the books without a series */
-	const seriesMode = computed(() => groupSeries.value && drillSeries.value === null)
-	const urlQuery = computed(() => stateToQuery(filters.value, sort.value, order.value, { smartShelf: smartShelfId.value, drillSeries: drillSeries.value }))
+	/** the series view shows the series cards (a drilled-in series shows its volumes as books) */
+	const seriesMode = computed(() => view.value === 'series' && drillSeries.value === null)
+	/** the folder view without an open folder only lists folders, no books */
+	const foldersRoot = computed(() => view.value === 'folders' && folderPath.value === null)
+	const urlQuery = computed(() => stateToQuery(filters.value, sort.value, order.value, {
+		smartShelf: smartShelfId.value,
+		drillSeries: drillSeries.value,
+		view: view.value,
+		shared: sharedFilter.value,
+		folder: folderPath.value,
+		folderRecursive: folderRecursive.value,
+	}))
 	const smartShelf = computed(() => (smartShelfId.value === null
 		? null
 		: useShelvesStore().shelves.find((s) => s.id === smartShelfId.value && s.type === 'smart') ?? null))
@@ -397,7 +433,7 @@ export const useLibraryStore = defineStore('library', () => {
 			!== JSON.stringify(stateToSmartQuery(filters.value, sort.value, order.value))
 	})
 	/** nothing to show (no series cards and no books) */
-	const isEmpty = computed(() => books.value.length === 0 && (!seriesMode.value || seriesList.value.length === 0))
+	const isEmpty = computed(() => (seriesMode.value ? seriesList.value.length === 0 : books.value.length === 0))
 	const selectedIds = computed(() => [...selection.value])
 	/** selected ids in the order of the loaded list (selected books that are not loaded go last) */
 	const orderedSelectedIds = computed(() => orderSelection(books.value.map((b) => b.fileId), selectedIds.value))
@@ -422,10 +458,13 @@ export const useLibraryStore = defineStore('library', () => {
 			exclude: f.exclude.length ? f.exclude : undefined,
 			match: include.length > 1 && drill === null ? f.match : undefined,
 			status: f.status ?? undefined,
-			hideFinished: f.status === null && hideFinished.value ? 1 : undefined,
+			// a folder listing is complete: finished books are not hidden there
+			hideFinished: f.status === null && hideFinished.value && view.value !== 'folders' ? 1 : undefined,
 			sort: drill === null ? sort.value : 'series',
 			order: drill === null ? order.value : 'asc',
-			inSeries: seriesMode.value ? 0 : undefined,
+			shared: view.value === 'shared' ? sharedFilter.value : undefined,
+			folder: view.value === 'folders' ? folderPath.value ?? undefined : undefined,
+			folderRecursive: view.value === 'folders' && folderPath.value !== null && folderRecursive.value ? 1 : undefined,
 			limit: PAGE_SIZE,
 			offset,
 		}
@@ -459,7 +498,7 @@ export const useLibraryStore = defineStore('library', () => {
 		error.value = null
 		try {
 			const [res, series] = await Promise.all([
-				api.listBooks(buildQuery(0)),
+				seriesMode.value || foldersRoot.value ? Promise.resolve<BookList>({ books: [], total: 0 }) : api.listBooks(buildQuery(0)),
 				seriesMode.value ? api.listSeries(buildSeriesQuery()) : Promise.resolve<SeriesEntry[]>([]),
 			])
 			if (id !== requestId) {
@@ -651,13 +690,21 @@ export const useLibraryStore = defineStore('library', () => {
 	 * @param state.order
 	 * @param state.smartShelf
 	 * @param state.drillSeries
+	 * @param state.view
+	 * @param state.shared
+	 * @param state.folder
+	 * @param state.folderRecursive
 	 */
-	function applyState(state: { filters: Filters, sort: SortKey, order: 'asc' | 'desc', smartShelf?: number | null, drillSeries?: string | null }): void {
+	function applyState(state: { filters: Filters, sort: SortKey, order: 'asc' | 'desc', smartShelf?: number | null, drillSeries?: string | null } & Partial<ViewState>): void {
 		filters.value = state.filters
 		sort.value = state.sort
 		order.value = state.order
 		smartShelfId.value = state.smartShelf ?? null
 		drillSeries.value = state.drillSeries ?? null
+		view.value = state.view ?? 'all'
+		sharedFilter.value = state.shared ?? 'any'
+		folderPath.value = state.folder ?? null
+		folderRecursive.value = state.folderRecursive ?? false
 	}
 
 	/**
@@ -672,19 +719,91 @@ export const useLibraryStore = defineStore('library', () => {
 		void reload()
 	}
 
-	// ---- series view --------------------------------------------------
+	// ---- views --------------------------------------------------------
 
 	/**
-	 * Turns the series grouping of the grid on or off (remembered in localStorage).
+	 * Back to the plain book list: no filters, no shelf, no series, no shared or folder view (no reload).
+	 *
+	 * @param next
+	 */
+	function resetView(next: LibraryView): void {
+		clearSearchTimer()
+		view.value = next
+		filters.value = emptyFilters()
+		smartShelfId.value = null
+		drillSeries.value = null
+		sharedFilter.value = 'any'
+		folderPath.value = null
+		folderRecursive.value = false
+		fixShelfSort()
+		clearSelection()
+	}
+
+	/**
+	 * Navigation: shows a view (all books, all series, shared books, folders) from scratch.
+	 *
+	 * @param next
+	 */
+	function showView(next: LibraryView): void {
+		resetView(next)
+		void reload()
+	}
+
+	/**
+	 * Navigation: Unread / Continue reading / Finished show the books with that status.
+	 *
+	 * @param status
+	 */
+	function showStatus(status: ReadStatus | null): void {
+		if (view.value !== 'all' || drillSeries.value !== null) {
+			resetView('all')
+		}
+		setStatus(status)
+	}
+
+	/**
+	 * Shared view: which shared books are listed.
+	 *
+	 * @param value
+	 */
+	function setSharedFilter(value: SharedFilter): void {
+		sharedFilter.value = value
+		clearSelection()
+		void reload()
+	}
+
+	/**
+	 * Folder view: opens a folder (null = top level).
+	 *
+	 * @param path
+	 */
+	function openFolder(path: string | null): void {
+		view.value = 'folders'
+		folderPath.value = path
+		drillSeries.value = null
+		clearSelection()
+		void reload()
+	}
+
+	/**
+	 * Folder view: also list the books of subfolders.
 	 *
 	 * @param on
 	 */
-	function setGroupSeries(on: boolean): void {
-		groupSeries.value = on
-		drillSeries.value = null
-		storeGroupSeries(on)
+	function setFolderRecursive(on: boolean): void {
+		folderRecursive.value = on
 		clearSelection()
 		void reload()
+	}
+
+	/**
+	 * Updates the share counter of a series card after (un)sharing.
+	 *
+	 * @param name
+	 * @param sharedWith
+	 */
+	function setSeriesSharedWith(name: string, sharedWith: number): void {
+		seriesList.value = seriesList.value.map((s) => (s.name === name ? { ...s, sharedWith } : s))
 	}
 
 	/**
@@ -720,6 +839,8 @@ export const useLibraryStore = defineStore('library', () => {
 	function viewShelf(shelf: { id: number, type: 'manual' | 'smart', query: SmartQuery | null }): void {
 		clearSearchTimer()
 		drillSeries.value = null
+		view.value = 'all'
+		folderPath.value = null
 		if (shelf.type === 'smart' && shelf.query) {
 			const state = smartQueryToState(shelf.query)
 			filters.value = state.filters
@@ -1140,7 +1261,17 @@ export const useLibraryStore = defineStore('library', () => {
 
 	return {
 		removeBooks,
-		groupSeries,
+		view,
+		sharedFilter,
+		folderPath,
+		folderRecursive,
+		foldersRoot,
+		showView,
+		showStatus,
+		setSharedFilter,
+		openFolder,
+		setFolderRecursive,
+		setSeriesSharedWith,
 		hideFinished,
 		setHideFinished,
 		drillSeries,
@@ -1151,7 +1282,6 @@ export const useLibraryStore = defineStore('library', () => {
 		smartShelf,
 		smartShelfDirty,
 		activeManualShelfId,
-		setGroupSeries,
 		openSeries,
 		closeSeries,
 		viewShelf,

@@ -7,12 +7,14 @@ import type { Share, ShareCreated, ShareType } from '../types.ts'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import * as api from '../services/api.ts'
+import { useFoldersStore } from './folders.ts'
+import { useLibraryStore } from './library.ts'
 import { useShelvesStore } from './shelves.ts'
 
-/** What is shared: a book (file id) or a shelf (shelf id). */
+/** What is shared: a book (file id), a shelf (shelf id), a series (its name) or a folder (its path). */
 export interface ShareTarget {
 	type: ShareType
-	id: number
+	id: number | string
 	name: string
 }
 
@@ -21,7 +23,21 @@ export interface ShareTarget {
  * @param target
  */
 export function matchesTarget(share: Share, target: Pick<ShareTarget, 'type' | 'id'>): boolean {
-	return share.type === target.type && (target.type === 'book' ? share.fileId === target.id : share.shelfId === target.id)
+	return share.type === target.type && shareTargetId(share) === target.id
+}
+
+/**
+ * The id a share refers to: file id, shelf id, series name or folder path.
+ *
+ * @param share
+ */
+export function shareTargetId(share: Share): number | string | null {
+	switch (share.type) {
+		case 'book': return share.fileId
+		case 'shelf': return share.shelfId
+		case 'series': return share.series ?? null
+		default: return share.path ?? null
+	}
 }
 
 export const useSharesStore = defineStore('shares', () => {
@@ -39,8 +55,8 @@ export const useSharesStore = defineStore('shares', () => {
 		loading.value = true
 		try {
 			const res = await api.listShares()
-			outgoing.value = res.outgoing
-			incoming.value = res.incoming
+			outgoing.value = res.outgoing ?? []
+			incoming.value = res.incoming ?? []
 			loaded.value = true
 		} finally {
 			loading.value = false
@@ -63,11 +79,9 @@ export const useSharesStore = defineStore('shares', () => {
 	 * @param userId
 	 */
 	async function share(target: Pick<ShareTarget, 'type' | 'id'>, userId: string): Promise<ShareCreated> {
-		const res = target.type === 'book' ? await api.shareBook(target.id, userId) : await api.shareShelf(target.id, userId)
+		const res = await callShare(target, userId)
 		outgoing.value = [...outgoing.value.filter((s) => !(matchesTarget(s, target) && s.recipient === res.share.recipient)), res.share]
-		if (target.type === 'shelf') {
-			void useShelvesStore().load()
-		}
+		refreshAfterChange(target)
 		return res
 	}
 
@@ -78,14 +92,49 @@ export const useSharesStore = defineStore('shares', () => {
 	 * @param userId
 	 */
 	async function unshare(target: Pick<ShareTarget, 'type' | 'id'>, userId: string): Promise<void> {
-		if (target.type === 'book') {
-			await api.unshareBook(target.id, { shareWith: userId })
-		} else {
-			await api.unshareShelf(target.id, userId)
+		switch (target.type) {
+			case 'book':
+				await api.unshareBook(Number(target.id), { shareWith: userId })
+				break
+			case 'shelf':
+				await api.unshareShelf(Number(target.id), userId)
+				break
+			case 'series':
+				await api.unshareSeries(String(target.id), userId)
+				break
+			default:
+				await api.unshareFolder(String(target.id), userId)
 		}
 		outgoing.value = outgoing.value.filter((s) => !(matchesTarget(s, target) && s.recipient === userId))
+		refreshAfterChange(target)
+	}
+
+	/**
+	 * @param target
+	 * @param userId
+	 */
+	function callShare(target: Pick<ShareTarget, 'type' | 'id'>, userId: string): Promise<ShareCreated> {
+		switch (target.type) {
+			case 'book': return api.shareBook(Number(target.id), userId)
+			case 'shelf': return api.shareShelf(Number(target.id), userId)
+			case 'series': return api.shareSeries(String(target.id), userId)
+			default: return api.shareFolder(String(target.id), userId)
+		}
+	}
+
+	/**
+	 * Navigation counters of shelves, series and folders change when shares change.
+	 *
+	 * @param target
+	 */
+	function refreshAfterChange(target: Pick<ShareTarget, 'type' | 'id'>): void {
+		const recipients = recipientsOf(target).length
 		if (target.type === 'shelf') {
 			void useShelvesStore().load()
+		} else if (target.type === 'series') {
+			useLibraryStore().setSeriesSharedWith(String(target.id), recipients)
+		} else if (target.type === 'folder') {
+			useFoldersStore().setSharedWith(String(target.id), recipients)
 		}
 	}
 
@@ -101,8 +150,9 @@ export const useSharesStore = defineStore('shares', () => {
 			await api.unshareShelf(share.shelfId)
 			void useShelvesStore().load()
 		}
+		// series and folder shares are removed by the owner (or in the Nextcloud sharing settings of the folder)
 		incoming.value = incoming.value.filter((s) => !(s.type === share.type
-			&& (share.type === 'shelf' ? s.shelfId === share.shelfId : s.fileId === share.fileId && s.owner === share.owner)))
+			&& shareTargetId(s) === shareTargetId(share) && (share.type === 'shelf' || s.owner === share.owner)))
 	}
 
 	return { outgoing, incoming, loaded, loading, hasAny, load, recipientsOf, share, unshare, leave }

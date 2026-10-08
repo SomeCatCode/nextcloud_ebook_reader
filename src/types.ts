@@ -65,7 +65,7 @@ export interface Book {
 	owner: string
 	/** The file reached the user through a share of another user: it must not be deleted, moved or renamed */
 	shared: boolean
-	/** Own book the user shares through the app with at least one user (book, shelf, series or folder share); absent on servers before 0.10 */
+	/** Own book shared with at least one user through the app (server 0.10+; missing = false) */
 	sharedOut?: boolean
 	/** Metadata fields edited in the app only (they survive re-indexing of the file) */
 	overrides: MetadataOverrideField[]
@@ -96,7 +96,7 @@ export interface FilterTerm {
 
 export type MatchMode = 'all' | 'any'
 
-export type SharedFilter = 'incoming' | 'outgoing' | 'any'
+export type SharedFilter = 'any' | 'incoming' | 'outgoing'
 
 export interface BookQuery {
 	search?: string
@@ -110,8 +110,12 @@ export interface BookQuery {
 	inSeries?: 0 | 1
 	/** 1: leave out finished books (ignored when status is set) */
 	hideFinished?: 1
-	/** incoming: books of other users shared with the user; outgoing: own books the user shares; any: either */
+	/** server 0.10+: incoming (file of another user), outgoing (own book shared through the app) or both */
 	shared?: SharedFilter
+	/** server 0.10+: only books directly in this folder (path relative to the home, leading slash) */
+	folder?: string
+	/** server 0.10+: 1 = also the books in subfolders of `folder` */
+	folderRecursive?: 1
 	limit?: number
 	offset?: number
 }
@@ -307,7 +311,11 @@ export interface Settings {
 	metadataWriteMode: MetadataWriteMode
 	/** Where metadata changes are stored */
 	metadataTarget: MetadataTarget
+	/** Where companion (sidecar) files are stored: next to the book or in a hidden ".meta" folder per directory (server 0.10+) */
+	sidecarLocation?: SidecarLocation
 }
+
+export type SidecarLocation = 'beside' | 'meta'
 
 export interface StructureCapabilities {
 	metadata: boolean
@@ -494,10 +502,25 @@ export interface SeriesEntry {
 	coverFileIds: number[]
 	firstFileId: number
 	lastAddedAt: number
-	/** the series contains books of other users (shared with the user) */
-	shared?: boolean
-	/** number of users the user shares this series with */
+	/** own series shared with N users (server 0.10+) */
 	sharedWith?: number
+	/** the series contains books shared with the user by others (server 0.10+) */
+	shared?: boolean
+}
+
+/** One folder of the folder view (`GET /folders`, flat list sorted by path; server 0.10+) */
+export interface FolderEntry {
+	path: string
+	name: string
+	parent: string | null
+	/** books directly in the folder */
+	bookCount: number
+	/** books including subfolders */
+	totalCount: number
+	/** users the folder is shared with through the app */
+	sharedWith: number
+	/** the folder belongs to another user (incoming share) */
+	shared: boolean
 }
 
 export type SeriesQuery = Omit<BookQuery, 'inSeries' | 'limit' | 'offset' | 'sort'> & { sort?: 'name' | 'added' }
@@ -551,9 +574,9 @@ export interface Share {
 	type: ShareType
 	fileId: number | null
 	shelfId: number | null
-	/** series name (type `series`) */
+	/** series name for type `series` (server 0.10+) */
 	series?: string | null
-	/** folder path in the owner's home (type `folder`, outgoing only) */
+	/** folder path for type `folder` (server 0.10+) */
 	path?: string | null
 	name: string
 	owner: string
