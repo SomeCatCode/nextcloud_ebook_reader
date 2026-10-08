@@ -5,6 +5,8 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+## 0.10.0 – 2026-10-08
+
 ### Hinzugefügt
 - **Navigation neu geordnet:** Alle Bücher, Weiterlesen, Ungelesen, Gelesen, **Serien**, **Geteilt**, **Ordner**, danach die Regale. „Serien“ zeigt direkt alle Serien (Klick öffnet die Bände) und ist kein Filter-Eintrag mehr; der Schalter „Serien gruppieren“ entfällt.
 - **Ansicht „Geteilt“:** alle geteilten Bücher als Raster oder Liste mit Endlos-Scrollen, eingrenzbar auf „Mit mir geteilt“ / „Von mir geteilt“; gefiltert wird in der Datenbank, damit es auch bei sehr großen (Community-)Bibliotheken schnell bleibt. Die Freigaben-Übersicht ist über „Freigaben verwalten“ erreichbar.
