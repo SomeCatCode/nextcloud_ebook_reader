@@ -74,6 +74,7 @@ namespace OCA\EbookReader;
  *     downloadable: bool,
  *     owner: string,
  *     shared: bool,
+ *     sharedOut: bool,
  *     overrides: list<string>,
  *     hasSidecar: bool,
  *     completion: 'ongoing'|'completed'|null,
@@ -156,6 +157,8 @@ namespace OCA\EbookReader;
  *     coverFileIds: list<int>,
  *     firstFileId: int,
  *     lastAddedAt: int,
+ *     shared: bool,
+ *     sharedWith: int,
  * }
  *
  * @psalm-type EbookReaderOrganizeItem = array{
@@ -208,9 +211,11 @@ namespace OCA\EbookReader;
  * }
  *
  * @psalm-type EbookReaderShare = array{
- *     type: 'book'|'shelf',
+ *     type: 'book'|'shelf'|'series'|'folder',
  *     fileId: ?int,
  *     shelfId: ?int,
+ *     series: ?string,
+ *     path: ?string,
  *     name: string,
  *     owner: string,
  *     ownerDisplayName: string,

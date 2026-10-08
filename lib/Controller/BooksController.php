@@ -70,6 +70,7 @@ class BooksController extends AbstractOCSController {
 	 * @param string $match "all" (every include must match) or "any" (at least one)
 	 * @param int<0, 1>|null $inSeries 0 = only books without a series, 1 = only books in a series
 	 * @param int<0, 1> $hideFinished 1 = leave out finished books (ignored when status is given)
+	 * @param 'incoming'|'outgoing'|'any'|null $shared incoming = books of other users shared with the user, outgoing = own books the user shares through the app (book, shelf, series or folder share), any = either; absent = no restriction
 	 * @return DataResponse<Http::STATUS_OK, EbookReaderBookList, array{}>
 	 * @throws OCSForbiddenException Not logged in
 	 *
@@ -94,11 +95,12 @@ class BooksController extends AbstractOCSController {
 		string $match = 'all',
 		?int $inSeries = null,
 		int $hideFinished = 0,
+		?string $shared = null,
 	): DataResponse {
 		$userId = $this->uid();
 		$query = BookQuery::fromRequestParams([
 			'search' => $search, 'format' => $format, 'genre' => $genre, 'tag' => $tag,
-			'author' => $author, 'series' => $series, 'status' => $status, 'hideFinished' => $hideFinished,
+			'author' => $author, 'series' => $series, 'status' => $status, 'hideFinished' => $hideFinished, 'shared' => $shared,
 			'sort' => $sort, 'order' => $order, 'limit' => $limit, 'offset' => $offset,
 			'include' => $include, 'exclude' => $exclude, 'match' => $match,
 			'inSeries' => $inSeries,

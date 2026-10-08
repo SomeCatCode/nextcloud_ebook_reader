@@ -28,6 +28,7 @@ use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\Files\File;
 use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
+use OCP\Files\Mount\IMountManager;
 use OCP\Files\Node;
 use OCP\Files\NotFoundException;
 use OCP\Files\NotPermittedException;
@@ -43,6 +44,7 @@ class LibraryService {
 	private const SHELF_BOOKS = 'ebookreader_shelf_books';
 	private const SHELF_SHARES = 'ebookreader_shelf_shares';
 	private const FILE_SHARES = 'ebookreader_file_shares';
+	private const FOLDER_SHARES = 'ebookreader_folder_shares';
 	/** Interactive scans index inline only files up to this size; larger ones are queued as jobs */
 	public const INTERACTIVE_MAX_BYTES = 50 * 1024 * 1024;
 
@@ -59,6 +61,7 @@ class LibraryService {
 		private LoggerInterface $logger,
 		private SidecarService $sidecar,
 		private ?ShelfMapper $shelves = null,
+		private ?IMountManager $mounts = null,
 	) {
 	}
 
@@ -79,6 +82,7 @@ class LibraryService {
 		$etag = (string)$file->getEtag();
 		$path = $this->relativePath($userId, $file);
 		$sidecarEtag = $this->sidecar->etagOf($file);
+		$sharedOwner = self::sharedOwnerOf($file);
 
 		try {
 			$existing = $this->bookMapper->findByUserAndFile($userId, $fileId, true);
@@ -89,9 +93,10 @@ class LibraryService {
 		if ($existing !== null && !$force && $existing->getDeletedAt() === null
 			&& $existing->getFileMtime() === $mtime && $existing->getFileEtag() === $etag && $existing->getSidecarEtag() === $sidecarEtag
 			&& !$this->sharedOwnerChangedSince($userId, $fileId, $existing->getMetaUpdatedAt())) {
-			if ($existing->getPath() !== $path || $existing->getFormat() !== $format) {
+			if ($existing->getPath() !== $path || $existing->getFormat() !== $format || $existing->getSharedOwner() !== $sharedOwner) {
 				$existing->setPath($path);
 				$existing->setFormat($format);
+				$existing->setSharedOwner($sharedOwner);
 				$existing->setUpdatedAt(self::nowMs());
 				$this->bookMapper->update($existing);
 			}
@@ -122,6 +127,7 @@ class LibraryService {
 		}
 		$book->setFormat($format);
 		$book->setPath($path);
+		$book->setSharedOwner($sharedOwner);
 		$book->setSize((int)$file->getSize());
 		// fields edited in the app only (overrides) and edits waiting to be written into the file stay as they are
 		$overrides = $existing?->getOverridesArray() ?? [];
@@ -191,6 +197,7 @@ class LibraryService {
 				$other = $this->bookMapper->findByUserAndFile($userId, $fileId, true);
 				$other->setFormat($format);
 				$other->setPath($path);
+				$other->setSharedOwner($sharedOwner);
 				$other->setSize($book->getSize());
 				$other->setTitle($book->getTitle());
 				$other->setAuthors($book->getAuthors());
@@ -458,6 +465,214 @@ class LibraryService {
 		return $rel !== null ? '/' . trim((string)$rel, '/') : '/' . $node->getName();
 	}
 
+	/**
+	 * Owner of a file that reached the user through a share of another user (the book is "shared with me"), null for own files.
+	 * A share without a known owner is stored as "?" so it still counts as incoming.
+	 */
+	private static function sharedOwnerOf(Node $file): ?string {
+		if (!FileOwnership::isShared($file)) {
+			return null;
+		}
+		return FileOwnership::shareOwner($file) ?? '?';
+	}
+
+	/** Whether the node lies in a folder another user shared with the user (the mount of a folder share). */
+	private static function isInSharedFolder(Node $node): bool {
+		$storage = $node->getStorage();
+		/** @psalm-suppress TypeDoesNotContainNull some nodes (mocks) have no storage */
+		if (!$storage?->instanceOfStorage(ISharedStorage::class)) {
+			return false;
+		}
+		/** @var ISharedStorage $storage */
+		return $storage->getShare()->getNodeType() === 'folder';
+	}
+
+	/**
+	 * Mount roots of the folders other users shared with the user (app shares and shares made in Files, user and group
+	 * shares, as far as accepted), wherever they sit in the user's home. Mounts inside a library folder are left out: the
+	 * library walk covers them.
+	 * @return list<Folder>
+	 * @throws \Throwable when the mounts cannot be listed
+	 */
+	private function incomingFolderRoots(string $userId): array {
+		if ($this->mounts === null) {
+			return [];
+		}
+		$home = '/' . $userId . '/files';
+		$roots = [];
+		foreach ($this->mounts->findIn($home) as $mount) {
+			if (!$mount->getStorage()?->instanceOfStorage(ISharedStorage::class)) {
+				continue;
+			}
+			$mountPoint = rtrim($mount->getMountPoint(), '/');
+			if (!str_starts_with($mountPoint, $home . '/')) {
+				continue;
+			}
+			if ($this->isPathInLibrary($userId, substr($mountPoint, strlen($home)))) {
+				continue;
+			}
+			try {
+				$node = $this->rootFolder->get($mountPoint);
+			} catch (NotFoundException) {
+				continue;
+			}
+			if ($node instanceof Folder) {
+				$roots[] = $node;
+			}
+		}
+		return $roots;
+	}
+
+	/**
+	 * Indexes books inside incoming shared folders that are missing in the user's library (a new share, or books the owner
+	 * added since the last scan), inline within the budget; the rest is queued as ScanFileJobs.
+	 * @return array{indexed: int, pending: int} pending = books queued (more than the budget allowed, or too large)
+	 */
+	public function indexIncomingFolders(string $userId, int $max, float $budgetSeconds): array {
+		try {
+			$roots = $this->incomingFolderRoots($userId);
+		} catch (\Throwable $e) {
+			$this->logger->info('Incoming shared folders not accessible: ' . $e->getMessage(), ['app' => 'ebookreader']);
+			return ['indexed' => 0, 'pending' => 0];
+		}
+		if ($roots === []) {
+			return ['indexed' => 0, 'pending' => 0];
+		}
+		$have = [];
+		foreach ($this->bookMapper->findAllByUser($userId) as $b) {
+			$have[$b->getFileId()] = true;
+		}
+		$deadline = microtime(true) + $budgetSeconds;
+		$indexed = 0;
+		$pending = 0;
+		$seen = [];
+		foreach ($roots as $root) {
+			$this->walkFolder($root, function (File $file) use ($userId, $have, &$indexed, &$pending, $max, $deadline): void {
+				if (isset($have[$file->getId()])) {
+					return;
+				}
+				if ($indexed >= $max || microtime(true) > $deadline || $file->getSize() > self::INTERACTIVE_MAX_BYTES) {
+					$pending++;
+					$this->jobList->add(ScanFileJob::class, ['userId' => $userId, 'fileId' => $file->getId()]);
+					return;
+				}
+				try {
+					if ($this->indexFile($userId, $file) !== null) {
+						$indexed++;
+					}
+				} catch (\Throwable $e) {
+					$this->logger->info('Indexing shared book ' . $file->getId() . ' failed: ' . $e->getMessage(), ['app' => 'ebookreader']);
+				}
+			}, $seen);
+		}
+		return ['indexed' => $indexed, 'pending' => $pending];
+	}
+
+	/** @var array<string, array<int, string>> */
+	private array $sharedFolderCache = [];
+
+	/**
+	 * Folders the user shares through the app, with their current path (relative to the home, leading slash). Folders that
+	 * are gone are left out.
+	 * @return array<int, string> folder id => path
+	 */
+	public function sharedFolderPaths(string $owner): array {
+		if (isset($this->sharedFolderCache[$owner])) {
+			return $this->sharedFolderCache[$owner];
+		}
+		$out = [];
+		try {
+			$qb = $this->db->getQueryBuilder();
+			$qb->selectDistinct('folder_id')->from(self::FOLDER_SHARES)
+				->where($qb->expr()->eq('owner_id', $qb->createNamedParameter($owner)));
+			$res = $qb->executeQuery();
+			$ids = array_map('intval', $res->fetchAll(\PDO::FETCH_COLUMN));
+			$res->closeCursor();
+			if ($ids !== []) {
+				$home = $this->rootFolder->getUserFolder($owner);
+				foreach ($ids as $id) {
+					try {
+						$node = $home->getFirstNodeById($id);
+						$rel = $node instanceof Folder ? $home->getRelativePath($node->getPath()) : null;
+					} catch (\Throwable) {
+						continue;
+					}
+					if ($rel !== null && trim($rel, '/') !== '') {
+						$out[$id] = '/' . trim($rel, '/');
+					}
+				}
+			}
+		} catch (\Throwable $e) {
+			// table missing before the migration ran
+			$this->logger->debug('Shared folders unavailable: ' . $e->getMessage(), ['app' => 'ebookreader']);
+		}
+		return $this->sharedFolderCache[$owner] = $out;
+	}
+
+	/**
+	 * Which of the books the user shares through the app (book, shelf, series or folder share): one query for the page plus
+	 * the user's shared folder paths (resolved once per request). Incoming books are never "shared out".
+	 * @param list<Book> $books
+	 * @return array<int, true> file ids
+	 */
+	public function sharedOutFileIds(string $owner, array $books): array {
+		$candidates = array_values(array_filter($books, static fn (Book $b): bool => $b->getSharedOwner() === null));
+		if ($candidates === []) {
+			return [];
+		}
+		$out = [];
+		$folders = array_values($this->sharedFolderPaths($owner));
+		foreach ($candidates as $book) {
+			foreach ($folders as $folder) {
+				if (str_starts_with($book->getPath(), $folder . '/')) {
+					$out[$book->getFileId()] = true;
+					break;
+				}
+			}
+		}
+		$ids = array_map(static fn (Book $b): int => $b->getFileId(), $candidates);
+		try {
+			foreach (array_chunk($ids, 500) as $chunk) {
+				$qb = $this->db->getQueryBuilder();
+				$qb->selectDistinct('file_id')->from(self::FILE_SHARES)
+					->where($qb->expr()->eq('owner_id', $qb->createNamedParameter($owner)))
+					->andWhere($qb->expr()->in('file_id', $qb->createNamedParameter($chunk, IQueryBuilder::PARAM_INT_ARRAY)));
+				$res = $qb->executeQuery();
+				foreach ($res->fetchAll(\PDO::FETCH_COLUMN) as $id) {
+					$out[(int)$id] = true;
+				}
+				$res->closeCursor();
+			}
+		} catch (\Throwable $e) {
+			$this->logger->debug('Shares unavailable: ' . $e->getMessage(), ['app' => 'ebookreader']);
+		}
+		return $out;
+	}
+
+	/**
+	 * SQL condition of the `shared` filter. incoming: the file belongs to another user (shared_owner is set at indexing);
+	 * outgoing: an own book with an app share (file_shares row) or below a folder the user shares through the app.
+	 */
+	private function sharedCondition(IQueryBuilder $qb, string $userId, string $mode): string {
+		$e = $qb->expr();
+		$incoming = $e->isNotNull('b.shared_owner');
+		if ($mode === BookQuery::SHARED_INCOMING) {
+			return $incoming;
+		}
+		$sub = $this->db->getQueryBuilder();
+		$sub->select('fso.file_id')->from(self::FILE_SHARES, 'fso')
+			->where($sub->expr()->eq('fso.owner_id', $qb->createNamedParameter($userId)));
+		$reasons = [$e->in('b.file_id', $qb->createFunction('(' . $sub->getSQL() . ')'))];
+		foreach (array_slice(array_values($this->sharedFolderPaths($userId)), 0, 100) as $folder) {
+			$reasons[] = $e->like('b.path', $qb->createNamedParameter($this->db->escapeLikeParameter($folder . '/') . '%'));
+		}
+		$outgoing = self::sql($e->andX($e->isNull('b.shared_owner'), $e->orX(...$reasons)));
+		if ($mode === BookQuery::SHARED_OUTGOING) {
+			return $outgoing;
+		}
+		return self::sql($e->orX($incoming, $outgoing));
+	}
+
 	/** Marks the row as deleted (tombstone). */
 	public function removeFile(string $userId, int $fileId): void {
 		try {
@@ -514,6 +729,9 @@ class LibraryService {
 		}
 		if ($rel !== null && $this->isPathInLibrary($userId, (string)$rel)) {
 			return true;
+		}
+		if ($rel !== null && self::isInSharedFolder($node)) {
+			return true; // inside a folder another user shared with this user, wherever it is mounted
 		}
 		return $rel !== null && $node instanceof File && in_array($node->getId(), $this->sharedFileIds($userId), true);
 	}
@@ -581,6 +799,17 @@ class LibraryService {
 			if ($root instanceof Folder && !$this->walkFolder($root, $onFile, $seen)) {
 				$complete = false;
 			}
+		}
+		// folders other users shared with the user (app or Files share), wherever Nextcloud mounted them
+		try {
+			foreach ($this->incomingFolderRoots($userId) as $root) {
+				if (!$this->walkFolder($root, $onFile, $seen)) {
+					$complete = false;
+				}
+			}
+		} catch (\Throwable $e) {
+			$this->logger->warning('Incoming shared folders not accessible: ' . $e->getMessage(), ['app' => 'ebookreader']);
+			$complete = false;
 		}
 		// books shared with the user through the app, wherever Nextcloud mounted them (share folder)
 		foreach ($this->sharedFileIds($userId) as $id) {
@@ -699,7 +928,7 @@ class LibraryService {
 			$b = $existing[$id] ?? null;
 			$stale = $b === null || $b->getDeletedAt() !== null || $b->getFileMtime() !== $file->getMTime()
 				|| $b->getFileEtag() !== (string)$file->getEtag() || $b->getFormat() !== $format
-				|| $b->getSidecarEtag() !== $sidecarEtag;
+				|| $b->getSidecarEtag() !== $sidecarEtag || $b->getSharedOwner() !== self::sharedOwnerOf($file);
 			// a shared book whose owner changed the metadata since the recipient's copy was indexed (indexFile sees it too)
 			$stale = $stale || ($b !== null && isset($ownerStamps[$id]) && $ownerStamps[$id] > $b->getMetaUpdatedAt());
 			$forced = $forceFormats !== null && ($forceFormats === [] || in_array($format, $forceFormats, true));
@@ -783,11 +1012,11 @@ class LibraryService {
 
 	/**
 	 * Series of the books matching the filters (same filters as findBooks), see SeriesAggregator.
-	 * @return list<array{name: string, count: int, readCount: int, coverFileIds: list<int>, firstFileId: int, lastAddedAt: int}>
+	 * @return list<array{name: string, count: int, readCount: int, coverFileIds: list<int>, firstFileId: int, lastAddedAt: int, shared: bool}>
 	 */
 	public function listSeries(string $userId, BookQuery $q): array {
 		$qb = $this->db->getQueryBuilder();
-		$qb->select('b.file_id', 'b.series', 'b.series_index', 'b.added_at', 'b.read_status', 'b.title', 'b.path')->from(self::BOOKS, 'b');
+		$qb->select('b.file_id', 'b.series', 'b.series_index', 'b.added_at', 'b.read_status', 'b.title', 'b.path', 'b.shared_owner')->from(self::BOOKS, 'b');
 		$this->applyFilters($qb, $userId, $q);
 		$qb->andWhere($qb->expr()->isNotNull('b.series'))
 			->andWhere($qb->expr()->neq('b.series', $qb->createNamedParameter('')));
@@ -827,6 +1056,9 @@ class LibraryService {
 			$out[] = self::sql($q->inSeries
 				? $e->andX($e->isNotNull('b.series'), $e->neq('b.series', $qb->createNamedParameter('')))
 				: $e->orX($e->isNull('b.series'), $e->eq('b.series', $qb->createNamedParameter(''))));
+		}
+		if ($q->shared !== null) {
+			$out[] = $this->sharedCondition($qb, $userId, $q->shared);
 		}
 		$includes = [];
 		foreach ($q->effectiveIncludes() as $entry) {
@@ -1425,6 +1657,59 @@ class LibraryService {
 		// the sidecar goes along (to the trash bin as well); the delete event usually did that already
 		$this->sidecar->deleteFor($parent, $name);
 		$this->removeFile($userId, $fileId);
+	}
+
+	/**
+	 * A folder of the user's home by its path (relative to the home, leading slash).
+	 * @throws NotFoundException
+	 */
+	public function getFolderForUser(string $userId, string $path): Folder {
+		$home = $this->rootFolder->getUserFolder($userId);
+		try {
+			$node = $home->get(trim($path, '/'));
+		} catch (NotPermittedException) {
+			throw new NotFoundException('Folder not found');
+		}
+		if (!$node instanceof Folder) {
+			throw new NotFoundException('Folder not found');
+		}
+		return $node;
+	}
+
+	/** Forgets the cached paths of the shared folders (after a folder share was added or removed within the request). */
+	public function resetSharedFolderCache(): void {
+		$this->sharedFolderCache = [];
+	}
+
+	/** Number of the user's (non-deleted) books below a folder (path relative to the home, no trailing slash). */
+	public function countBooksBelow(string $userId, string $path): int {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select($qb->func()->count('*', 'cnt'))->from(self::BOOKS)
+			->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
+			->andWhere($qb->expr()->isNull('deleted_at'))
+			->andWhere($qb->expr()->like('path', $qb->createNamedParameter($this->db->escapeLikeParameter(rtrim($path, '/') . '/') . '%')));
+		$res = $qb->executeQuery();
+		$count = (int)$res->fetchOne();
+		$res->closeCursor();
+		return $count;
+	}
+
+	/**
+	 * File ids of the user's (non-deleted) books below a folder.
+	 * @return list<int>
+	 */
+	public function findFileIdsBelow(string $userId, string $path, int $limit): array {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('file_id')->from(self::BOOKS)
+			->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
+			->andWhere($qb->expr()->isNull('deleted_at'))
+			->andWhere($qb->expr()->like('path', $qb->createNamedParameter($this->db->escapeLikeParameter(rtrim($path, '/') . '/') . '%')))
+			->orderBy('file_id', 'ASC')
+			->setMaxResults($limit);
+		$res = $qb->executeQuery();
+		$ids = array_map('intval', $res->fetchAll(\PDO::FETCH_COLUMN));
+		$res->closeCursor();
+		return $ids;
 	}
 
 	/** @throws NotFoundException */

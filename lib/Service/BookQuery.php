@@ -25,6 +25,11 @@ final class BookQuery {
 	public const MATCH_ALL = 'all';
 	public const MATCH_ANY = 'any';
 	public const MAX_FILTER_ENTRIES = 50;
+	/** Values of the `shared` filter: books shared with the user, by the user, or either */
+	public const SHARED_INCOMING = 'incoming';
+	public const SHARED_OUTGOING = 'outgoing';
+	public const SHARED_ANY = 'any';
+	public const SHARED_MODES = [self::SHARED_INCOMING, self::SHARED_OUTGOING, self::SHARED_ANY];
 	/**
 	 * Values of the OCS `format` query parameter (response format). They share the name with the book-format filter
 	 * of GET /books and /series, so `format=json` must not filter for books "in the format json" (clients such as the
@@ -53,6 +58,8 @@ final class BookQuery {
 		public readonly ?bool $inSeries = null,
 		/** true: leave out finished books (ignored when $status is set) */
 		public readonly bool $hideFinished = false,
+		/** one of SHARED_MODES, null = no restriction (see LibraryService::sharedCondition) */
+		public readonly ?string $shared = null,
 	) {
 	}
 
@@ -137,6 +144,15 @@ final class BookQuery {
 		return null;
 	}
 
+	/** "incoming" | "outgoing" | "any" (case-insensitive), anything else => null */
+	public static function parseShared(mixed $raw): ?string {
+		if (!is_string($raw)) {
+			return null;
+		}
+		$raw = strtolower(trim($raw));
+		return in_array($raw, self::SHARED_MODES, true) ? $raw : null;
+	}
+
 	/**
 	 * Builds a sanitised query from (untrusted) request parameters.
 	 * @param array<string, mixed> $params
@@ -187,6 +203,7 @@ final class BookQuery {
 			match: $match,
 			inSeries: self::parseInSeries($params['inSeries'] ?? null),
 			hideFinished: in_array($params['hideFinished'] ?? null, [1, '1', true, 'true'], true),
+			shared: self::parseShared($params['shared'] ?? null),
 		);
 	}
 }
