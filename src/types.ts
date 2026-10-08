@@ -291,6 +291,9 @@ export type MetadataWriteMode = 'background' | 'immediate'
 /** Where metadata changes are stored: sidecar file (default), inside the book, both, or only in the library */
 export type MetadataTarget = 'sidecar' | 'file' | 'both' | 'library'
 
+/** Where sidecar files are stored: hidden file next to the book (default) or in a hidden ".meta" folder per directory */
+export type SidecarLocation = 'beside' | 'meta'
+
 export interface Settings {
 	libraryFolders: string[]
 	reader: ReaderSettings
@@ -301,6 +304,25 @@ export interface Settings {
 	metadataWriteMode: MetadataWriteMode
 	/** Where metadata changes are stored */
 	metadataTarget: MetadataTarget
+	/** Where sidecar files are stored; changing it moves the existing sidecars in a background job (server 0.10.0+) */
+	sidecarLocation: SidecarLocation
+}
+
+/** One entry of GET /folders (server 0.10.0+, capability feature "folders") */
+export interface FolderEntry {
+	/** user-relative path with a leading slash, e.g. "/Books/Comics/Saga" */
+	path: string
+	name: string
+	/** parent folder path, null for top-level entries */
+	parent: string | null
+	/** books directly in the folder */
+	bookCount: number
+	/** books in the folder and all subfolders */
+	totalCount: number
+	/** number of users the folder is shared with through the app */
+	sharedWith: number
+	/** the folder belongs to another user (incoming share) */
+	shared: boolean
 }
 
 export interface StructureCapabilities {

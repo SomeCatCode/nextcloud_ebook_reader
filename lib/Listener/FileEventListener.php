@@ -16,6 +16,7 @@ use OCA\EbookReader\Service\LibraryService;
 use OCP\BackgroundJob\IJobList;
 use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
+use OCP\Files\Events\Node\NodeCopiedEvent;
 use OCP\Files\Events\Node\NodeCreatedEvent;
 use OCP\Files\Events\Node\NodeDeletedEvent;
 use OCP\Files\Events\Node\NodeRenamedEvent;
@@ -51,6 +52,8 @@ class FileEventListener implements IEventListener {
 				$this->onDeleted($event->getNode());
 			} elseif ($event instanceof NodeRenamedEvent) {
 				$this->onRenamed($event->getSource(), $event->getTarget());
+			} elseif ($event instanceof NodeCopiedEvent) {
+				$this->onCopied($event->getSource(), $event->getTarget());
 			}
 		} catch (\Throwable $e) {
 			$this->logger->warning('E-book index update failed: ' . $e->getMessage(), ['app' => 'ebookreader', 'exception' => $e]);
@@ -64,14 +67,18 @@ class FileEventListener implements IEventListener {
 		}
 		$uid = $path[0];
 		if ($node instanceof Folder) {
+			if ($node->getName() === SidecarService::META_DIR) {
+				return; // the hidden sidecar folder holds no books
+			}
 			if ($created && $this->library->isInLibrary($uid, $node)) {
 				$this->jobList->add(ScanFileJob::class, ['userId' => $uid, 'fileId' => $node->getId()]);
 			}
 			return;
 		}
 		if ($node instanceof File) {
-			if (SidecarService::isSidecarName($node->getName())) {
-				$this->onSidecarChanged($uid, $node->getParent(), $node->getName(), $node->getPath());
+			$book = SidecarService::bookOf($node);
+			if ($book !== null) {
+				$this->onSidecarChanged($uid, $book[0], $book[1], $node->getPath());
 				return;
 			}
 			$this->indexNode($uid, $node);
@@ -79,15 +86,13 @@ class FileEventListener implements IEventListener {
 	}
 
 	/**
-	 * A sidecar was created, written, deleted or renamed by somebody else (our own changes are guarded): the matching
-	 * book is indexed again, which reads (or no longer finds) the sidecar.
+	 * A sidecar (beside the book or in a .meta folder) was created, written, deleted or renamed by somebody else (our
+	 * own changes are guarded): the matching book is indexed again, which reads (or no longer finds) the sidecar.
+	 *
+	 * @param Folder $parent the folder that holds the book
 	 */
-	private function onSidecarChanged(string $uid, Folder $parent, string $sidecarName, string $sidecarPath): void {
+	private function onSidecarChanged(string $uid, Folder $parent, string $bookName, string $sidecarPath): void {
 		if (SidecarService::isGuarded($sidecarPath)) {
-			return;
-		}
-		$bookName = SidecarService::bookNameOf($sidecarName);
-		if ($bookName === null) {
 			return;
 		}
 		try {
@@ -125,16 +130,20 @@ class FileEventListener implements IEventListener {
 
 	private function onDeleted(Node $node): void {
 		if ($node instanceof Folder) {
+			if ($node->getName() === SidecarService::META_DIR) {
+				return;
+			}
 			$path = self::pathOf($node);
 			if ($path !== null) {
 				$this->library->moveFolder($path[0], $path[1], null);
 			}
 			return;
 		}
-		if ($node instanceof File && SidecarService::isSidecarName($node->getName())) {
+		$sidecarOf = $node instanceof File ? SidecarService::bookOf($node) : null;
+		if ($node instanceof File && $sidecarOf !== null) {
 			$path = self::pathOf($node);
 			if ($path !== null) {
-				$this->onSidecarChanged($path[0], $node->getParent(), $node->getName(), $node->getPath());
+				$this->onSidecarChanged($path[0], $sidecarOf[0], $sidecarOf[1], $node->getPath());
 			}
 			return;
 		}
@@ -149,6 +158,9 @@ class FileEventListener implements IEventListener {
 		$src = self::pathOf($source);
 		$dst = self::pathOf($target);
 		if ($target instanceof Folder) {
+			if ($target->getName() === SidecarService::META_DIR) {
+				return;
+			}
 			if ($src !== null) {
 				$newPrefix = $dst !== null && $dst[0] === $src[0] ? $dst[1] : null;
 				$this->library->moveFolder($src[0], $src[1], $newPrefix);
@@ -161,7 +173,7 @@ class FileEventListener implements IEventListener {
 		if (!$target instanceof File) {
 			return;
 		}
-		if (SidecarService::isSidecarName($target->getName()) || ($source instanceof File && SidecarService::isSidecarName($source->getName()))) {
+		if (SidecarService::isSidecarFile($target) || ($source instanceof File && SidecarService::isSidecarFile($source))) {
 			$this->onSidecarRenamed($source, $target, $src, $dst);
 			return;
 		}
@@ -180,17 +192,39 @@ class FileEventListener implements IEventListener {
 	}
 
 	/**
+	 * A book was copied (Files app, WebDAV COPY): the copy gets the sidecar of the original, before it is indexed again.
+	 * (A copied folder takes its sidecars with it, beside the books or in its .meta folder.)
+	 */
+	private function onCopied(Node $source, Node $target): void {
+		if (!$source instanceof File || !$target instanceof File || SidecarService::isSidecarFile($target)) {
+			return;
+		}
+		if ($this->metadata->detectFormat($target->getName(), $target->getMimeType()) === null) {
+			return;
+		}
+		if (!$this->sidecar->copyAlong($source->getParent(), $source->getName(), $target->getParent(), $target->getName())) {
+			return;
+		}
+		$dst = self::pathOf($target);
+		if ($dst !== null) {
+			$this->indexNode($dst[0], $target);
+		}
+	}
+
+	/**
 	 * A sidecar was renamed or moved by somebody else: the books at the old and the new name are indexed again.
 	 *
 	 * @param ?array{0: string, 1: string} $src
 	 * @param ?array{0: string, 1: string} $dst
 	 */
 	private function onSidecarRenamed(Node $source, Node $target, ?array $src, ?array $dst): void {
-		if ($dst !== null && SidecarService::isSidecarName($target->getName())) {
-			$this->onSidecarChanged($dst[0], $target->getParent(), $target->getName(), $target->getPath());
+		$to = $target instanceof File ? SidecarService::bookOf($target) : null;
+		if ($dst !== null && $to !== null) {
+			$this->onSidecarChanged($dst[0], $to[0], $to[1], $target->getPath());
 		}
-		if ($src !== null && SidecarService::isSidecarName($source->getName())) {
-			$this->onSidecarChanged($src[0], $source->getParent(), $source->getName(), $source->getPath());
+		$from = $source instanceof File ? SidecarService::bookOf($source) : null;
+		if ($src !== null && $from !== null) {
+			$this->onSidecarChanged($src[0], $from[0], $from[1], $source->getPath());
 		}
 	}
 

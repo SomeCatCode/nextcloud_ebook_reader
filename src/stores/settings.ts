@@ -29,6 +29,7 @@ function fallback(): Settings {
 		genreList: null,
 		metadataWriteMode: 'background',
 		metadataTarget: 'sidecar',
+		sidecarLocation: 'beside',
 	}
 }
 

@@ -622,16 +622,13 @@ class LibraryService {
 				$complete = false;
 				continue;
 			}
-			/** @var array<string, File> $sidecars sidecar files of this folder by name (taken from the listing, no extra lookups) */
-			$sidecars = [];
-			foreach ($children as $child) {
-				if ($child instanceof File && SidecarService::isSidecarName($child->getName())) {
-					$sidecars[$child->getName()] = $child;
-				}
-			}
+			// sidecars of this folder by book name, from the listing (and its .meta folder): no extra lookups per book
+			$sidecars = $this->sidecar->inListing($folder, $children);
 			foreach ($children as $child) {
 				if ($child instanceof Folder) {
-					$stack[] = $child;
+					if ($child->getName() !== SidecarService::META_DIR) { // .meta holds sidecars only, never books
+						$stack[] = $child;
+					}
 				} elseif ($child instanceof File) {
 					if (SidecarService::isSidecarName($child->getName())) {
 						continue; // sidecars are never books
@@ -643,7 +640,7 @@ class LibraryService {
 					$format = $this->metadata->detectFormat($child->getName(), $child->getMimeType());
 					if ($format !== null) {
 						$seen[$id] = true;
-						$onFile($child, $format, SidecarService::stateOf($sidecars[SidecarService::nameFor($child->getName())] ?? null));
+						$onFile($child, $format, SidecarService::stateOf($sidecars[$child->getName()] ?? null));
 					}
 				}
 			}
