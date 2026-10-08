@@ -17,6 +17,7 @@ import type {
 	EmbedResult,
 	Facets,
 	FilterTerm,
+	FolderEntry,
 	MetadataOverrideField,
 	MetadataPatch,
 	OrganizePreview,
@@ -178,6 +179,13 @@ function queryParams(query: BookQuery | SeriesQuery): Record<string, unknown> {
 export async function listSeries(query: SeriesQuery = {}): Promise<SeriesEntry[]> {
 	const res = await request<{ series: SeriesEntry[] }>('get', '/series', { params: queryParams(query) })
 	return res.series
+}
+
+/**
+ * Flat folder list for the folder view (server 0.10+).
+ */
+export async function listFolders(): Promise<FolderEntry[]> {
+	return (await request<{ folders: FolderEntry[] }>('get', '/folders')).folders
 }
 
 // ---- Shelves ------------------------------------------------------------
@@ -791,6 +799,42 @@ export function shareShelf(shelfId: number, shareWith: string): Promise<ShareCre
  */
 export async function unshareShelf(shelfId: number, shareWith?: string): Promise<void> {
 	await request<unknown>('delete', `/shelves/${shelfId}/shares`, { params: { shareWith } })
+}
+
+/**
+ * Shares all books of a series (live: books added later are shared too).
+ *
+ * @param series
+ * @param shareWith
+ */
+export function shareSeries(series: string, shareWith: string): Promise<ShareCreated> {
+	return request<ShareCreated>('post', '/series/shares', { body: { series, shareWith } })
+}
+
+/**
+ * @param series
+ * @param shareWith
+ */
+export async function unshareSeries(series: string, shareWith: string): Promise<void> {
+	await request<unknown>('delete', '/series/shares', { params: { series, shareWith } })
+}
+
+/**
+ * Shares a folder (one read-only Nextcloud share).
+ *
+ * @param path
+ * @param shareWith
+ */
+export function shareFolder(path: string, shareWith: string): Promise<ShareCreated> {
+	return request<ShareCreated>('post', '/folders/shares', { body: { path, shareWith } })
+}
+
+/**
+ * @param path
+ * @param shareWith
+ */
+export async function unshareFolder(path: string, shareWith: string): Promise<void> {
+	await request<unknown>('delete', '/folders/shares', { params: { path, shareWith } })
 }
 
 interface ShareeEntry {

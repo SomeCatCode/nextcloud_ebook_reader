@@ -7,7 +7,9 @@ import type { Share, Shelf } from '../types.ts'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import * as api from '../services/api.ts'
-import { matchesTarget, useSharesStore } from './shares.ts'
+import { useFoldersStore } from './folders.ts'
+import { useLibraryStore } from './library.ts'
+import { matchesTarget, shareTargetId, useSharesStore } from './shares.ts'
 import { useShelvesStore } from './shelves.ts'
 
 vi.mock('../services/api.ts', () => ({
@@ -16,7 +18,12 @@ vi.mock('../services/api.ts', () => ({
 	unshareBook: vi.fn(),
 	shareShelf: vi.fn(),
 	unshareShelf: vi.fn(),
+	shareSeries: vi.fn(),
+	unshareSeries: vi.fn(),
+	shareFolder: vi.fn(),
+	unshareFolder: vi.fn(),
 	listShelves: vi.fn(),
+	listSeries: vi.fn(),
 	patchShelf: vi.fn(),
 }))
 
@@ -97,6 +104,51 @@ describe('shares store', () => {
 
 		await store.unshare({ type: 'shelf', id: 7 }, 'carol')
 		expect(mocked.unshareShelf).toHaveBeenCalledWith(7, 'carol')
+	})
+
+	it('shares and unshares a series by its name and updates the series card', async () => {
+		mocked.shareSeries.mockResolvedValue({ share: share({ type: 'series', fileId: null, series: 'Dune', bookCount: 3 }), skipped: 0 })
+		mocked.listSeries.mockResolvedValue([])
+		const library = useLibraryStore()
+		library.seriesList = [{ name: 'Dune', count: 3, readCount: 0, coverFileIds: [], firstFileId: 1, lastAddedAt: 0 }]
+		const store = useSharesStore()
+		await store.share({ type: 'series', id: 'Dune' }, 'bob')
+		expect(mocked.shareSeries).toHaveBeenCalledWith('Dune', 'bob')
+		expect(store.recipientsOf({ type: 'series', id: 'Dune' })).toHaveLength(1)
+		// a book with the same number or a shelf never matches a series
+		expect(store.recipientsOf({ type: 'book', id: 1 })).toHaveLength(0)
+		expect(library.seriesList[0]?.sharedWith).toBe(1)
+
+		await store.unshare({ type: 'series', id: 'Dune' }, 'bob')
+		expect(mocked.unshareSeries).toHaveBeenCalledWith('Dune', 'bob')
+		expect(store.outgoing).toEqual([])
+		expect(library.seriesList[0]?.sharedWith).toBe(0)
+	})
+
+	it('shares and unshares a folder by its path and updates the folder entry', async () => {
+		mocked.shareFolder.mockResolvedValue({ share: share({ type: 'folder', fileId: null, path: '/Books/Saga', bookCount: 4 }), skipped: 0 })
+		const folders = useFoldersStore()
+		folders.folders = [{ path: '/Books/Saga', name: 'Saga', parent: '/Books', bookCount: 4, totalCount: 4, sharedWith: 0, shared: false }]
+		const store = useSharesStore()
+		await store.share({ type: 'folder', id: '/Books/Saga' }, 'bob')
+		expect(mocked.shareFolder).toHaveBeenCalledWith('/Books/Saga', 'bob')
+		expect(folders.folders[0]?.sharedWith).toBe(1)
+		await store.unshare({ type: 'folder', id: '/Books/Saga' }, 'bob')
+		expect(mocked.unshareFolder).toHaveBeenCalledWith('/Books/Saga', 'bob')
+		expect(folders.folders[0]?.sharedWith).toBe(0)
+	})
+
+	it('knows what a share refers to and tolerates older server answers', async () => {
+		expect(shareTargetId(share())).toBe(1)
+		expect(shareTargetId(share({ type: 'shelf', fileId: null, shelfId: 5 }))).toBe(5)
+		expect(shareTargetId(share({ type: 'series', fileId: null, series: 'X' }))).toBe('X')
+		expect(shareTargetId(share({ type: 'folder', fileId: null, path: '/a' }))).toBe('/a')
+		// missing lists (a server that does not know the overview parts) become empty lists
+		mocked.listShares.mockResolvedValue({} as never)
+		const store = useSharesStore()
+		await store.load()
+		expect(store.outgoing).toEqual([])
+		expect(store.incoming).toEqual([])
 	})
 
 	it('leaves incoming shares as recipient', async () => {
