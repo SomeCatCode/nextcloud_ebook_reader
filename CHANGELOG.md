@@ -21,6 +21,7 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ### Behoben
 - Beim Kopieren eines Buchs in der Dateien-App (oder per WebDAV COPY) wird die Begleitdatei jetzt mitkopiert. Verschieben, Umbenennen, Löschen, Organisieren und Konvertieren behandeln beide Ablageorte der Begleitdateien.
+- Delta-Sync (`GET /sync`): Änderungen an Freigaben (Buch, Regal, Serie oder Ordner geteilt bzw. nicht mehr geteilt, Freigabe in der Dateien-App gelöscht, Empfänger gelöscht) setzen jetzt `updated_at` der betroffenen Bücher des Eigentümers neu. Die Android-App erhält so den neuen Wert von `sharedOut` im nächsten Abgleich und braucht dafür keinen vollständigen Neuabgleich mehr.
 
 ## 0.9.0 – 2026-10-07
 

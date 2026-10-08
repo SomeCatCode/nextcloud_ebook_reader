@@ -170,6 +170,40 @@ class BookMapper extends QBMapper {
 		return $this->findEntities($qb);
 	}
 
+	/**
+	 * Moves updated_at of a user's rows (tombstones too) so the delta sync delivers them again, e.g. when a derived field such
+	 * as sharedOut changed without the row itself being written.
+	 * @param list<int> $fileIds
+	 * @param int $nowMs updated_at in milliseconds, like every other writer of the column
+	 * @return int number of touched rows
+	 */
+	public function touch(string $userId, array $fileIds, int $nowMs): int {
+		$touched = 0;
+		foreach (array_chunk(array_values(array_unique($fileIds)), 500) as $chunk) {
+			$qb = $this->db->getQueryBuilder();
+			$qb->update($this->getTableName())
+				->set('updated_at', $qb->createNamedParameter($nowMs, IQueryBuilder::PARAM_INT))
+				->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
+				->andWhere($qb->expr()->in('file_id', $qb->createNamedParameter($chunk, IQueryBuilder::PARAM_INT_ARRAY)));
+			$touched += $qb->executeStatement();
+		}
+		return $touched;
+	}
+
+	/**
+	 * Like touch() for the non-deleted books of a user below a folder (path is user-relative, with a leading slash).
+	 * @return int number of touched rows
+	 */
+	public function touchBelow(string $userId, string $folderPath, int $nowMs): int {
+		$qb = $this->db->getQueryBuilder();
+		$qb->update($this->getTableName())
+			->set('updated_at', $qb->createNamedParameter($nowMs, IQueryBuilder::PARAM_INT))
+			->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
+			->andWhere($qb->expr()->isNull('deleted_at'))
+			->andWhere($qb->expr()->like('path', $qb->createNamedParameter($this->db->escapeLikeParameter(rtrim($folderPath, '/') . '/') . '%')));
+		return $qb->executeStatement();
+	}
+
 	public function countByUser(string $userId): int {
 		$qb = $this->db->getQueryBuilder();
 		$qb->select($qb->func()->count('*', 'cnt'))->from($this->getTableName())

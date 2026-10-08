@@ -82,6 +82,8 @@ class ShareServiceTest extends TestCase {
 	/** @var array<int, int> folder id => permissions */
 	private array $folderPerms = [];
 	private bool $sharingEnabled = true;
+	/** @var list<array{0: string, 1: list<int>|string, 2: int}> touched owner books: [owner, file ids or folder path, updated_at] */
+	private array $touched = [];
 	private int $nextId = 1;
 
 	protected function setUp(): void {
@@ -159,6 +161,14 @@ class ShareServiceTest extends TestCase {
 				throw new DoesNotExistException('');
 			}
 			return $this->book($id);
+		});
+		$books->method('touch')->willReturnCallback(function (string $u, array $ids, int $now): int {
+			$this->touched[] = [$u, $ids, $now];
+			return count($ids);
+		});
+		$books->method('touchBelow')->willReturnCallback(function (string $u, string $path, int $now): int {
+			$this->touched[] = [$u, $path, $now];
+			return 1;
 		});
 		$books->method('findBySeries')->willReturnCallback(function (string $u, array $series): array {
 			$out = [];
@@ -716,6 +726,91 @@ class ShareServiceTest extends TestCase {
 		$this->service->deleteAllForUser('bob');
 		$this->assertSame([], $this->shelfShareStore);
 		$this->assertCount(1, $this->rows);
+	}
+
+	// ---- sharedOut reaches the delta sync (owner's rows are touched) --------------------------------------------------
+
+	public function testSharingABookTouchesTheOwnersRowOnlyOnceWithMilliseconds(): void {
+		$this->service->shareBook('alice', 1, 'bob');
+		$this->assertSame([['alice', [1], 1800000000000]], $this->touched);
+		$this->touched = [];
+		$this->service->shareBook('alice', 1, 'bob');
+		$this->assertSame([], $this->touched);
+	}
+
+	public function testUnsharingABookAndLeavingItTouchTheOwnersRow(): void {
+		$this->service->shareBook('alice', 1, 'bob');
+		$this->service->shareBook('alice', 2, 'bob');
+		$this->touched = [];
+		$this->service->unshareBook('alice', 1, 'bob');
+		$this->assertSame([['alice', [1], 1800000000000]], $this->touched);
+		$this->touched = [];
+		$this->service->leaveBook('bob', 2);
+		$this->assertSame([['alice', [2], 1800000000000]], $this->touched);
+	}
+
+	public function testShelfAndSeriesSyncTouchAddedAndRemovedBooks(): void {
+		$this->shelf(10, 'alice', Shelf::TYPE_MANUAL, [1, 2]);
+		$this->service->shareShelf('alice', 10, 'bob');
+		$this->assertSame([['alice', [1, 2], 1800000000000]], $this->touched);
+		$this->touched = [];
+		$this->assigned[10] = [2];
+		$this->service->syncShelf(10);
+		$this->assertSame([['alice', [1], 1800000000000]], $this->touched);
+		$this->touched = [];
+		$this->service->unshareShelf('alice', 10, 'bob');
+		$this->assertSame([['alice', [2], 1800000000000]], $this->touched);
+		$this->touched = [];
+		$this->service->shareSeries('alice', 'Saga', 'bob');
+		$this->assertSame([['alice', [1, 2, 3], 1800000000000]], $this->touched);
+		$this->touched = [];
+		$this->service->unshareSeries('alice', 'Saga', 'bob');
+		$this->assertCount(1, $this->touched);
+		$this->assertSame('alice', $this->touched[0][0]);
+		$this->assertEqualsCanonicalizing([1, 2, 3], $this->touched[0][1]);
+	}
+
+	public function testFolderShareAndUnshareTouchTheOwnersBooksBelowTheFolder(): void {
+		$this->service->shareFolder('alice', '/Books/Saga', 'bob');
+		$this->assertSame([['alice', '/Books/Saga', 1800000000000]], $this->touched);
+		$this->touched = [];
+		$this->service->shareFolder('alice', '/Books/Saga', 'bob');
+		$this->assertSame([], $this->touched);
+		$this->service->unshareFolder('alice', '/Books/Saga', 'bob');
+		$this->assertSame([['alice', '/Books/Saga', 1800000000000]], $this->touched);
+	}
+
+	public function testShareDeletedInFilesTouchesTheOwnersBooks(): void {
+		$this->service->shareBook('alice', 1, 'bob');
+		$this->service->shareFolder('alice', '/Books/Saga', 'carol');
+		$this->touched = [];
+		$id = (string)array_key_first($this->ncShares);
+		$event = $this->createMock(IShare::class);
+		$event->method('getFullId')->willReturn($id);
+		$this->service->onShareDeleted($event);
+		$this->assertSame([['alice', [1], 1800000000000]], $this->touched);
+
+		$this->touched = [];
+		$folderShareId = (string)array_key_last($this->ncShares);
+		$event = $this->createMock(IShare::class);
+		$event->method('getFullId')->willReturn($folderShareId);
+		$this->service->onShareDeleted($event);
+		$this->assertSame([['alice', '/Books/Saga', 1800000000000]], $this->touched);
+	}
+
+	public function testDeletingARecipientTouchesTheOwnersBooksButNotTheRecipientsRows(): void {
+		$this->service->shareBook('alice', 1, 'bob');
+		$this->service->shareFolder('alice', '/Books/Saga', 'bob');
+		$this->touched = [];
+		$this->service->deleteAllForUser('bob');
+		$this->assertSame([['alice', [1], 1800000000000], ['alice', '/Books/Saga', 1800000000000]], $this->touched);
+	}
+
+	public function testDeletingAnOwnerTouchesNothing(): void {
+		$this->service->shareBook('alice', 1, 'bob');
+		$this->touched = [];
+		$this->service->deleteAllForUser('alice');
+		$this->assertSame([], $this->touched);
 	}
 
 	// ---- series shares ----------------------------------------------------------------------------------------------

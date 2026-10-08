@@ -119,6 +119,7 @@ class ShareService {
 		if ($row === null) {
 			$shareId = $this->ensureFileShare($owner, $recipient, $file);
 			$row = $this->insertRow($owner, $recipient, $fileId, FileShare::DIRECT, $shareId);
+			$this->touchOwnerBooks($owner, [$fileId]);
 			$this->queueIndex($recipient, [$fileId]);
 		}
 		return $this->bookShareToApi($row, $book->getTitle());
@@ -311,6 +312,7 @@ class ShareService {
 				$skipped++;
 			}
 		}
+		$this->touchOwnerBooks($owner, $new);
 		$this->queueIndex($recipient, $new);
 		return ['added' => $added, 'removed' => count($gone), 'skipped' => $skipped, 'pending' => $pending];
 	}
@@ -550,6 +552,7 @@ class ShareService {
 				$row = $this->folderShares->findByTriple($owner, $folder->getId(), $recipient);
 			}
 			$this->library->resetSharedFolderCache();
+			$this->touchOwnerFolder($owner, $path);
 			// the recipient's library picks the books up (ScanFileJob on a folder indexes everything inside)
 			$this->jobList->add(ScanFileJob::class, ['userId' => $recipient, 'fileId' => $folder->getId()]);
 		}
@@ -598,6 +601,7 @@ class ShareService {
 
 	private function removeFolderShare(FolderShare $row): void {
 		$this->queueFolderRecipientCheck($row);
+		$this->touchFolderShareBooks($row);
 		$this->folderShares->delete($row);
 		$this->library->resetSharedFolderCache();
 		$shareId = $row->getShareId();
@@ -852,6 +856,7 @@ class ShareService {
 		foreach ($this->folderShares->findByShareId($id) as $folderRow) {
 			// the Nextcloud share of a shared folder is gone (deleted in Files, or left by the recipient)
 			$this->queueFolderRecipientCheck($folderRow);
+			$this->touchFolderShareBooks($folderRow);
 			$this->folderShares->delete($folderRow);
 			$this->library->resetSharedFolderCache();
 		}
@@ -860,13 +865,18 @@ class ShareService {
 			return;
 		}
 		$recipients = [];
+		$owners = [];
 		foreach ($rows as $row) {
+			$owners[$row->getOwnerId()][] = $row->getFileId();
 			$recipients[$row->getRecipientId()][] = $row->getFileId();
 			if ($row->isDirect()) {
 				$this->fileShares->delete($row);
 			}
 		}
 		$this->fileShares->detachShare($id);
+		foreach ($owners as $owner => $fileIds) {
+			$this->touchOwnerBooks((string)$owner, $fileIds);
+		}
 		foreach ($recipients as $recipient => $fileIds) {
 			$this->queueIndex((string)$recipient, $fileIds);
 		}
@@ -890,6 +900,19 @@ class ShareService {
 
 	/** Removes the share records of a deleted user (Nextcloud deletes the user's shares itself). */
 	public function deleteAllForUser(string $userId): void {
+		// the owners of what was shared with the user lose a recipient (sharedOut may change)
+		$touch = [];
+		foreach ($this->fileShares->findByUser($userId) as $row) {
+			if ($row->getRecipientId() === $userId) {
+				$touch[$row->getOwnerId()][] = $row->getFileId();
+			}
+		}
+		foreach ($touch as $owner => $fileIds) {
+			$this->touchOwnerBooks((string)$owner, $fileIds);
+		}
+		foreach ($this->folderShares->findByRecipient($userId) as $row) {
+			$this->touchFolderShareBooks($row);
+		}
 		foreach ($this->fileShares->findByUser($userId) as $row) {
 			$this->fileShares->delete($row);
 		}
@@ -927,8 +950,10 @@ class ShareService {
 		}
 		$shareIds = [];
 		$byRecipient = [];
+		$byOwner = [];
 		foreach ($rows as $row) {
 			$this->fileShares->delete($row);
+			$byOwner[$row->getOwnerId()][] = $row->getFileId();
 			if ($row->getShareId() !== null) {
 				$shareIds[$row->getShareId()] = true;
 			}
@@ -938,6 +963,9 @@ class ShareService {
 			if ($this->fileShares->findByShareId((string)$shareId) === []) {
 				$this->deleteNextcloudShare((string)$shareId);
 			}
+		}
+		foreach ($byOwner as $owner => $fileIds) {
+			$this->touchOwnerBooks((string)$owner, $fileIds);
 		}
 		foreach ($byRecipient as $recipient => $fileIds) {
 			$this->queueIndex((string)$recipient, $fileIds);
@@ -1052,6 +1080,44 @@ class ShareService {
 			}
 		}
 		return null;
+	}
+
+	/**
+	 * The set of app shares of the owner's books changed: moves updated_at of those books so the delta sync delivers their
+	 * (derived) sharedOut again. Recipients' rows are not touched.
+	 * @param list<int> $fileIds
+	 */
+	private function touchOwnerBooks(string $owner, array $fileIds): void {
+		if ($fileIds === []) {
+			return;
+		}
+		try {
+			$this->books->touch($owner, $fileIds, $this->nowMs());
+		} catch (\Throwable $e) {
+			$this->logger->warning('Could not touch the books of a changed share: ' . $e->getMessage(), ['app' => 'ebookreader', 'exception' => $e]);
+		}
+	}
+
+	/** Like touchOwnerBooks() for the owner's books below a folder. */
+	private function touchOwnerFolder(string $owner, string $path): void {
+		if (trim($path, '/') === '') {
+			return;
+		}
+		try {
+			$this->books->touchBelow($owner, $path, $this->nowMs());
+		} catch (\Throwable $e) {
+			$this->logger->warning('Could not touch the books of a changed folder share: ' . $e->getMessage(), ['app' => 'ebookreader', 'exception' => $e]);
+		}
+	}
+
+	/** Call before the folder share record is deleted (the current folder path is looked up through it). */
+	private function touchFolderShareBooks(FolderShare $row): void {
+		try {
+			$path = $this->library->sharedFolderPaths($row->getOwnerId())[$row->getFolderId()] ?? $row->getPath();
+		} catch (\Throwable) {
+			$path = $row->getPath();
+		}
+		$this->touchOwnerFolder($row->getOwnerId(), (string)$path);
 	}
 
 	/** @param list<int> $fileIds */
