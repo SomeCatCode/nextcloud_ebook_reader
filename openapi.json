@@ -311,7 +311,8 @@
                             "formats",
                             "editor",
                             "annotations",
-                            "sharing"
+                            "sharing",
+                            "features"
                         ],
                         "properties": {
                             "version": {
@@ -338,6 +339,12 @@
                             },
                             "sharing": {
                                 "type": "boolean"
+                            },
+                            "features": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string"
+                                }
                             }
                         }
                     }
@@ -455,6 +462,45 @@
                         "items": {
                             "$ref": "#/components/schemas/FacetEntry"
                         }
+                    }
+                }
+            },
+            "Folder": {
+                "type": "object",
+                "required": [
+                    "path",
+                    "name",
+                    "parent",
+                    "bookCount",
+                    "totalCount",
+                    "sharedWith",
+                    "shared"
+                ],
+                "properties": {
+                    "path": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "parent": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "bookCount": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "totalCount": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "sharedWith": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "shared": {
+                        "type": "boolean"
                     }
                 }
             },
@@ -801,7 +847,8 @@
                     "filenamePattern",
                     "genreList",
                     "metadataWriteMode",
-                    "metadataTarget"
+                    "metadataTarget",
+                    "sidecarLocation"
                 ],
                 "properties": {
                     "libraryFolders": {
@@ -830,6 +877,9 @@
                         "type": "string"
                     },
                     "metadataTarget": {
+                        "type": "string"
+                    },
+                    "sidecarLocation": {
                         "type": "string"
                     }
                 }
@@ -2245,6 +2295,25 @@
                             "default": 0,
                             "minimum": 0,
                             "maximum": 1
+                        }
+                    },
+                    {
+                        "name": "folder",
+                        "in": "query",
+                        "description": "Only books whose parent folder is this folder, path relative to the user's home with a leading slash (e.g. \"/Books/Comics/Saga\")",
+                        "schema": {
+                            "type": "string",
+                            "nullable": true,
+                            "default": null
+                        }
+                    },
+                    {
+                        "name": "folderRecursive",
+                        "in": "query",
+                        "description": "true = with folder: also the books of all subfolders",
+                        "schema": {
+                            "type": "boolean",
+                            "default": false
                         }
                     },
                     {
@@ -8567,6 +8636,135 @@
                 }
             }
         },
+        "/ocs/v2.php/apps/ebookreader/api/v1/folders": {
+            "get": {
+                "operationId": "folders-index",
+                "summary": "The folders of the library as a flat list sorted by path",
+                "description": "Every folder that holds at least one of the user's books, plus its ancestors up to the top-most folder inside a library folder or an incoming share.",
+                "tags": [
+                    "folders"
+                ],
+                "security": [
+                    {
+                        "bearer_auth": []
+                    },
+                    {
+                        "basic_auth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "OCS-APIRequest",
+                        "in": "header",
+                        "description": "Required to be true for the API request to pass",
+                        "required": true,
+                        "schema": {
+                            "type": "boolean",
+                            "default": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Folders returned",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "required": [
+                                                        "folders"
+                                                    ],
+                                                    "properties": {
+                                                        "folders": {
+                                                            "type": "array",
+                                                            "items": {
+                                                                "$ref": "#/components/schemas/Folder"
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not logged in",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Current user is not logged in",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/ocs/v2.php/apps/ebookreader/api/v1/opds": {
             "get": {
                 "operationId": "opds_settings-get",
@@ -10552,6 +10750,12 @@
                                         "nullable": true,
                                         "default": null,
                                         "description": "Where metadata changes are stored: \"sidecar\" (default, hidden .<book>.opf file), \"file\", \"both\" or \"library\""
+                                    },
+                                    "sidecarLocation": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "default": null,
+                                        "description": "Where sidecar files are stored: \"beside\" (default, hidden .<book>.opf next to the book) or \"meta\" (hidden .meta folder per directory); changing it moves the existing sidecars in the background"
                                     }
                                 }
                             }
