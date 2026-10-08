@@ -828,6 +828,16 @@ class LibraryService {
 				? $e->andX($e->isNotNull('b.series'), $e->neq('b.series', $qb->createNamedParameter('')))
 				: $e->orX($e->isNull('b.series'), $e->eq('b.series', $qb->createNamedParameter(''))));
 		}
+		if ($q->folder !== null) {
+			// books.path is the full user-relative path of the file; the parent folder is everything up to the last slash
+			$prefix = $q->folder === '/' ? '/' : $q->folder . '/';
+			$escaped = $this->db->escapeLikeParameter($prefix);
+			$out[] = $e->like('b.path', $qb->createNamedParameter($escaped . '%'));
+			if (!$q->folderRecursive) {
+				// nothing below another slash: no subfolders
+				$out[] = $e->notLike('b.path', $qb->createNamedParameter($escaped . '%/%'));
+			}
+		}
 		$includes = [];
 		foreach ($q->effectiveIncludes() as $entry) {
 			$cond = $this->entryCondition($qb, $entry['type'], $entry['name'], false, $userId, $allowShelf);

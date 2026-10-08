@@ -104,6 +104,16 @@ namespace OCA\EbookReader;
  *     metadataTarget: string,
  * }
  *
+ * @psalm-type EbookReaderFolder = array{
+ *     path: string,
+ *     name: string,
+ *     parent: ?string,
+ *     bookCount: int,
+ *     totalCount: int,
+ *     sharedWith: int,
+ *     shared: bool,
+ * }
+ *
  * @psalm-type EbookReaderSyncResult = array{
  *     books: list<EbookReaderBook>,
  *     deleted: list<int>,

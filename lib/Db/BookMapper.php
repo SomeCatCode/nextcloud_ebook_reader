@@ -132,6 +132,24 @@ class BookMapper extends QBMapper {
 	}
 
 	/**
+	 * The paths (user-relative, with the file name) of all non-deleted books of a user, nothing else is loaded.
+	 * @return list<string>
+	 */
+	public function findPathsByUser(string $userId): array {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('path')->from($this->getTableName())
+			->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
+			->andWhere($qb->expr()->isNull('deleted_at'));
+		$res = $qb->executeQuery();
+		$paths = [];
+		while (($path = $res->fetchOne()) !== false) {
+			$paths[] = (string)$path;
+		}
+		$res->closeCursor();
+		return $paths;
+	}
+
+	/**
 	 * Rows (including tombstones) changed after the cursor (updatedAt, id), ordered by (updated_at, id).
 	 * @return list<Book>
 	 */
