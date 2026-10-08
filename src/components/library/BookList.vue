@@ -43,6 +43,11 @@
 						<span class="book-list__format">{{ book.format.toUpperCase() }}</span>
 						<span v-if="book.ageRating !== null && book.ageRating !== undefined" class="book-list__format" :title="ageTitle(book.ageRating)">{{ ageBadge(book.ageRating) }}</span>
 						<span v-if="book.completion" class="book-list__format">{{ completionLabel(book.completion) }}</span>
+						<ShareBadge
+							class="book-list__share"
+							:shared="book.shared"
+							:sharedOut="book.sharedOut === true"
+							:owner="book.owner" />
 					</td>
 					<td>{{ bookAuthors(book) }}</td>
 					<td class="hide-narrow">
@@ -74,6 +79,7 @@ import { t } from '@nextcloud/l10n'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import NcProgressBar from '@nextcloud/vue/components/NcProgressBar'
 import BookCover from './BookCover.vue'
+import ShareBadge from './ShareBadge.vue'
 import StarRating from './StarRating.vue'
 import { ageBadge, ageTitle, completionLabel } from './bookFlags.ts'
 import { bookAuthors, bookTitle, formatDate, progressPercent } from './utils.ts'
@@ -155,6 +161,13 @@ defineEmits<{ click: [book: Book] }>()
 		margin-inline-start: 6px;
 		font-size: 10px;
 		font-weight: normal;
+		color: var(--color-text-maxcontrast);
+	}
+
+	&__share {
+		margin-inline-start: 6px;
+		vertical-align: middle;
+		background: var(--color-background-dark);
 		color: var(--color-text-maxcontrast);
 	}
 

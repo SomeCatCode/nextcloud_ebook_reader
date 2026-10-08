@@ -19,6 +19,12 @@
 				v-if="book.ageRating !== null && book.ageRating !== undefined && !selectMode"
 				class="book-card__age"
 				:title="ageTitle(book.ageRating)">{{ ageBadge(book.ageRating) }}</span>
+			<ShareBadge
+				v-if="!selectMode"
+				class="book-card__share"
+				:shared="book.shared"
+				:sharedOut="book.sharedOut === true"
+				:owner="book.owner" />
 			<span v-if="selectMode" class="book-card__check">
 				<NcIconSvgWrapper :path="selected ? mdiCheckCircle : mdiCircleOutline" :size="26" />
 			</span>
@@ -61,6 +67,7 @@ import { t } from '@nextcloud/l10n'
 import { computed } from 'vue'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import BookCover from './BookCover.vue'
+import ShareBadge from './ShareBadge.vue'
 import { ageBadge, ageTitle, completionLabel } from './bookFlags.ts'
 import { bookAuthors, bookTitle, progressPercent } from './utils.ts'
 
@@ -118,6 +125,12 @@ const percent = computed(() => progressPercent(props.book))
 		font-size: 10px;
 		font-weight: bold;
 		line-height: 18px;
+	}
+
+	&__share {
+		position: absolute;
+		bottom: 10px;
+		right: 6px;
 	}
 
 	&__age {

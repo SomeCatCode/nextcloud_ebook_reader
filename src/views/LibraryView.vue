@@ -17,8 +17,6 @@
 				</template>
 			</NcAppNavigationItem>
 
-			<SharedNav />
-
 			<ShelvesNav />
 
 			<NcAppNavigationCaption :name="t('ebookreader', 'Filter')" />
@@ -227,17 +225,7 @@
 				</NcButton>
 
 				<NcButton
-					:pressed="store.groupSeries"
-					:aria-label="t('ebookreader', 'Group series')"
-					:title="t('ebookreader', 'Group series')"
-					variant="tertiary"
-					@update:pressed="(v: boolean) => store.setGroupSeries(v)">
-					<template #icon>
-						<NcIconSvgWrapper :path="mdiBookMultipleOutline" />
-					</template>
-				</NcButton>
-
-				<NcButton
+					v-if="store.view !== 'folders'"
 					:pressed="store.hideFinished"
 					:aria-label="t('ebookreader', 'Hide finished books')"
 					:title="t('ebookreader', 'Hide finished books')"
@@ -317,11 +305,43 @@
 					{{ t('ebookreader', 'Back to series') }}
 				</NcButton>
 				<h2>{{ store.drillSeries }}</h2>
+				<NcButton v-if="canShareSeries" variant="tertiary" @click="sharingSeries = { type: 'series', id: store.drillSeries, name: store.drillSeries }">
+					<template #icon>
+						<NcIconSvgWrapper :path="mdiShareVariant" />
+					</template>
+					{{ t('ebookreader', 'Share series…') }}
+				</NcButton>
+			</div>
+			<div v-else-if="store.view === 'series'" class="library__heading">
+				<NcIconSvgWrapper :path="mdiBookOpenPageVariant" />
+				<h2>{{ t('ebookreader', 'Series') }}</h2>
+			</div>
+			<div v-else-if="store.view === 'shared'" class="library__heading library__heading--wrap">
+				<NcIconSvgWrapper :path="mdiShareVariant" />
+				<h2>{{ t('ebookreader', 'Shared') }}</h2>
+				<div class="library__segment" role="group" :aria-label="t('ebookreader', 'Which shared books to show')">
+					<NcButton
+						v-for="opt in sharedOptions"
+						:key="opt.id"
+						:variant="store.sharedFilter === opt.id ? 'primary' : 'secondary'"
+						:pressed="store.sharedFilter === opt.id"
+						@click="store.setSharedFilter(opt.id)">
+						{{ opt.label }}
+					</NcButton>
+				</div>
+				<NcButton variant="tertiary" @click="showOverview = true">
+					<template #icon>
+						<NcIconSvgWrapper :path="mdiAccountMultipleOutline" />
+					</template>
+					{{ t('ebookreader', 'Manage shares') }}
+				</NcButton>
 			</div>
 			<div v-else-if="shelfHeading" class="library__heading">
 				<NcIconSvgWrapper :path="store.smartShelfId !== null ? mdiFilterVariant : mdiBookshelf" />
 				<h2>{{ shelfHeading }}</h2>
 			</div>
+
+			<FolderBrowser v-if="store.view === 'folders'" />
 
 			<FilterBar />
 
@@ -338,7 +358,7 @@
 			</div>
 
 			<NcEmptyContent
-				v-else-if="store.loaded && store.isEmpty && !store.loading && !store.hasFilters && store.drillSeries === null"
+				v-else-if="store.loaded && store.isEmpty && !store.loading && !store.hasFilters && store.drillSeries === null && store.view === 'all'"
 				:name="t('ebookreader', 'Your library is empty')"
 				:description="emptyDescription">
 				<template #icon>
@@ -356,6 +376,37 @@
 					</NcButton>
 				</template>
 			</NcEmptyContent>
+
+			<NcEmptyContent
+				v-else-if="store.loaded && store.isEmpty && !store.loading && store.view === 'shared' && !store.hasFilters"
+				:name="t('ebookreader', 'Nothing shared yet')"
+				:description="sharedEmptyDescription">
+				<template #icon>
+					<NcIconSvgWrapper :path="mdiShareVariant" :size="64" />
+				</template>
+			</NcEmptyContent>
+
+			<NcEmptyContent
+				v-else-if="store.loaded && store.isEmpty && !store.loading && store.view === 'series' && store.drillSeries === null && !store.hasFilters"
+				:name="t('ebookreader', 'No series yet')"
+				:description="t('ebookreader', 'Books that belong to a series appear here as one stack per series.')">
+				<template #icon>
+					<NcIconSvgWrapper :path="mdiBookOpenPageVariant" :size="64" />
+				</template>
+			</NcEmptyContent>
+
+			<template v-else-if="store.view === 'folders' && store.foldersRoot" />
+
+			<NcEmptyContent
+				v-else-if="store.loaded && store.isEmpty && !store.loading && store.view === 'folders' && !store.hasFilters && foldersStore.childrenOf(store.folderPath).length === 0"
+				:name="t('ebookreader', 'No books in this folder')"
+				:description="t('ebookreader', 'Try including the subfolders.')">
+				<template #icon>
+					<NcIconSvgWrapper :path="mdiFolderOutline" :size="64" />
+				</template>
+			</NcEmptyContent>
+
+			<template v-else-if="store.view === 'folders' && store.isEmpty && !store.hasFilters" />
 
 			<NcEmptyContent
 				v-else-if="store.loaded && store.isEmpty && !store.loading"
@@ -380,15 +431,13 @@
 					@click="onBookClick" />
 
 				<SeriesGrid
-					v-if="store.seriesMode && store.seriesList.length"
+					v-if="store.seriesMode"
 					:series="store.seriesList"
-					@click="(s: SeriesEntry) => store.openSeries(s.name)" />
-				<h3 v-if="store.seriesMode && store.seriesList.length && store.books.length" class="library__subheading">
-					{{ t('ebookreader', 'Books without a series') }}
-				</h3>
+					@click="(s: SeriesEntry) => store.openSeries(s.name)"
+					@share="(s: SeriesEntry) => (sharingSeries = { type: 'series', id: s.name, name: s.name })" />
 
 				<BookGrid
-					v-if="viewMode === 'grid'"
+					v-else-if="viewMode === 'grid'"
 					:books="store.books"
 					:activeFileId="store.activeFileId"
 					:selection="store.selection"
@@ -403,7 +452,7 @@
 					:selectMode="store.selectMode"
 					@click="onBookClick" />
 
-				<div ref="sentinel" class="library__sentinel">
+				<div v-if="!store.seriesMode" ref="sentinel" class="library__sentinel">
 					<NcLoadingIcon v-if="store.loadingMore || store.loading" :size="28" />
 				</div>
 			</template>
@@ -442,22 +491,25 @@
 		:fileIds="organizeIds"
 		@close="organizeIds = []"
 		@done="store.setSelectMode(false)" />
+	<SharingOverview v-if="showOverview" @close="showOverview = false" />
+	<ShareDialog v-if="sharingSeries" :target="sharingSeries" @close="sharingSeries = null" />
 	<SettingsDialog v-if="showSettings" @close="showSettings = false" @saved="onSettingsSaved" />
 </template>
 
 <script setup lang="ts">
 import type { FlagNavEntry } from '../components/library/bookFlags.ts'
-import type { Book, FacetEntry, FilterTerm, SeriesEntry, SortKey } from '../types.ts'
+import type { ShareTarget } from '../stores/shares.ts'
+import type { Book, FacetEntry, FilterTerm, SeriesEntry, SharedFilter, SortKey } from '../types.ts'
 
 import {
 	mdiAccountChildOutline,
+	mdiAccountMultipleOutline,
 	mdiAccountOutline,
 	mdiAlertCircleOutline,
 	mdiArrowLeft,
 	mdiBookCheckOutline,
 	mdiBookClockOutline,
 	mdiBookMinusOutline,
-	mdiBookMultipleOutline,
 	mdiBookOpenPageVariant,
 	mdiBookOutline,
 	mdiBookPlusOutline,
@@ -470,12 +522,15 @@ import {
 	mdiFileOutline,
 	mdiFilterVariant,
 	mdiFolderMoveOutline,
+	mdiFolderMultipleOutline,
+	mdiFolderOutline,
 	mdiImageSizeSelectLarge,
 	mdiLibraryShelves,
 	mdiMinusCircleOutline,
 	mdiPlusCircleOutline,
 	mdiProgressCheck,
 	mdiRefresh,
+	mdiShareVariant,
 	mdiSort,
 	mdiSortAscending,
 	mdiSortDescending,
@@ -513,9 +568,11 @@ import BulkEditDialog from '../components/library/BulkEditDialog.vue'
 import ContinueReading from '../components/library/ContinueReading.vue'
 import DeleteBooksDialog from '../components/library/DeleteBooksDialog.vue'
 import FilterBar from '../components/library/FilterBar.vue'
+import FolderBrowser from '../components/library/FolderBrowser.vue'
 import SeriesGrid from '../components/library/SeriesGrid.vue'
 import SettingsDialog from '../components/library/SettingsDialog.vue'
-import SharedNav from '../components/library/SharedNav.vue'
+import ShareDialog from '../components/library/ShareDialog.vue'
+import SharingOverview from '../components/library/SharingOverview.vue'
 import ShelvesNav from '../components/library/ShelvesNav.vue'
 import TagTreeNav from '../components/library/TagTreeNav.vue'
 import UploadPanel from '../components/library/UploadPanel.vue'
@@ -524,9 +581,11 @@ import { ageEntries, ageTermLabel, completionEntries, completionTermLabel } from
 import { MISSING_FIELDS, missingEntries, missingLabel } from '../components/library/missing.ts'
 import { splitOptimizable } from '../convert/optimize.ts'
 import { scan } from '../services/api.ts'
+import { hasFeature } from '../services/features.ts'
 import { buildTree } from '../services/hierarchy.ts'
 import { appPageTitle } from '../services/pageTitle.ts'
 import { ALLOWED_EXTENSIONS } from '../services/upload.ts'
+import { useFoldersStore } from '../stores/folders.ts'
 import { queryToState, useLibraryStore } from '../stores/library.ts'
 import { useShelvesStore } from '../stores/shelves.ts'
 import { useUploadStore } from '../stores/upload.ts'
@@ -538,12 +597,17 @@ const pageTitle = appPageTitle(t('ebookreader', 'E-book library'))
 
 const store = useLibraryStore()
 const shelves = useShelvesStore()
+const foldersStore = useFoldersStore()
 const uploadStore = useUploadStore()
 
 const route = useRoute()
 const router = useRouter()
 
 const showBulk = ref(false)
+const showOverview = ref(false)
+/** series in the share dialog */
+const sharingSeries = ref<ShareTarget | null>(null)
+const canShareSeries = hasFeature('series-shares')
 const showOptimize = ref(false)
 /** Changing the key makes the tasks banner look for the tasks that were just started */
 const tasksBannerKey = ref(0)
@@ -619,21 +683,36 @@ const currentSort = computed(() => sortOptions.value.find((o) => o.id === store.
 
 const mainItems = computed(() => {
 	const f = store.filters
-	const onlyStatus = (st: string | null) => f.status === st
+	const onlyStatus = (st: string | null) => store.view === 'all' && store.drillSeries === null && f.status === st
 		&& f.include.length === 0 && f.exclude.length === 0 && !f.search
 	return [
-		{ key: 'all', name: t('ebookreader', 'All books'), icon: mdiLibraryShelves, active: !store.hasFilters && store.drillSeries === null, action: () => store.resetFilters() },
-		{ key: 'reading', name: t('ebookreader', 'Continue reading'), icon: mdiBookClockOutline, active: onlyStatus('reading'), action: () => store.setStatus(f.status === 'reading' ? null : 'reading') },
-		{ key: 'unread', name: t('ebookreader', 'Unread'), icon: mdiBookOutline, active: onlyStatus('unread'), action: () => store.setStatus(f.status === 'unread' ? null : 'unread') },
-		{ key: 'finished', name: t('ebookreader', 'Finished'), icon: mdiBookCheckOutline, active: onlyStatus('finished'), action: () => store.setStatus(f.status === 'finished' ? null : 'finished') },
+		{ key: 'all', name: t('ebookreader', 'All books'), icon: mdiLibraryShelves, active: store.view === 'all' && !store.hasFilters && store.drillSeries === null, action: () => store.showView('all') },
+		{ key: 'reading', name: t('ebookreader', 'Continue reading'), icon: mdiBookClockOutline, active: onlyStatus('reading'), action: () => store.showStatus(f.status === 'reading' ? null : 'reading') },
+		{ key: 'unread', name: t('ebookreader', 'Unread'), icon: mdiBookOutline, active: onlyStatus('unread'), action: () => store.showStatus(f.status === 'unread' ? null : 'unread') },
+		{ key: 'finished', name: t('ebookreader', 'Finished'), icon: mdiBookCheckOutline, active: onlyStatus('finished'), action: () => store.showStatus(f.status === 'finished' ? null : 'finished') },
+		{ key: 'series', name: t('ebookreader', 'Series'), icon: mdiBookOpenPageVariant, active: store.view === 'series', action: () => store.showView('series') },
+		...(hasFeature('shared-filter') ? [{ key: 'shared', name: t('ebookreader', 'Shared'), icon: mdiShareVariant, active: store.view === 'shared', action: () => store.showView('shared') }] : []),
+		...(hasFeature('folders') ? [{ key: 'folders', name: t('ebookreader', 'Folders'), icon: mdiFolderMultipleOutline, active: store.view === 'folders', action: () => store.showView('folders') }] : []),
 	]
 })
+
+/** Segmented choice of the shared view */
+const sharedOptions = computed<{ id: SharedFilter, label: string }[]>(() => [
+	{ id: 'any', label: t('ebookreader', 'All') },
+	{ id: 'incoming', label: t('ebookreader', 'Shared with me') },
+	{ id: 'outgoing', label: t('ebookreader', 'Shared by me') },
+])
+
+const sharedEmptyDescription = computed(() => (store.sharedFilter === 'incoming'
+	? t('ebookreader', 'Nothing has been shared with you yet.')
+	: (store.sharedFilter === 'outgoing'
+			? t('ebookreader', 'You have not shared any books yet. Share a book, shelf, series or folder to see it here.')
+			: t('ebookreader', 'Books shared with you and books you share with others appear here.'))))
 
 const openGroups = reactive<Record<string, boolean>>({
 	genres: false,
 	tags: false,
 	authors: false,
-	series: false,
 	formats: false,
 	completion: false,
 	age: false,
@@ -679,7 +758,6 @@ const facetGroups = computed(() => {
 		group('genres', 'genre', t('ebookreader', 'Genres'), mdiDramaMasks, store.facets.genres, true),
 		group('tags', 'tag', t('ebookreader', 'Tags'), mdiTagOutline, store.facets.tags, true),
 		group('authors', 'author', t('ebookreader', 'Authors'), mdiAccountOutline, store.facets.authors),
-		group('series', 'series', t('ebookreader', 'Series'), mdiBookOpenPageVariant, store.facets.series),
 		group('formats', 'format', t('ebookreader', 'Formats'), mdiFileOutline, store.facets.formats),
 	]
 })
@@ -694,7 +772,7 @@ const shelfHeading = computed(() => {
 
 const acceptExtensions = ALLOWED_EXTENSIONS.map((e) => '.' + e).join(',')
 
-const showContinue = computed(() => !store.hasFilters && (store.recent.length > 0 || store.upNext.length > 0))
+const showContinue = computed(() => store.view === 'all' && !store.hasFilters && (store.recent.length > 0 || store.upNext.length > 0))
 
 const emptyDescription = computed(() => t('ebookreader', 'Books are found in your library folders (default: /Books). Put e-books there or choose other folders in the settings, then scan the library.'))
 
@@ -1034,10 +1112,14 @@ onBeforeUnmount(() => {
 		}
 	}
 
-	&__subheading {
-		margin: 8px 0 0;
-		color: var(--color-text-maxcontrast);
-		font-size: 1em;
+	&__heading--wrap {
+		flex-wrap: wrap;
+	}
+
+	&__segment {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
 	}
 
 	&__sentinel {
