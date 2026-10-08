@@ -80,3 +80,18 @@ export function dirName(path: string): string {
 	const i = path.lastIndexOf('/')
 	return i <= 0 ? '/' : path.slice(0, i)
 }
+
+/**
+ * Share state of a book or series for the badge: shared with the user by somebody else, shared by the
+ * user with others, or not shared. Missing fields (older servers) count as not shared.
+ *
+ * @param item
+ * @param item.shared
+ * @param item.sharedOut
+ */
+export function shareState(item: { shared?: boolean, sharedOut?: boolean }): 'incoming' | 'outgoing' | null {
+	if (item.shared === true) {
+		return 'incoming'
+	}
+	return item.sharedOut === true ? 'outgoing' : null
+}

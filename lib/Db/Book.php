@@ -74,6 +74,8 @@ use OCP\AppFramework\Db\Entity;
  * @method void setAgeRatingManual(bool $manual)
  * @method int getMetaUpdatedAt()
  * @method void setMetaUpdatedAt(int $metaUpdatedAt)
+ * @method string|null getSharedOwner()
+ * @method void setSharedOwner(?string $sharedOwner)
  */
 class Book extends Entity {
 	use MarksFieldsOnCreate;
@@ -144,6 +146,11 @@ class Book extends Entity {
 	 * (which drives /sync): a book shared through the app is stale for the recipient only when this moved.
 	 */
 	protected int $metaUpdatedAt = 0;
+	/**
+	 * Nextcloud user id of the file owner when the file reached this user through a share of another user (the book is
+	 * "shared with me"); null = own file. Set at indexing from the share mount, so listing/filtering is plain SQL.
+	 */
+	protected ?string $sharedOwner = null;
 
 	public function __construct() {
 		$this->markAllFieldsUpdated();

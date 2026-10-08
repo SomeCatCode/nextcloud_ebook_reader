@@ -56,6 +56,12 @@
 			]
 		},
 		{
+			"id": "A hidden file \".<book>.opf\" in the same folder as the book.",
+			"files": [
+				"src/components/library/SettingsDialog.vue"
+			]
+		},
+		{
 			"id": "A name is too long (max. 512 characters).",
 			"files": [
 				"src/components/library/BulkEditDialog.vue"
@@ -95,6 +101,18 @@
 			"id": "About {from} → {to}, {count} of {total} pages will be optimized",
 			"files": [
 				"src/components/convert/ConvertDialog.vue"
+			]
+		},
+		{
+			"id": "Actions for the folder “{name}”",
+			"files": [
+				"src/components/library/FolderBrowser.vue"
+			]
+		},
+		{
+			"id": "Actions for the series “{name}”",
+			"files": [
+				"src/components/library/SeriesCard.vue"
 			]
 		},
 		{
@@ -219,10 +237,22 @@
 			]
 		},
 		{
+			"id": "All",
+			"files": [
+				"src/views/LibraryView.vue"
+			]
+		},
+		{
 			"id": "All books",
 			"files": [
 				"lib/Service/OpdsCatalog.php",
 				"src/views/LibraryView.vue"
+			]
+		},
+		{
+			"id": "All books of the series are shared read-only and the share stays up to date: volumes you add to the series later are shared automatically. Everybody keeps their own reading progress.",
+			"files": [
+				"src/components/library/ShareDialog.vue"
 			]
 		},
 		{
@@ -379,15 +409,27 @@
 			]
 		},
 		{
-			"id": "Books with DRM can not be opened in the reader.",
+			"id": "Books in this folder",
 			"files": [
-				"src/views/ReaderView.vue"
+				"src/components/library/FolderBrowser.vue"
 			]
 		},
 		{
-			"id": "Books without a series",
+			"id": "Books shared with you and books you share with others appear here.",
 			"files": [
 				"src/views/LibraryView.vue"
+			]
+		},
+		{
+			"id": "Books that belong to a series appear here as one stack per series.",
+			"files": [
+				"src/views/LibraryView.vue"
+			]
+		},
+		{
+			"id": "Books with DRM can not be opened in the reader.",
+			"files": [
+				"src/views/ReaderView.vue"
 			]
 		},
 		{
@@ -866,6 +908,12 @@
 			"id": "Could not load the current shares",
 			"files": [
 				"src/components/library/ShareDialog.vue"
+			]
+		},
+		{
+			"id": "Could not load the folders. The folder view needs a newer version of the e-book reader app on the server.",
+			"files": [
+				"src/components/library/FolderBrowser.vue"
 			]
 		},
 		{
@@ -1435,6 +1483,25 @@
 			]
 		},
 		{
+			"id": "Folder path",
+			"files": [
+				"src/components/library/FolderBrowser.vue"
+			]
+		},
+		{
+			"id": "Folders",
+			"files": [
+				"src/components/library/FolderBrowser.vue",
+				"src/views/LibraryView.vue"
+			]
+		},
+		{
+			"id": "Folders with e-books appear here once your library has been scanned.",
+			"files": [
+				"src/components/library/FolderBrowser.vue"
+			]
+		},
+		{
 			"id": "Font",
 			"files": [
 				"src/components/reader/ReaderSettings.vue"
@@ -1528,12 +1595,6 @@
 			"id": "Green",
 			"files": [
 				"src/components/reader/AnnotationPopup.vue"
-			]
-		},
-		{
-			"id": "Group series",
-			"files": [
-				"src/views/LibraryView.vue"
 			]
 		},
 		{
@@ -1661,6 +1722,12 @@
 			]
 		},
 		{
+			"id": "In a hidden .meta folder per directory",
+			"files": [
+				"src/components/library/SettingsDialog.vue"
+			]
+		},
+		{
 			"id": "In the background (recommended)",
 			"files": [
 				"src/components/library/SettingsDialog.vue"
@@ -1677,6 +1744,12 @@
 			"files": [
 				"src/components/library/TagTreeNav.vue",
 				"src/views/LibraryView.vue"
+			]
+		},
+		{
+			"id": "Include subfolders",
+			"files": [
+				"src/components/library/FolderBrowser.vue"
 			]
 		},
 		{
@@ -1849,6 +1922,12 @@
 			]
 		},
 		{
+			"id": "Manage shares",
+			"files": [
+				"src/views/LibraryView.vue"
+			]
+		},
+		{
 			"id": "Margin",
 			"files": [
 				"src/components/reader/ReaderSettings.vue"
@@ -1970,6 +2049,12 @@
 			]
 		},
 		{
+			"id": "Next to the book (recommended)",
+			"files": [
+				"src/components/library/SettingsDialog.vue"
+			]
+		},
+		{
 			"id": "Next volume",
 			"files": [
 				"src/components/library/ContinueReading.vue"
@@ -2002,6 +2087,12 @@
 			]
 		},
 		{
+			"id": "No books in this folder",
+			"files": [
+				"src/views/LibraryView.vue"
+			]
+		},
+		{
 			"id": "No books selected.",
 			"files": [
 				"src/components/library/BulkEditDialog.vue"
@@ -2029,6 +2120,12 @@
 			"id": "No e-books found in your library folders. Check the folders in the settings.",
 			"files": [
 				"src/views/LibraryView.vue"
+			]
+		},
+		{
+			"id": "No folders",
+			"files": [
+				"src/components/library/FolderBrowser.vue"
 			]
 		},
 		{
@@ -2065,6 +2162,12 @@
 			"id": "No results.",
 			"files": [
 				"src/views/ReaderView.vue"
+			]
+		},
+		{
+			"id": "No series yet",
+			"files": [
+				"src/views/LibraryView.vue"
 			]
 		},
 		{
@@ -2107,11 +2210,18 @@
 		{
 			"id": "Nothing has been shared with you yet.",
 			"files": [
-				"src/components/library/SharingOverview.vue"
+				"src/components/library/SharingOverview.vue",
+				"src/views/LibraryView.vue"
 			]
 		},
 		{
 			"id": "Nothing here yet",
+			"files": [
+				"src/views/LibraryView.vue"
+			]
+		},
+		{
+			"id": "Nothing shared yet",
 			"files": [
 				"src/views/LibraryView.vue"
 			]
@@ -2235,6 +2345,12 @@
 			"id": "Open in E-Book Reader",
 			"files": [
 				"src/files.ts"
+			]
+		},
+		{
+			"id": "Open in Files",
+			"files": [
+				"src/components/library/FolderBrowser.vue"
 			]
 		},
 		{
@@ -2953,6 +3069,30 @@
 			]
 		},
 		{
+			"id": "Share folder",
+			"files": [
+				"src/components/library/ShareDialog.vue"
+			]
+		},
+		{
+			"id": "Share folder…",
+			"files": [
+				"src/components/library/FolderBrowser.vue"
+			]
+		},
+		{
+			"id": "Share series",
+			"files": [
+				"src/components/library/ShareDialog.vue"
+			]
+		},
+		{
+			"id": "Share series…",
+			"files": [
+				"src/views/LibraryView.vue"
+			]
+		},
+		{
 			"id": "Share shelf",
 			"files": [
 				"src/components/library/ShareDialog.vue"
@@ -2967,14 +3107,21 @@
 		{
 			"id": "Shared",
 			"files": [
-				"src/components/library/SharedNav.vue",
-				"src/components/library/SharingOverview.vue"
+				"src/components/library/SharingOverview.vue",
+				"src/views/LibraryView.vue"
 			]
 		},
 		{
 			"id": "Shared by me",
 			"files": [
-				"src/components/library/SharingOverview.vue"
+				"src/components/library/SharingOverview.vue",
+				"src/views/LibraryView.vue"
+			]
+		},
+		{
+			"id": "Shared by you",
+			"files": [
+				"src/components/library/ShareBadge.vue"
 			]
 		},
 		{
@@ -2998,7 +3145,20 @@
 		{
 			"id": "Shared with me",
 			"files": [
-				"src/components/library/SharingOverview.vue"
+				"src/components/library/SharingOverview.vue",
+				"src/views/LibraryView.vue"
+			]
+		},
+		{
+			"id": "Shared with you",
+			"files": [
+				"src/components/library/ShareBadge.vue"
+			]
+		},
+		{
+			"id": "Shared with you by {name}",
+			"files": [
+				"src/components/library/ShareBadge.vue"
 			]
 		},
 		{
@@ -3011,6 +3171,8 @@
 			"id": "Share…",
 			"files": [
 				"src/components/library/BookDetails.vue",
+				"src/components/library/FolderBrowser.vue",
+				"src/components/library/SeriesCard.vue",
 				"src/components/library/ShelvesNav.vue"
 			]
 		},
@@ -3390,6 +3552,18 @@
 			]
 		},
 		{
+			"id": "The folder is shared read-only as one Nextcloud share, including its books and subfolders. Everybody keeps their own reading progress.",
+			"files": [
+				"src/components/library/ShareDialog.vue"
+			]
+		},
+		{
+			"id": "The folders stay tidy: all companion files of a directory go into its hidden \".meta\" folder.",
+			"files": [
+				"src/components/library/SettingsDialog.vue"
+			]
+		},
+		{
 			"id": "The images are already compressed, so the file is barely smaller than the other formats",
 			"files": [
 				"src/convert/formats.ts"
@@ -3453,6 +3627,12 @@
 			"id": "The shelf is shared read-only and stays up to date: books you add to or remove from it are shared or unshared automatically. Everybody keeps their own reading progress.",
 			"files": [
 				"src/components/library/ShareDialog.vue"
+			]
+		},
+		{
+			"id": "The sidecar files with the metadata of your books. Changing this moves the existing files in the background.",
+			"files": [
+				"src/components/library/SettingsDialog.vue"
 			]
 		},
 		{
@@ -3563,6 +3743,12 @@
 		},
 		{
 			"id": "Try a different search or remove some filters.",
+			"files": [
+				"src/views/LibraryView.vue"
+			]
+		},
+		{
+			"id": "Try including the subfolders.",
 			"files": [
 				"src/views/LibraryView.vue"
 			]
@@ -3727,13 +3913,13 @@
 			]
 		},
 		{
-			"id": "What you share with whom and what is shared with you",
+			"id": "When switched off, nobody can use the catalog, regardless of their own setting.",
 			"files": [
-				"src/components/library/SharedNav.vue"
+				"src/components/library/SettingsDialog.vue"
 			]
 		},
 		{
-			"id": "When switched off, nobody can use the catalog, regardless of their own setting.",
+			"id": "Where to store companion files",
 			"files": [
 				"src/components/library/SettingsDialog.vue"
 			]
@@ -3748,6 +3934,12 @@
 			"id": "Whether books must match all or just one of the included filters",
 			"files": [
 				"src/components/library/FilterBar.vue"
+			]
+		},
+		{
+			"id": "Which shared books to show",
+			"files": [
+				"src/views/LibraryView.vue"
 			]
 		},
 		{
@@ -3883,7 +4075,13 @@
 			]
 		},
 		{
-			"id": "You have not shared any books or shelves yet.",
+			"id": "You have not shared any books yet. Share a book, shelf, series or folder to see it here.",
+			"files": [
+				"src/views/LibraryView.vue"
+			]
+		},
+		{
+			"id": "You have not shared any books, shelves, series or folders yet.",
 			"files": [
 				"src/components/library/SharingOverview.vue"
 			]
@@ -4029,6 +4227,7 @@
 			"plural": "%n books",
 			"files": [
 				"lib/Service/OpdsCatalog.php",
+				"src/components/library/FolderBrowser.vue",
 				"src/components/library/SharingOverview.vue"
 			]
 		},
@@ -4118,6 +4317,14 @@
 			"plural": "Optimizing %n comics in the background",
 			"files": [
 				"src/components/convert/OptimizeBooksDialog.vue"
+			]
+		},
+		{
+			"id": "_Shared by you with %n user_::_Shared by you with %n users_",
+			"singular": "Shared by you with %n user",
+			"plural": "Shared by you with %n users",
+			"files": [
+				"src/components/library/ShareBadge.vue"
 			]
 		},
 		{

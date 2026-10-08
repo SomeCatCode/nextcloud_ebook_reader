@@ -313,4 +313,18 @@ class BooksControllerTest extends TestCase {
 		$this->assertSame(['book' => ['fileId' => 9]], $controller->next(5)->getData());
 		$this->assertSame(['book' => null], $controller->next(5)->getData());
 	}
+
+	public function testIndexForwardsTheSharedFilter(): void {
+		$seen = [];
+		$this->library->method('findBooks')
+			->willReturnCallback(static function (string $u, \OCA\EbookReader\Service\BookQuery $q) use (&$seen): array {
+				$seen[] = $q->shared;
+				return ['books' => [], 'total' => 0];
+			});
+		$this->serializer->method('serializeMany')->willReturn([]);
+		$this->controller->index(shared: 'incoming');
+		$this->controller->index(shared: 'nonsense');
+		$this->controller->index();
+		$this->assertSame(['incoming', null, null], $seen);
+	}
 }

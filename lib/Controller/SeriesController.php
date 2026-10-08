@@ -9,9 +9,11 @@ declare(strict_types=1);
 
 namespace OCA\EbookReader\Controller;
 
+use OCA\EbookReader\Db\SeriesShare;
 use OCA\EbookReader\Http\AbstractOCSController;
 use OCA\EbookReader\Service\BookQuery;
 use OCA\EbookReader\Service\LibraryService;
+use OCA\EbookReader\Service\ShareService;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\ApiRoute;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
@@ -27,6 +29,7 @@ class SeriesController extends AbstractOCSController {
 		IRequest $request,
 		?string $userId,
 		private LibraryService $library,
+		private ?ShareService $sharing = null,
 	) {
 		parent::__construct($request, $userId);
 	}
@@ -46,6 +49,7 @@ class SeriesController extends AbstractOCSController {
 	 * @param list<string>|string|null $exclude Entries in the same form; books having any of them are excluded
 	 * @param string $match "all" (every include must match) or "any" (at least one)
 	 * @param int<0, 1> $hideFinished 1 = leave out finished books (ignored when status is given)
+	 * @param 'incoming'|'outgoing'|'any'|null $shared Only books shared with the user / by the user / either (see GET /books)
 	 * @return DataResponse<Http::STATUS_OK, array{series: list<EbookReaderSeries>}, array{}>
 	 * @throws OCSForbiddenException Not logged in
 	 *
@@ -66,13 +70,20 @@ class SeriesController extends AbstractOCSController {
 		array|string|null $exclude = null,
 		string $match = 'all',
 		int $hideFinished = 0,
+		?string $shared = null,
 	): DataResponse {
 		$userId = $this->uid();
 		$query = BookQuery::fromRequestParams([
 			'search' => $search, 'format' => $format, 'genre' => $genre, 'tag' => $tag,
 			'author' => $author, 'status' => $status, 'hideFinished' => $hideFinished, 'sort' => $sort, 'order' => $order,
-			'include' => $include, 'exclude' => $exclude, 'match' => $match,
+			'include' => $include, 'exclude' => $exclude, 'match' => $match, 'shared' => $shared,
 		]);
-		return new DataResponse(['series' => $this->library->listSeries($userId, $query)]);
+		$counts = $this->sharing?->seriesShareCounts($userId) ?? [];
+		$series = [];
+		foreach ($this->library->listSeries($userId, $query) as $entry) {
+			$entry['sharedWith'] = $counts[SeriesShare::keyOf($entry['name'])] ?? 0;
+			$series[] = $entry;
+		}
+		return new DataResponse(['series' => $series]);
 	}
 }

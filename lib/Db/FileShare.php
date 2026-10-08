@@ -33,6 +33,14 @@ class FileShare extends Entity {
 
 	public const DIRECT = 0;
 
+	/**
+	 * shelfShareId of rows created for a series share: the negative id of the series share (shelf share ids are positive),
+	 * so the shelf-share plumbing (findByShelfShare, deleteByShelfShare, countsByShelfShares) serves series shares too.
+	 */
+	public static function seriesReason(int $seriesShareId): int {
+		return -$seriesShareId;
+	}
+
 	protected string $ownerId = '';
 	protected string $recipientId = '';
 	protected int $fileId = 0;

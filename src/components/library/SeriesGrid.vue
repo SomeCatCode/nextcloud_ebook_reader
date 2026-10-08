@@ -8,7 +8,8 @@
 			v-for="s in series"
 			:key="s.name"
 			:series="s"
-			@click="$emit('click', $event)" />
+			@click="$emit('click', $event)"
+			@share="$emit('share', $event)" />
 	</div>
 </template>
 
@@ -19,7 +20,7 @@ import SeriesCard from './SeriesCard.vue'
 
 defineProps<{ series: SeriesEntry[] }>()
 
-defineEmits<{ click: [series: SeriesEntry] }>()
+defineEmits<{ click: [series: SeriesEntry], share: [series: SeriesEntry] }>()
 </script>
 
 <style scoped lang="scss">

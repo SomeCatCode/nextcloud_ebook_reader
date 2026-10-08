@@ -71,7 +71,10 @@ final class FakeQueryBuilder {
 		$expr->method('eq')->willReturnCallback(static fn ($x, $y): string => 'eq(' . $str($x) . ',' . $str($y) . ')');
 		$expr->method('neq')->willReturnCallback(static fn ($x, $y): string => 'neq(' . $str($x) . ',' . $str($y) . ')');
 		$expr->method('lte')->willReturnCallback(static fn ($x, $y): string => 'lte(' . $str($x) . ',' . $str($y) . ')');
+		$expr->method('like')->willReturnCallback(static fn ($x, $y): string => 'like(' . $str($x) . ',' . $str($y) . ')');
 		$expr->method('iLike')->willReturnCallback(static fn ($x, $y): string => 'iLike(' . $str($x) . ',' . $str($y) . ')');
+		$expr->method('like')->willReturnCallback(static fn ($x, $y): string => 'like(' . $str($x) . ',' . $str($y) . ')');
+		$expr->method('notLike')->willReturnCallback(static fn ($x, $y): string => 'notLike(' . $str($x) . ',' . $str($y) . ')');
 		$expr->method('in')->willReturnCallback(static fn ($x, $y): string => 'in(' . $str($x) . ',' . $str($y) . ')');
 		$expr->method('notIn')->willReturnCallback(static fn ($x, $y): string => 'notIn(' . $str($x) . ',' . $str($y) . ')');
 		$expr->method('isNull')->willReturnCallback(static fn ($x): string => 'isNull(' . $str($x) . ')');

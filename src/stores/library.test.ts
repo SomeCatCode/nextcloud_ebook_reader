@@ -507,36 +507,36 @@ describe('library store: shelves, series and hierarchy', () => {
 		localStorage.clear()
 	})
 
-	it('moves through grid, volumes and back', async () => {
+	it('moves through the series view, volumes and back', async () => {
 		const store = useLibraryStore()
-		store.setGroupSeries(true)
+		store.showView('series')
 		await vi.waitFor(() => expect(store.seriesList).toHaveLength(1))
 		expect(store.seriesMode).toBe(true)
-		expect(mocked.listBooks).toHaveBeenLastCalledWith(expect.objectContaining({ inSeries: 0, sort: 'title' }))
-		expect(localStorage.getItem('ebookreader.groupSeries')).toBe('1')
+		// the series view lists series only: no book request
+		expect(mocked.listBooks).not.toHaveBeenCalled()
+		expect(store.urlQuery).toEqual({ view: 'series' })
 
 		mocked.listSeries.mockClear()
 		store.openSeries('Dune')
-		await vi.waitFor(() => expect(mocked.listBooks).toHaveBeenCalledTimes(2))
+		await vi.waitFor(() => expect(mocked.listBooks).toHaveBeenCalledTimes(1))
 		expect(store.seriesMode).toBe(false)
-		expect(store.urlQuery).toEqual({ volumes: 'Dune' })
+		expect(store.urlQuery).toEqual({ view: 'series', volumes: 'Dune' })
 		expect(mocked.listSeries).not.toHaveBeenCalled()
 		expect(mocked.listBooks).toHaveBeenLastCalledWith(expect.objectContaining({
 			include: [{ type: 'series', name: 'Dune' }],
 			sort: 'series',
 			order: 'asc',
-			inSeries: undefined,
 		}))
 
 		store.closeSeries()
 		await vi.waitFor(() => expect(mocked.listSeries).toHaveBeenCalled())
 		expect(store.seriesMode).toBe(true)
-		expect(store.urlQuery).toEqual({})
+		expect(store.urlQuery).toEqual({ view: 'series' })
 	})
 
-	it('keeps the filters when grouping series and ignores match=any for volumes', async () => {
+	it('keeps the filters in the series view and ignores match=any for volumes', async () => {
 		const store = useLibraryStore()
-		store.setGroupSeries(true)
+		store.showView('series')
 		store.setTermState({ type: 'genre', name: 'A' }, 'include')
 		store.setTermState({ type: 'genre', name: 'B' }, 'include')
 		store.setMatch('any')
@@ -594,5 +594,109 @@ describe('library store: shelves, series and hierarchy', () => {
 		const state = smartQueryToState({ include: ['bogus:x', 'tag:ok'], exclude: [], match: 'all', search: '', status: null, sort: 'nope', order: 'asc' })
 		expect(state.filters.include).toEqual([{ type: 'tag', name: 'ok' }])
 		expect(state.sort).toBe('title')
+	})
+})
+
+describe('library store: shared and folder views', () => {
+	beforeEach(() => {
+		setActivePinia(createPinia())
+		vi.useFakeTimers()
+		vi.resetAllMocks()
+		mocked.listBooks.mockResolvedValue({ books: [book(1)], total: 1 })
+		mocked.listSeries.mockResolvedValue([])
+	})
+	afterEach(() => {
+		vi.useRealTimers()
+		localStorage.clear()
+	})
+
+	it('lists shared books with the chosen filter and pages through them', async () => {
+		const store = useLibraryStore()
+		store.showView('shared')
+		expect(store.view).toBe('shared')
+		expect(mocked.listBooks).toHaveBeenLastCalledWith(expect.objectContaining({ shared: 'any', offset: 0, limit: PAGE_SIZE }))
+		await vi.waitFor(() => expect(store.loaded).toBe(true))
+
+		store.setSharedFilter('outgoing')
+		expect(mocked.listBooks).toHaveBeenLastCalledWith(expect.objectContaining({ shared: 'outgoing' }))
+		expect(store.urlQuery).toEqual({ view: 'shared', shared: 'outgoing' })
+
+		// further pages keep the filter
+		mocked.listBooks.mockResolvedValue({ books: Array.from({ length: PAGE_SIZE }, (_, i) => book(100 + i)), total: PAGE_SIZE * 3 })
+		store.setSharedFilter('incoming')
+		await vi.waitFor(() => expect(store.books).toHaveLength(PAGE_SIZE))
+		await store.loadMore()
+		expect(mocked.listBooks).toHaveBeenLastCalledWith(expect.objectContaining({ shared: 'incoming', offset: PAGE_SIZE }))
+	})
+
+	it('does not send the shared filter outside the shared view', () => {
+		const store = useLibraryStore()
+		store.showView('all')
+		expect(mocked.listBooks.mock.lastCall?.[0]?.shared).toBeUndefined()
+		expect(mocked.listBooks.mock.lastCall?.[0]?.folder).toBeUndefined()
+	})
+
+	it('shows only folders at the top level and the books of an open folder', async () => {
+		const store = useLibraryStore()
+		store.showView('folders')
+		await vi.waitFor(() => expect(store.loaded).toBe(true))
+		expect(store.foldersRoot).toBe(true)
+		expect(mocked.listBooks).not.toHaveBeenCalled()
+
+		store.openFolder('/Books/Comics')
+		expect(store.foldersRoot).toBe(false)
+		expect(mocked.listBooks).toHaveBeenLastCalledWith(expect.objectContaining({ folder: '/Books/Comics', folderRecursive: undefined, hideFinished: undefined }))
+		expect(store.urlQuery).toEqual({ view: 'folders', folder: '/Books/Comics' })
+
+		store.setFolderRecursive(true)
+		expect(mocked.listBooks).toHaveBeenLastCalledWith(expect.objectContaining({ folder: '/Books/Comics', folderRecursive: 1 }))
+		expect(store.urlQuery).toEqual({ view: 'folders', folder: '/Books/Comics', recursive: '1' })
+
+		store.openFolder(null)
+		expect(store.foldersRoot).toBe(true)
+	})
+
+	it('round-trips view, shared filter and folder through the URL', () => {
+		const q = stateToQuery(
+			{ include: [], exclude: [], match: 'all', search: '', status: null },
+			'title',
+			'asc',
+			{ view: 'folders', folder: '/Books/Saga', folderRecursive: true },
+		)
+		expect(q).toEqual({ view: 'folders', folder: '/Books/Saga', recursive: '1' })
+		const state = queryToState(q)
+		expect(state.view).toBe('folders')
+		expect(state.folder).toBe('/Books/Saga')
+		expect(state.folderRecursive).toBe(true)
+
+		expect(queryToState({ view: 'shared', shared: 'incoming' })).toMatchObject({ view: 'shared', shared: 'incoming', folder: null })
+		// unknown values fall back to the defaults; a folder only counts in the folder view
+		expect(queryToState({ view: 'bogus', shared: 'x', folder: '/a' })).toMatchObject({ view: 'all', shared: 'any', folder: null })
+		// old links with only a series keep working
+		expect(queryToState({ volumes: 'Dune' })).toMatchObject({ view: 'series', drillSeries: 'Dune' })
+		// default view and filter are not written to the URL
+		expect(stateToQuery({ include: [], exclude: [], match: 'all', search: '', status: null }, 'title', 'asc', { view: 'shared', shared: 'any' })).toEqual({ view: 'shared' })
+		expect(stateToQuery({ include: [], exclude: [], match: 'all', search: '', status: null }, 'title', 'asc', { view: 'all' })).toEqual({})
+	})
+
+	it('leaves the special views when a shelf or a status is shown', async () => {
+		const store = useLibraryStore()
+		store.showView('shared')
+		store.viewShelf({ id: 3, type: 'manual', query: null })
+		expect(store.view).toBe('all')
+		store.showView('series')
+		store.showStatus('unread')
+		expect(store.view).toBe('all')
+		expect(store.filters.status).toBe('unread')
+		expect(mocked.listBooks).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'unread', shared: undefined }))
+	})
+
+	it('updates the share counter of a series card', async () => {
+		mocked.listSeries.mockResolvedValue([{ name: 'Dune', count: 3, readCount: 0, coverFileIds: [1], firstFileId: 1, lastAddedAt: 0 }])
+		const store = useLibraryStore()
+		store.showView('series')
+		await vi.waitFor(() => expect(store.seriesList).toHaveLength(1))
+		store.setSeriesSharedWith('Dune', 2)
+		expect(store.seriesList[0]?.sharedWith).toBe(2)
 	})
 })

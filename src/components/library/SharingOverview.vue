@@ -26,7 +26,7 @@
 					</p>
 					<ul v-else class="sharing-overview__list">
 						<li v-for="item in section.items" :key="key(section.key, item)" class="sharing-overview__entry">
-							<NcIconSvgWrapper :path="item.type === 'shelf' ? mdiBookshelf : mdiBookOutline" />
+							<NcIconSvgWrapper :path="iconOf(item)" />
 							<span class="sharing-overview__what">
 								<button type="button" class="sharing-overview__open" @click="open(item)">
 									{{ item.name }}
@@ -35,13 +35,14 @@
 									{{ section.key === 'outgoing'
 										? t('ebookreader', 'with {name}', { name: item.recipientDisplayName })
 										: t('ebookreader', 'shared by {name}', { name: item.ownerDisplayName }) }}
-									<template v-if="item.type === 'shelf'">
+									<template v-if="item.type === 'shelf' || item.type === 'series'">
 										· {{ n('ebookreader', '%n book', '%n books', item.bookCount) }}
 									</template>
 									· {{ formatDate(item.createdAt) }}
 								</span>
 							</span>
 							<NcButton
+								v-if="section.key === 'outgoing' || item.type === 'book' || item.type === 'shelf'"
 								variant="tertiary"
 								:disabled="busy"
 								:aria-label="section.key === 'outgoing' ? t('ebookreader', 'Stop sharing') : t('ebookreader', 'Remove')"
@@ -65,7 +66,7 @@
 <script setup lang="ts">
 import type { Share } from '../../types.ts'
 
-import { mdiBookOutline, mdiBookshelf, mdiClose } from '@mdi/js'
+import { mdiBookMultipleOutline, mdiBookOutline, mdiBookshelf, mdiClose, mdiFolderOutline } from '@mdi/js'
 import { showError } from '@nextcloud/dialogs'
 import { n, t } from '@nextcloud/l10n'
 import { computed, onMounted, ref } from 'vue'
@@ -76,7 +77,7 @@ import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import { useLibraryStore } from '../../stores/library.ts'
-import { useSharesStore } from '../../stores/shares.ts'
+import { shareTargetId, useSharesStore } from '../../stores/shares.ts'
 import { useShelvesStore } from '../../stores/shelves.ts'
 
 const emit = defineEmits<{ close: [] }>()
@@ -89,7 +90,7 @@ const busy = ref(false)
 const error = ref('')
 
 const sections = computed(() => [
-	{ key: 'outgoing' as const, title: t('ebookreader', 'Shared by me'), empty: t('ebookreader', 'You have not shared any books or shelves yet.'), items: shares.outgoing },
+	{ key: 'outgoing' as const, title: t('ebookreader', 'Shared by me'), empty: t('ebookreader', 'You have not shared any books, shelves, series or folders yet.'), items: shares.outgoing },
 	{ key: 'incoming' as const, title: t('ebookreader', 'Shared with me'), empty: t('ebookreader', 'Nothing has been shared with you yet.'), items: shares.incoming },
 ])
 
@@ -106,7 +107,19 @@ onMounted(async () => {
  * @param item
  */
 function key(section: string, item: Share): string {
-	return [section, item.type, item.fileId ?? item.shelfId, item.owner, item.recipient].join('|')
+	return [section, item.type, shareTargetId(item), item.owner, item.recipient].join('|')
+}
+
+/**
+ * @param item
+ */
+function iconOf(item: Share): string {
+	switch (item.type) {
+		case 'shelf': return mdiBookshelf
+		case 'series': return mdiBookMultipleOutline
+		case 'folder': return mdiFolderOutline
+		default: return mdiBookOutline
+	}
 }
 
 /**
@@ -130,6 +143,18 @@ function open(item: Share): void {
 		}
 		return
 	}
+	if (item.type === 'series' && item.series) {
+		library.showView('series')
+		library.openSeries(item.series)
+		emit('close')
+		return
+	}
+	if (item.type === 'folder' && item.path) {
+		library.showView('folders')
+		library.openFolder(item.path)
+		emit('close')
+		return
+	}
 	const fileId = item.fileId
 	if (fileId !== null) {
 		if ([...library.books, ...library.recent].some((b) => b.fileId === fileId)) {
@@ -149,7 +174,7 @@ async function remove(section: 'outgoing' | 'incoming', item: Share): Promise<vo
 	busy.value = true
 	try {
 		if (section === 'outgoing') {
-			const id = item.type === 'book' ? item.fileId : item.shelfId
+			const id = shareTargetId(item)
 			if (id !== null) {
 				await shares.unshare({ type: item.type, id }, item.recipient)
 			}

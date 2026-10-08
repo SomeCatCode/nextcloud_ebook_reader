@@ -19,10 +19,10 @@ final class SeriesAggregator {
 	/**
 	 * @param list<array<string, mixed>> $rows book rows with file_id, series, series_index, added_at, read_status, title, path
 	 * @param 'name'|'added' $sort name (natural, case-insensitive) or lastAddedAt
-	 * @return list<array{name: string, count: int, readCount: int, coverFileIds: list<int>, firstFileId: int, lastAddedAt: int}>
+	 * @return list<array{name: string, count: int, readCount: int, coverFileIds: list<int>, firstFileId: int, lastAddedAt: int, shared: bool}> shared = the series contains books of other users (shared_owner set)
 	 */
 	public static function aggregate(array $rows, string $sort = 'name', string $order = 'asc', int $limit = self::MAX_SERIES): array {
-		/** @var array<string, array{name: string, books: list<array{id: int, index: ?float, title: string}>, read: int, last: int}> $groups */
+		/** @var array<string, array{name: string, books: list<array{id: int, index: ?float, title: string}>, read: int, last: int, shared: bool}> $groups */
 		$groups = [];
 		foreach ($rows as $row) {
 			$name = trim(is_scalar($row['series'] ?? null) ? (string)$row['series'] : '');
@@ -31,7 +31,10 @@ final class SeriesAggregator {
 			}
 			$key = mb_strtolower($name);
 			if (!isset($groups[$key])) {
-				$groups[$key] = ['name' => $name, 'books' => [], 'read' => 0, 'last' => 0];
+				$groups[$key] = ['name' => $name, 'books' => [], 'read' => 0, 'last' => 0, 'shared' => false];
+			}
+			if (isset($row['shared_owner']) && $row['shared_owner'] !== '') {
+				$groups[$key]['shared'] = true;
 			}
 			$index = $row['series_index'] ?? null;
 			$title = is_scalar($row['title'] ?? null) && (string)$row['title'] !== '' ? (string)$row['title'] : (is_scalar($row['path'] ?? null) ? (string)$row['path'] : '');
@@ -68,6 +71,7 @@ final class SeriesAggregator {
 				'coverFileIds' => array_slice($ids, 0, self::MAX_COVERS),
 				'firstFileId' => $ids[0],
 				'lastAddedAt' => $g['last'],
+				'shared' => $g['shared'],
 			];
 		}
 

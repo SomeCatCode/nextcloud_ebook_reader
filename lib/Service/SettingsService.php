@@ -10,6 +10,8 @@ declare(strict_types=1);
 namespace OCA\EbookReader\Service;
 
 use OCA\EbookReader\AppInfo\Application;
+use OCA\EbookReader\BackgroundJob\MoveSidecarsJob;
+use OCP\BackgroundJob\IJobList;
 use OCP\IConfig;
 
 /**
@@ -52,13 +54,25 @@ class SettingsService {
 	/** Where metadata changes are stored: sidecar file (".<book>.opf"), inside the book, both, or only in the library database. */
 	public const METADATA_TARGETS = ['sidecar', 'file', 'both', 'library'];
 	public const DEFAULT_METADATA_TARGET = 'sidecar';
+	/** Where sidecar files live: hidden file next to the book (".<book>.opf") or in a hidden ".meta" folder per directory ("<folder>/.meta/<book>.opf"). */
+	public const SIDECAR_LOCATIONS = ['beside', 'meta'];
+	public const DEFAULT_SIDECAR_LOCATION = 'beside';
 
 	public function __construct(
 		private IConfig $config,
+		private ?IJobList $jobList = null,
 	) {
 	}
 
-	/** @return array{libraryFolders: list<string>, reader: array<string, mixed>, filenamePattern: string, genreList: list<string>|null, metadataWriteMode: string, metadataTarget: string} */
+	/** Just the sidecar location of a user (cheap, no genre list): used for every sidecar lookup. */
+	public function sidecarLocation(string $userId): string {
+		$raw = $this->config->getUserValue($userId, Application::APP_ID, self::KEY, '');
+		$stored = $raw === '' ? null : json_decode($raw, true);
+		$location = is_array($stored) ? ($stored['sidecarLocation'] ?? null) : null;
+		return is_string($location) && in_array($location, self::SIDECAR_LOCATIONS, true) ? $location : self::DEFAULT_SIDECAR_LOCATION;
+	}
+
+	/** @return array{libraryFolders: list<string>, reader: array<string, mixed>, filenamePattern: string, genreList: list<string>|null, metadataWriteMode: string, metadataTarget: string, sidecarLocation: string} */
 	public function get(string $userId): array {
 		$raw = $this->config->getUserValue($userId, Application::APP_ID, self::KEY, '');
 		$stored = $raw === '' ? [] : json_decode($raw, true);
@@ -98,15 +112,22 @@ class SettingsService {
 		if (array_key_exists('metadataTarget', $settings)) {
 			$merged['metadataTarget'] = $settings['metadataTarget'];
 		}
+		if (array_key_exists('sidecarLocation', $settings)) {
+			$merged['sidecarLocation'] = $settings['sidecarLocation'];
+		}
 		$clean = $this->normalise($merged, false);
 		$this->config->setUserValue($userId, Application::APP_ID, self::KEY, json_encode($clean, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
+		if ($clean['sidecarLocation'] !== $current['sidecarLocation']) {
+			// the existing sidecars follow in the background (idempotent; the job reads the setting when it runs)
+			$this->jobList?->add(MoveSidecarsJob::class, MoveSidecarsJob::argument($userId));
+		}
 		return $this->get($userId);
 	}
 
 	/**
 	 * @param array<string, mixed> $in
 	 * @param bool $resolveGenres if true a missing genreList is replaced by the default list
-	 * @return array{libraryFolders: list<string>, reader: array<string, mixed>, filenamePattern: string, genreList: list<string>|null, metadataWriteMode: string, metadataTarget: string}
+	 * @return array{libraryFolders: list<string>, reader: array<string, mixed>, filenamePattern: string, genreList: list<string>|null, metadataWriteMode: string, metadataTarget: string, sidecarLocation: string}
 	 */
 	private function normalise(array $in, bool $resolveGenres): array {
 		$folders = [];
@@ -156,6 +177,10 @@ class SettingsService {
 			$target = 'library';
 		}
 
+		$location = isset($in['sidecarLocation']) && is_string($in['sidecarLocation']) && in_array($in['sidecarLocation'], self::SIDECAR_LOCATIONS, true)
+			? $in['sidecarLocation']
+			: self::DEFAULT_SIDECAR_LOCATION;
+
 		return [
 			'libraryFolders' => $folders,
 			'reader' => $reader,
@@ -163,6 +188,7 @@ class SettingsService {
 			'genreList' => $genres,
 			'metadataWriteMode' => $mode,
 			'metadataTarget' => $target,
+			'sidecarLocation' => $location,
 		];
 	}
 

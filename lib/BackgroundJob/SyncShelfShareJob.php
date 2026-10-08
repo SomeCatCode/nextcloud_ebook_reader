@@ -15,7 +15,8 @@ use OCP\BackgroundJob\QueuedJob;
 use Psr\Log\LoggerInterface;
 
 /**
- * Argument: ['shelfShareId' => int]. Finishes the sync of a shared shelf whose book changes were too many for the request.
+ * Argument: ['shelfShareId' => int] or ['seriesShareId' => int]. Finishes the sync of a shared shelf or series whose book
+ * changes were too many for the request.
  */
 class SyncShelfShareJob extends QueuedJob {
 	public function __construct(
@@ -26,17 +27,22 @@ class SyncShelfShareJob extends QueuedJob {
 		parent::__construct($time);
 	}
 
-	/** @param array{shelfShareId?: int} $argument */
+	/** @param array{shelfShareId?: int, seriesShareId?: int} $argument */
 	#[\Override]
 	protected function run($argument): void {
-		$id = $argument['shelfShareId'] ?? null;
+		$seriesId = $argument['seriesShareId'] ?? null;
+		$id = $seriesId ?? $argument['shelfShareId'] ?? null;
 		if (!is_int($id)) {
 			return;
 		}
 		try {
-			$this->sharing->syncById($id);
+			if (is_int($seriesId)) {
+				$this->sharing->syncSeriesById($seriesId);
+			} else {
+				$this->sharing->syncById($id);
+			}
 		} catch (\Throwable $e) {
-			$this->logger->warning('Shelf share sync failed for share ' . $id . ': ' . $e->getMessage(), ['app' => 'ebookreader', 'exception' => $e]);
+			$this->logger->warning('Share sync failed for share ' . $id . ': ' . $e->getMessage(), ['app' => 'ebookreader', 'exception' => $e]);
 		}
 	}
 }
