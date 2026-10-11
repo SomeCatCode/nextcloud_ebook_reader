@@ -173,128 +173,130 @@
 				aria-hidden="true"
 				@change="onFilesPicked">
 
-			<div class="library__toolbar">
-				<NcTextField
-					class="library__search"
-					:modelValue="store.filters.search"
-					:label="t('ebookreader', 'Search books')"
-					trailingButtonIcon="close"
-					:showTrailingButton="store.filters.search !== ''"
-					:trailingButtonLabel="t('ebookreader', 'Clear search')"
-					@update:modelValue="(v: string | number) => store.setSearch(String(v))"
-					@trailingButtonClick="store.setSearch('')" />
+			<div class="library__bar">
+				<div class="library__toolbar">
+					<NcTextField
+						class="library__search"
+						:modelValue="store.filters.search"
+						:label="t('ebookreader', 'Search books')"
+						trailingButtonIcon="close"
+						:showTrailingButton="store.filters.search !== ''"
+						:trailingButtonLabel="t('ebookreader', 'Clear search')"
+						@update:modelValue="(v: string | number) => store.setSearch(String(v))"
+						@trailingButtonClick="store.setSearch('')" />
 
-				<NcActions
-					class="library__sort"
-					:menuName="currentSort ? currentSort.label : t('ebookreader', 'Sort')"
-					:forceName="true"
-					:aria-label="t('ebookreader', 'Sort by')"
-					variant="tertiary">
-					<template #icon>
-						<NcIconSvgWrapper :path="mdiSort" />
-					</template>
-					<NcActionButton
-						v-for="opt in sortOptions"
-						:key="opt.id"
-						type="radio"
-						:modelValue="store.sort === opt.id"
-						closeAfterClick
-						@click="store.setSort(opt.id)">
-						{{ opt.label }}
-					</NcActionButton>
-				</NcActions>
+					<NcActions
+						class="library__sort"
+						:menuName="currentSort ? currentSort.label : t('ebookreader', 'Sort')"
+						:forceName="true"
+						:aria-label="t('ebookreader', 'Sort by')"
+						variant="tertiary">
+						<template #icon>
+							<NcIconSvgWrapper :path="mdiSort" />
+						</template>
+						<NcActionButton
+							v-for="opt in sortOptions"
+							:key="opt.id"
+							type="radio"
+							:modelValue="store.sort === opt.id"
+							closeAfterClick
+							@click="store.setSort(opt.id)">
+							{{ opt.label }}
+						</NcActionButton>
+					</NcActions>
 
-				<NcButton
-					:aria-label="store.order === 'asc' ? t('ebookreader', 'Ascending') : t('ebookreader', 'Descending')"
-					:title="store.order === 'asc' ? t('ebookreader', 'Ascending') : t('ebookreader', 'Descending')"
-					variant="tertiary"
-					@click="store.toggleOrder()">
-					<template #icon>
-						<NcIconSvgWrapper :path="store.order === 'asc' ? mdiSortAscending : mdiSortDescending" />
-					</template>
-				</NcButton>
+					<NcButton
+						:aria-label="store.order === 'asc' ? t('ebookreader', 'Ascending') : t('ebookreader', 'Descending')"
+						:title="store.order === 'asc' ? t('ebookreader', 'Ascending') : t('ebookreader', 'Descending')"
+						variant="tertiary"
+						@click="store.toggleOrder()">
+						<template #icon>
+							<NcIconSvgWrapper :path="store.order === 'asc' ? mdiSortAscending : mdiSortDescending" />
+						</template>
+					</NcButton>
 
-				<NcButton
-					:aria-label="viewMode === 'grid' ? t('ebookreader', 'Switch to list view') : t('ebookreader', 'Switch to grid view')"
-					:title="viewMode === 'grid' ? t('ebookreader', 'Switch to list view') : t('ebookreader', 'Switch to grid view')"
-					variant="tertiary"
-					@click="setViewMode(viewMode === 'grid' ? 'list' : 'grid')">
-					<template #icon>
-						<NcIconSvgWrapper :path="viewMode === 'grid' ? mdiViewList : mdiViewGrid" />
-					</template>
-				</NcButton>
+					<NcButton
+						:aria-label="viewMode === 'grid' ? t('ebookreader', 'Switch to list view') : t('ebookreader', 'Switch to grid view')"
+						:title="viewMode === 'grid' ? t('ebookreader', 'Switch to list view') : t('ebookreader', 'Switch to grid view')"
+						variant="tertiary"
+						@click="setViewMode(viewMode === 'grid' ? 'list' : 'grid')">
+						<template #icon>
+							<NcIconSvgWrapper :path="viewMode === 'grid' ? mdiViewList : mdiViewGrid" />
+						</template>
+					</NcButton>
 
-				<NcButton
-					v-if="store.view !== 'folders'"
-					:pressed="store.hideFinished"
-					:aria-label="t('ebookreader', 'Hide finished books')"
-					:title="t('ebookreader', 'Hide finished books')"
-					variant="tertiary"
-					@update:pressed="(v: boolean) => store.setHideFinished(v)">
-					<template #icon>
-						<NcIconSvgWrapper :path="mdiBookCheckOutline" />
-					</template>
-				</NcButton>
+					<NcButton
+						v-if="store.view !== 'folders'"
+						:pressed="store.hideFinished"
+						:aria-label="t('ebookreader', 'Hide finished books')"
+						:title="t('ebookreader', 'Hide finished books')"
+						variant="tertiary"
+						@update:pressed="(v: boolean) => store.setHideFinished(v)">
+						<template #icon>
+							<NcIconSvgWrapper :path="mdiBookCheckOutline" />
+						</template>
+					</NcButton>
 
-				<NcButton
-					:pressed="store.selectMode"
-					:aria-label="t('ebookreader', 'Select multiple books')"
-					:title="t('ebookreader', 'Select multiple books')"
-					variant="tertiary"
-					@update:pressed="(v: boolean) => store.setSelectMode(v)">
-					<template #icon>
-						<NcIconSvgWrapper :path="mdiCheckboxMultipleMarkedOutline" />
-					</template>
-				</NcButton>
-			</div>
+					<NcButton
+						:pressed="store.selectMode"
+						:aria-label="t('ebookreader', 'Select multiple books')"
+						:title="t('ebookreader', 'Select multiple books')"
+						variant="tertiary"
+						@update:pressed="(v: boolean) => store.setSelectMode(v)">
+						<template #icon>
+							<NcIconSvgWrapper :path="mdiCheckboxMultipleMarkedOutline" />
+						</template>
+					</NcButton>
+				</div>
 
-			<div v-if="store.selectMode" class="library__selection">
-				<span>{{ n('ebookreader', '%n book selected', '%n books selected', store.selectedIds.length) }}</span>
-				<NcButton variant="tertiary" @click="store.selectAllLoaded()">
-					{{ t('ebookreader', 'Select all') }}
-				</NcButton>
-				<NcButton variant="tertiary" :disabled="store.selectedIds.length === 0" @click="store.clearSelection()">
-					{{ t('ebookreader', 'Clear selection') }}
-				</NcButton>
-				<NcButton :disabled="store.selectedIds.length === 0" @click="shelfIds = store.selectedIds">
-					<template #icon>
-						<NcIconSvgWrapper :path="mdiBookPlusOutline" />
-					</template>
-					{{ t('ebookreader', 'Add to shelf…') }}
-				</NcButton>
-				<NcButton
-					v-if="store.activeManualShelfId !== null && !shelves.byId(store.activeManualShelfId)?.readOnly"
-					:disabled="store.selectedIds.length === 0"
-					@click="removeFromShelf">
-					<template #icon>
-						<NcIconSvgWrapper :path="mdiBookMinusOutline" />
-					</template>
-					{{ t('ebookreader', 'Remove from shelf') }}
-				</NcButton>
-				<NcButton :disabled="store.selectedIds.length === 0" @click="organizeIds = store.selectedIds">
-					<template #icon>
-						<NcIconSvgWrapper :path="mdiFolderMoveOutline" />
-					</template>
-					{{ t('ebookreader', 'Rename / organise…') }}
-				</NcButton>
-				<NcButton :disabled="optimizable.eligible.length === 0" @click="showOptimize = true">
-					<template #icon>
-						<NcIconSvgWrapper :path="mdiImageSizeSelectLarge" />
-					</template>
-					{{ t('ebookreader', 'Optimize images…') }}
-				</NcButton>
-				<NcButton variant="primary" :disabled="store.selectedIds.length === 0" @click="showBulk = true">
-					<template #icon>
-						<NcIconSvgWrapper :path="mdiTagMultipleOutline" />
-					</template>
-					{{ t('ebookreader', 'Edit selected…') }}
-				</NcButton>
-				<NcButton variant="tertiary" :disabled="store.selectedIds.length === 0" @click="askDelete(store.selectedIds)">
-					<template #icon>
-						<NcIconSvgWrapper :path="mdiDeleteOutline" />
-					</template>
-					{{ t('ebookreader', 'Delete…') }}
-				</NcButton>
+				<div v-if="store.selectMode" class="library__selection">
+					<span>{{ n('ebookreader', '%n book selected', '%n books selected', store.selectedIds.length) }}</span>
+					<NcButton variant="tertiary" @click="store.selectAllLoaded()">
+						{{ t('ebookreader', 'Select all') }}
+					</NcButton>
+					<NcButton variant="tertiary" :disabled="store.selectedIds.length === 0" @click="store.clearSelection()">
+						{{ t('ebookreader', 'Clear selection') }}
+					</NcButton>
+					<NcButton :disabled="store.selectedIds.length === 0" @click="shelfIds = store.selectedIds">
+						<template #icon>
+							<NcIconSvgWrapper :path="mdiBookPlusOutline" />
+						</template>
+						{{ t('ebookreader', 'Add to shelf…') }}
+					</NcButton>
+					<NcButton
+						v-if="store.activeManualShelfId !== null && !shelves.byId(store.activeManualShelfId)?.readOnly"
+						:disabled="store.selectedIds.length === 0"
+						@click="removeFromShelf">
+						<template #icon>
+							<NcIconSvgWrapper :path="mdiBookMinusOutline" />
+						</template>
+						{{ t('ebookreader', 'Remove from shelf') }}
+					</NcButton>
+					<NcButton :disabled="store.selectedIds.length === 0" @click="organizeIds = store.selectedIds">
+						<template #icon>
+							<NcIconSvgWrapper :path="mdiFolderMoveOutline" />
+						</template>
+						{{ t('ebookreader', 'Rename / organise…') }}
+					</NcButton>
+					<NcButton :disabled="optimizable.eligible.length === 0" @click="showOptimize = true">
+						<template #icon>
+							<NcIconSvgWrapper :path="mdiImageSizeSelectLarge" />
+						</template>
+						{{ t('ebookreader', 'Optimize images…') }}
+					</NcButton>
+					<NcButton variant="primary" :disabled="store.selectedIds.length === 0" @click="showBulk = true">
+						<template #icon>
+							<NcIconSvgWrapper :path="mdiTagMultipleOutline" />
+						</template>
+						{{ t('ebookreader', 'Edit selected…') }}
+					</NcButton>
+					<NcButton variant="tertiary" :disabled="store.selectedIds.length === 0" @click="askDelete(store.selectedIds)">
+						<template #icon>
+							<NcIconSvgWrapper :path="mdiDeleteOutline" />
+						</template>
+						{{ t('ebookreader', 'Delete…') }}
+					</NcButton>
+				</div>
 			</div>
 
 			<div v-if="store.drillSeries !== null" class="library__heading">
@@ -1042,6 +1044,19 @@ onBeforeUnmount(() => {
 	@media (min-width: 1024px) {
 		padding-inline-start: 16px;
 		padding-inline-end: 16px;
+	}
+
+	// search, sort and selection actions stay reachable while scrolling a long list
+	&__bar {
+		position: sticky;
+		top: 0;
+		z-index: 10;
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+		margin-block-start: -8px;
+		padding-block: 8px;
+		background: var(--color-main-background);
 	}
 
 	&__toolbar {

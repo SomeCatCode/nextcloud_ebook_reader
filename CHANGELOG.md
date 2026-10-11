@@ -5,6 +5,9 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+### Geändert
+- Bibliothek: Suche, Sortierung, Filter und die Auswahlleiste bleiben beim Scrollen oben sichtbar. „Auswahl bearbeiten“ ist so auch in langen Listen ohne Zurückscrollen erreichbar.
+
 ## 0.10.0 – 2026-10-08
 
 ### Hinzugefügt
