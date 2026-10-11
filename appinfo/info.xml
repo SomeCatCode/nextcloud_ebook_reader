@@ -14,19 +14,130 @@
 	<summary lang="de">E-Books (EPUB, MOBI, AZW3, FB2, CBZ, CBR) in Nextcloud lesen, organisieren und bearbeiten</summary>
 	<summary lang="es">Lee, organiza y edita libros electrónicos (EPUB, MOBI, AZW3, FB2, CBZ, CBR) en Nextcloud</summary>
 	<summary lang="ja">Nextcloud で電子書籍 (EPUB、MOBI、AZW3、FB2、CBZ、CBR) を読み、整理し、編集できます</summary>
-	<description><![CDATA[A library, reader and metadata/content editor for e-books and comics with reading progress sync.]]></description>
-	<description lang="de"><![CDATA[Bibliothek, Reader und Editor für Metadaten und Inhalte von E-Books und Comics, mit Synchronisierung des Lesefortschritts.]]></description>
-	<description lang="es"><![CDATA[Biblioteca, lector y editor de metadatos y contenido para libros electrónicos y cómics, con sincronización del progreso de lectura.]]></description>
-	<description lang="ja"><![CDATA[電子書籍とコミックのためのライブラリ、リーダー、メタデータ・コンテンツエディターです。読書の進捗を同期できます。]]></description>
+	<description><![CDATA[Library, reader and editor for e-books and comics. Your books stay ordinary files in Nextcloud. The app indexes them and syncs your reading position across devices. No extra container or external service needed.
+
+**Reading**
+- EPUB, MOBI, AZW3, FB2, CBZ, CBR, CB7, CBT
+- Opens from the Files app, paginated or scrolled, light, sepia and dark themes
+- Comics as single or double pages, right-to-left for manga
+- Highlights, notes and bookmarks, exportable as Markdown
+- Large files open fast: pages and chapters are streamed
+
+**Library**
+- Cover grid or list with "Continue reading" and series progress
+- Filter by genre, tag, author, series, format, rating and status
+- Manual and smart shelves
+- Share books, shelves, series and folders with other users
+- Bulk editing and drag-and-drop upload
+- Dashboard widget and OPDS catalog for e-reader apps
+
+**Editing**
+- Metadata, cover, chapters, pages and table of contents
+- Rename and sort into folders by pattern
+- Convert comics between CBZ, CB7, CBT and EPUB
+- Calibre-compatible sidecar files keep the book file untouched
+
+**Requirements**
+Cron for background jobs is recommended. 7-Zip or bsdtar on the server is optional and enables server-side handling of CBR and CB7.
+
+The app is in beta. The editor modifies files, so keep a backup of your books.]]></description>
+	<description lang="de"><![CDATA[Bibliothek, Reader und Editor für E-Books und Comics. Die Bücher bleiben normale Dateien in Nextcloud. Die App indiziert sie und synchronisiert die Leseposition zwischen allen Geräten. Kein zusätzlicher Container oder externer Dienst nötig.
+
+**Lesen**
+- EPUB, MOBI, AZW3, FB2, CBZ, CBR, CB7, CBT
+- Öffnen aus der Dateien-App, seitenweise oder scrollend, helles, Sepia- und dunkles Design
+- Comics als Einzel- oder Doppelseite, Leserichtung rechts nach links für Manga
+- Markierungen, Notizen und Lesezeichen, exportierbar als Markdown
+- Große Dateien öffnen schnell: Seiten und Kapitel werden gestreamt
+
+**Bibliothek**
+- Cover-Raster oder Liste mit „Weiterlesen“ und Serienfortschritt
+- Filter nach Genre, Tag, Autor, Serie, Format, Bewertung und Status
+- Manuelle und intelligente Regale
+- Bücher, Regale, Serien und Ordner mit anderen Benutzern teilen
+- Massenbearbeitung und Upload per Drag-and-drop
+- Dashboard-Widget und OPDS-Katalog für E-Reader-Apps
+
+**Bearbeiten**
+- Metadaten, Cover, Kapitel, Seiten und Inhaltsverzeichnis
+- Umbenennen und in Ordner einsortieren nach Muster
+- Comics zwischen CBZ, CB7, CBT und EPUB konvertieren
+- Calibre-kompatible Sidecar-Dateien lassen die Buchdatei unverändert
+
+**Voraussetzungen**
+Cron für Hintergrundjobs wird empfohlen. 7-Zip oder bsdtar auf dem Server ist optional und ermöglicht die serverseitige Verarbeitung von CBR und CB7.
+
+Die App ist in der Beta. Der Editor verändert Dateien, daher ist ein Backup der Bücher sinnvoll.]]></description>
+	<description lang="es"><![CDATA[Biblioteca, lector y editor de libros electrónicos y cómics. Tus libros siguen siendo archivos normales en Nextcloud. La aplicación los indexa y sincroniza la posición de lectura entre dispositivos. No requiere contenedores ni servicios externos.
+
+**Lectura**
+- EPUB, MOBI, AZW3, FB2, CBZ, CBR, CB7, CBT
+- Se abre desde la app Archivos, paginado o con desplazamiento, temas claro, sepia y oscuro
+- Cómics en página simple o doble, de derecha a izquierda para manga
+- Subrayados, notas y marcadores, exportables como Markdown
+- Los archivos grandes se abren rápido: páginas y capítulos se cargan por partes
+
+**Biblioteca**
+- Cuadrícula de portadas o lista con "Seguir leyendo" y progreso por serie
+- Filtros por género, etiqueta, autor, serie, formato, valoración y estado
+- Estanterías manuales e inteligentes
+- Comparte libros, estanterías, series y carpetas con otros usuarios
+- Edición masiva y subida con arrastrar y soltar
+- Widget para el panel y catálogo OPDS para apps de lectura
+
+**Edición**
+- Metadatos, portada, capítulos, páginas e índice
+- Renombrar y ordenar en carpetas según un patrón
+- Convertir cómics entre CBZ, CB7, CBT y EPUB
+- Archivos sidecar compatibles con Calibre que no modifican el libro
+
+**Requisitos**
+Se recomienda cron para las tareas en segundo plano. 7-Zip o bsdtar en el servidor es opcional y permite procesar CBR y CB7 en el servidor.
+
+La aplicación está en beta. El editor modifica archivos, conviene tener una copia de seguridad.]]></description>
+	<description lang="ja"><![CDATA[電子書籍とコミックのためのライブラリ、リーダー、エディターです。本は Nextcloud 上の通常のファイルのままです。アプリがインデックスを作成し、読書位置をすべての端末で同期します。追加のコンテナや外部サービスは不要です。
+
+**読む**
+- EPUB、MOBI、AZW3、FB2、CBZ、CBR、CB7、CBT
+- ファイルアプリから開けます。ページ送りまたはスクロール、ライト・セピア・ダークテーマ
+- コミックは単ページまたは見開き、マンガ向けの右から左への表示
+- ハイライト、メモ、ブックマーク。Markdown でエクスポート可能
+- 大きなファイルも高速表示。ページと章を順次読み込みます
+
+**ライブラリ**
+- 表紙グリッドまたはリスト、「続きを読む」とシリーズの進捗
+- ジャンル、タグ、著者、シリーズ、形式、評価、状態で絞り込み
+- 手動の本棚とスマート本棚
+- 本、本棚、シリーズ、フォルダーを他のユーザーと共有
+- 一括編集とドラッグ＆ドロップでのアップロード
+- ダッシュボードウィジェットと電子書籍アプリ向け OPDS カタログ
+
+**編集**
+- メタデータ、表紙、章、ページ、目次
+- パターンに沿った名前変更とフォルダー整理
+- コミックを CBZ、CB7、CBT、EPUB 間で変換
+- Calibre 互換のサイドカーファイルで本のファイルはそのまま
+
+**要件**
+バックグラウンドジョブには cron を推奨します。サーバー上の 7-Zip または bsdtar は任意で、CBR と CB7 のサーバー側処理に使われます。
+
+このアプリはベータ版です。エディターはファイルを変更するため、本のバックアップをおすすめします。]]></description>
 	<version>0.10.0</version>
 	<licence>AGPL-3.0-or-later</licence>
 	<author mail="it@wasmitleder.de">Felix Kurth</author>
 	<namespace>EbookReader</namespace>
+	<documentation>
+		<user>https://github.com/SomeCatCode/nextcloud_ebook_reader#readme</user>
+		<admin>https://github.com/SomeCatCode/nextcloud_ebook_reader#administration</admin>
+	</documentation>
 	<category>multimedia</category>
 	<category>office</category>
 	<website>https://github.com/SomeCatCode/nextcloud_ebook_reader</website>
 	<bugs>https://github.com/SomeCatCode/nextcloud_ebook_reader/issues</bugs>
 	<repository type="git">https://github.com/SomeCatCode/nextcloud_ebook_reader.git</repository>
+	<screenshot>https://raw.githubusercontent.com/SomeCatCode/nextcloud_ebook_reader/main/docs/screenshot-library.png</screenshot>
+	<screenshot>https://raw.githubusercontent.com/SomeCatCode/nextcloud_ebook_reader/main/docs/screenshot-reader.png</screenshot>
+	<screenshot>https://raw.githubusercontent.com/SomeCatCode/nextcloud_ebook_reader/main/docs/screenshot-editor.png</screenshot>
 	<dependencies>
 		<php min-version="8.2"/>
 		<nextcloud min-version="34" max-version="34"/>
