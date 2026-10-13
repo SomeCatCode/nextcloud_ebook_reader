@@ -24,6 +24,7 @@ jobs:
       - run: composer run cs:check
       - run: composer run psalm
       - run: composer run test:unit
+      - run: composer run test:unit
 
   # Static analysis against the OCP stubs of every supported Nextcloud version (the lowest is pinned in composer.json).
   psalm:
@@ -56,6 +57,7 @@ jobs:
             composer require --dev "nextcloud/ocp:dev-$branch" --no-interaction --no-progress --update-with-dependencies --ignore-platform-req=php
           fi
       - run: composer run psalm
+      - run: composer run test:unit
 
   # The installable app package is built once and reused by the integration matrix.
   package:
@@ -131,7 +133,7 @@ jobs:
         working-directory: server
         run: |
           tar -xzf ../package/ebookreader.tar.gz -C apps
-          php occ app:enable ebookreader
+          php occ app:enable ebookreader ${{ matrix.nc == 'master' && '--force' || '' }}
           php occ app:list | grep ebookreader
           php occ migrations:status ebookreader | head -20
       - name: Start web server
@@ -182,7 +184,7 @@ jobs:
         working-directory: server
         run: |
           php occ app:disable ebookreader
-          php occ app:enable ebookreader
+          php occ app:enable ebookreader ${{ matrix.nc == 'master' && '--force' || '' }}
       - name: Server logs
         if: always()
         working-directory: server

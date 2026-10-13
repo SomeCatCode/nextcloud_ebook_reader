@@ -1,8 +1,9 @@
+import type { IFileAction } from '@nextcloud/files'
+
 /**
  * SPDX-FileCopyrightText: 2026 Felix Kurth
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
-import type { IFileAction } from '@nextcloud/files'
 import { Permission, registerFileAction } from '@nextcloud/files'
 import { translate as t } from '@nextcloud/l10n'
 import { generateUrl } from '@nextcloud/router'
@@ -56,7 +57,7 @@ const editAction: IFileAction = {
 }
 
 /**
- * @nextcloud/files 4 registers actions in a scope that only the Files app of Nextcloud 33+ reads. Nextcloud 31 and 32
+ * The files library (v4) registers actions in a scope that only the Files app of Nextcloud 33+ reads. Nextcloud 31 and 32
  * still read the legacy `window._nc_fileactions` array, so the actions are added there as well on those versions.
  */
 function serverMajor(): number {

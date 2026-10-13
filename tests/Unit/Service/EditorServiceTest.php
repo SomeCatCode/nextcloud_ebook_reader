@@ -690,7 +690,9 @@ class EditorServiceTest extends TestCase {
 		$this->library->method('getFileForUser')->willReturn($file);
 		$this->withBook($this->book());
 		$this->renamer->method('sanitize')->willReturnArgument(0);
-		$this->validator->method('sanitizeFilename')->willReturnArgument(0);
+		if (method_exists($this->validator, 'sanitizeFilename')) {
+			$this->validator->method('sanitizeFilename')->willReturnArgument(0);
+		}
 		$this->sidecar->expects($this->once())->method('moveAlong')->with($parent, 'old.cbz', $parent, 'New Name.cbz');
 		$this->library->expects($this->once())->method('reindexFileForAllUsers')->with(5);
 		$this->service->rename('u', 5, 'New Name', false);
