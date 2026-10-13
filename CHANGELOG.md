@@ -5,6 +5,9 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+### Behoben
+- Die Zeile „Weiterlesen“ unter „Alle Bücher“ zeigt jetzt dieselben Bücher wie der Menüpunkt „Weiterlesen“ (Lesestatus „Wird gelesen“, zuletzt gelesene zuerst), wie schon das Dashboard-Widget. Bisher entschied der Lesefortschritt: Bücher mit Status „Wird gelesen“ ohne Fortschritt fehlten, und die Auswahl wich vom Menüpunkt ab.
+
 ## 0.11.0 – 2026-10-13
 
 ### Hinzugefügt
