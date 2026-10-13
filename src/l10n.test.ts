@@ -29,7 +29,7 @@ const languages = Object.keys(files)
 
 describe('l10n files', () => {
 	it('ships the expected languages', () => {
-		expect(languages.sort()).toEqual(['de', 'de_DE', 'es', 'ja'])
+		expect(languages.sort()).toEqual(['ar', 'de', 'de_DE', 'es', 'fa_AF', 'fr', 'ja', 'tr'])
 	})
 
 	it.each(languages)('%s: valid structure, plural forms and placeholders', (lang) => {
@@ -88,6 +88,15 @@ describe('l10n checks', () => {
 		expect(r.errors).toHaveLength(2)
 		expect(r.missing).toEqual([])
 		expect(checkLanguage('de', { translations: {}, pluralForm: PLURAL_FORMS.de }, cat).missing).toHaveLength(2)
+	})
+
+	it('allows the zero, one and two forms of Arabic to drop %n but not the larger ones', () => {
+		const key = pluralKey('%n book', '%n books')
+		const forms = ['لا كتب', 'كتاب واحد', 'كتابان', '%n كتب', '%n كتابًا', '%n كتاب']
+		const ok = checkLanguage('ar', { translations: { [key]: forms }, pluralForm: PLURAL_FORMS.ar }, cat)
+		expect(ok.errors).toEqual([])
+		const bad = checkLanguage('ar', { translations: { [key]: [...forms.slice(0, 5), 'مئة كتاب'] }, pluralForm: PLURAL_FORMS.ar }, cat)
+		expect(bad.errors).toHaveLength(1)
 	})
 
 	it('allows the singular form to drop %n', () => {

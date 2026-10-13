@@ -18,6 +18,10 @@ export const PLURAL_FORMS = {
 	de_DE: 'nplurals=2; plural=(n != 1);',
 	es: 'nplurals=2; plural=(n != 1);',
 	ja: 'nplurals=1; plural=0;',
+	fr: 'nplurals=2; plural=(n > 1);',
+	ar: 'nplurals=6; plural=(n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 && n%100<=10 ? 3 : n%100>=11 ? 4 : 5);',
+	tr: 'nplurals=2; plural=(n > 1);',
+	fa_AF: 'nplurals=2; plural=(n > 1);',
 }
 
 /**
@@ -428,8 +432,10 @@ export function checkLanguage(lang, data, catalogue) {
 			value.forEach((v, i) => {
 				// Form 0 of a two-form language is the singular; every other form follows the plural text.
 				const src = nplurals > 1 && i === 0 ? singular : plural
-				// The singular form may drop %n ("one book"), but no other placeholder.
-				const drop = (list) => (nplurals > 1 && i === 0 ? list.filter((p) => p !== '%n') : list)
+				// The singular form may drop %n ("one book"); so may the zero/one/two forms of languages with more
+				// than two forms (Arabic: "a single book", "two books"). Every other placeholder must stay.
+				const rare = nplurals > 2 && i <= 2
+				const drop = (list) => (rare ? list.filter((p) => p !== '%n' && p !== '{count}') : nplurals > 1 && i === 0 ? list.filter((p) => p !== '%n') : list)
 				const want = placeholders(src)
 				const got = placeholders(v)
 				if (!same(drop(got), drop(want))) {

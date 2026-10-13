@@ -5,6 +5,9 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+### Hinzugefügt
+- **Neue Sprachen:** Die App ist jetzt auch auf **Französisch**, **Arabisch** (Hocharabisch), **Türkisch** und **Dari** (`fa_AF`) verfügbar – zusätzlich zu Deutsch, Englisch, Spanisch und Japanisch, also in denselben Sprachen wie die Android-App. Alle Oberflächentexte sind übersetzt (inklusive der Pluralformen, bei Arabisch mit allen sechs); Name, Kurzbeschreibung und Beschreibung im App Store gibt es zusätzlich auf Französisch, Arabisch und Türkisch. Für Arabisch und Dari wird die Oberfläche von rechts nach links dargestellt; die Karten der Bibliothek verwenden dafür logische statt fester Positionen. Hinweis: Nextcloud bietet Dari nicht in der Sprachauswahl an, es lässt sich über `occ user:setting <uid> core lang fa_AF` oder `default_language` aktivieren.
+
 ### Geändert
 - Bibliothek: Suche, Sortierung, Filter und die Auswahlleiste bleiben beim Scrollen oben sichtbar. „Auswahl bearbeiten“ ist so auch in langen Listen ohne Zurückscrollen erreichbar.
 

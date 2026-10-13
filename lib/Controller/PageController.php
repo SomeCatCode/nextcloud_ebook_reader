@@ -22,11 +22,15 @@ use OCP\IUserSession;
 use OCP\Util;
 
 class PageController extends Controller {
+	/** Languages written right to left (primary language subtag). Nextcloud itself does not know Dari (fa_AF). */
+	private const RTL_LANGUAGES = ['ar', 'fa', 'he', 'ps', 'ug', 'ur'];
+
 	public function __construct(
 		IRequest $request,
 		private IInitialState $initialState,
 		private SettingsService $settings,
 		private IUserSession $userSession,
+		private IFactory $l10nFactory,
 	) {
 		parent::__construct(Application::APP_ID, $request);
 	}
@@ -57,6 +61,12 @@ class PageController extends Controller {
 		if ($user !== null) {
 			$this->initialState->provideInitialState('settings', $this->settings->get($user->getUID()));
 		}
+		// The language of the app's translations can differ from the one of the page (Dari, fa_AF, is only provided by this app).
+		$language = $this->l10nFactory->findLanguage(Application::APP_ID);
+		$this->initialState->provideInitialState('l10n', [
+			'language' => $language,
+			'rtl' => in_array(strtolower(explode('_', $language)[0]), self::RTL_LANGUAGES, true),
+		]);
 		// l10n/<lang>.js (OC.L10N.register) for t()/n() in the frontend; addScript() would add it too.
 		Util::addTranslations(Application::APP_ID);
 		Util::addScript(Application::APP_ID, 'ebookreader-main');
