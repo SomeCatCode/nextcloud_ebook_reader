@@ -15,6 +15,7 @@ use OCA\EbookReader\Db\BookMapper;
 use OCA\EbookReader\Db\Progress;
 use OCA\EbookReader\Db\ProgressMapper;
 use OCA\EbookReader\Http\BookSerializer;
+use OCA\EbookReader\Service\BookQuery;
 use OCA\EbookReader\Service\LibraryService;
 use OCA\EbookReader\Service\ProgressService;
 use OCP\AppFramework\Http;
@@ -119,30 +120,25 @@ class ProgressControllerTest extends TestCase {
 		$this->controller->batch(array_fill(0, 101, ['fileId' => 1]));
 	}
 
-	public function testRecentSkipsFinishedAndUnstartedBooks(): void {
-		$rows = [];
-		foreach ([1 => 0.5, 2 => 0.0, 3 => 0.99, 4 => 0.1] as $id => $pct) {
-			$p = new Progress();
-			$p->setFileId($id);
-			$p->setPercentage($pct);
-			$rows[] = $p;
-		}
+	public function testRecentShowsTheBooksOfTheContinueReadingView(): void {
+		// a progress row alone does not decide: an "unread" book with progress stays out, a "reading" book without one is in
 		$progressMapper = $this->createMock(ProgressMapper::class);
-		$progressMapper->method('findRecent')->willReturn($rows);
-		$books = [];
-		foreach ([1 => 'reading', 2 => 'unread', 3 => 'finished', 4 => 'reading'] as $id => $status) {
-			$b = new \OCA\EbookReader\Db\Book();
+		$progressMapper->method('findRecent')->willReturn([]);
+		$reading = [];
+		foreach ([4, 1] as $id) {
+			$b = new Book();
 			$b->setFileId($id);
-			$b->setReadStatus($status);
-			$books[] = $b;
+			$b->setReadStatus('reading');
+			$reading[] = $b;
 		}
-		$bookMapper = $this->createMock(BookMapper::class);
-		$bookMapper->method('findByUserAndFiles')->willReturn($books);
+		$this->library->expects($this->once())->method('findBooks')
+			->with('u', $this->callback(static fn (BookQuery $q): bool => $q->status === 'reading' && $q->sort === 'read' && $q->order === 'desc' && $q->limit === 10))
+			->willReturn(['books' => $reading, 'total' => 2]);
 		$serializer = $this->createMock(BookSerializer::class);
 		$serializer->expects($this->once())->method('serializeMany')
-			->with('u', $this->callback(static fn (array $list): bool => array_map(static fn ($b): int => $b->getFileId(), $list) === [1, 4]))
+			->with('u', $this->callback(static fn (array $list): bool => array_map(static fn ($b): int => $b->getFileId(), $list) === [4, 1]))
 			->willReturn([]);
-		$controller = new ProgressController($this->createMock(IRequest::class), 'u', $this->service, $progressMapper, $bookMapper, $this->library, $serializer);
+		$controller = new ProgressController($this->createMock(IRequest::class), 'u', $this->service, $progressMapper, $this->createMock(BookMapper::class), $this->library, $serializer);
 		$controller->recent(10);
 	}
 
@@ -169,6 +165,7 @@ class ProgressControllerTest extends TestCase {
 		$other = $mk(4, 'reading', null, null);
 		$bookMapper = $this->createMock(BookMapper::class);
 		$bookMapper->method('findByUserAndFiles')->willReturn([$v1, $other]);
+		$this->library->method('findBooks')->willReturn(['books' => [$other], 'total' => 1]);
 		$this->library->expects($this->once())->method('volumesOfSeries')->with('u', ['Saga'])->willReturn(['saga' => [$v1, $v2]]);
 		$serializer = $this->createMock(BookSerializer::class);
 		$serializer->method('serializeMany')->willReturnCallback(static fn (string $u, array $list): array => array_map(static fn (Book $b): array => ['fileId' => $b->getFileId()], $list));

@@ -14,6 +14,7 @@ use OCA\EbookReader\Db\BookMapper;
 use OCA\EbookReader\Db\ProgressMapper;
 use OCA\EbookReader\Http\AbstractOCSController;
 use OCA\EbookReader\Http\BookSerializer;
+use OCA\EbookReader\Service\BookQuery;
 use OCA\EbookReader\Service\LibraryService;
 use OCA\EbookReader\Service\ProgressService;
 use OCA\EbookReader\Service\SeriesOrder;
@@ -52,7 +53,7 @@ class ProgressController extends AbstractOCSController {
 	}
 
 	/**
-	 * Most recently read books that are started and not finished ("continue reading"), plus the next volumes to start
+	 * Books with the read status "reading" (the same books as the "Continue reading" view), most recently read first, plus the next volumes to start
 	 *
 	 * upNext: for each series whose most recently read volume is finished, the next volume in reading order
 	 * (see GET /books/{fileId}/next) that is not finished yet, if it has not been started (status unread).
@@ -69,23 +70,18 @@ class ProgressController extends AbstractOCSController {
 	public function recent(int $limit = 10): DataResponse {
 		$userId = $this->uid();
 		$limit = max(1, min(self::MAX_RECENT, $limit));
-		// finished books are done and books at 0 % (e.g. marked unread) not started: neither belongs in
-		// "continue reading"; read a few more rows to fill the list
+		// the row shows the same books as the "Continue reading" view (status "reading", see BookQuery), most recently
+		// read first; the progress rows only feed "up next" (finished volumes of a series)
+		$books = $this->library->findBooks($userId, new BookQuery(status: Book::STATUS_READING, sort: 'read', order: 'desc', limit: $limit))['books'];
 		$rows = $this->progressMapper->findRecent($userId, min($limit * 4, 200));
 		$byFile = [];
 		foreach ($this->bookMapper->findByUserAndFiles($userId, array_map(static fn ($p): int => $p->getFileId(), $rows)) as $book) {
 			$byFile[$book->getFileId()] = $book;
 		}
-		$books = [];
 		$read = [];
 		foreach ($rows as $row) {
-			$book = $byFile[$row->getFileId()] ?? null;
-			if ($book === null) {
-				continue;
-			}
-			$read[] = $book;
-			if (count($books) < $limit && $book->getReadStatus() !== Book::STATUS_FINISHED && $row->getPercentage() > 0.0) {
-				$books[] = $book;
+			if (isset($byFile[$row->getFileId()])) {
+				$read[] = $byFile[$row->getFileId()];
 			}
 		}
 		$upNext = $this->upNext($userId, $read, $books, $limit);

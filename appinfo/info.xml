@@ -238,7 +238,7 @@ Uygulama beta aşamasındadır. Düzenleyici dosyaları değiştirir, bu yüzden
 برای کارهای پس‌زمینه استفاده از Cron توصیه می‌شود. وجود 7-Zip یا bsdtar روی سرور اختیاری است و پردازش CBR و CB7 را روی سرور ممکن می‌کند.
 
 برنامه در مرحلهٔ آزمایشی (بتا) است. ویرایشگر فایل‌ها را تغییر می‌دهد، پس از کتاب‌های خود نسخهٔ پشتیبان نگه دارید.]]></description>
-	<version>0.11.0</version>
+	<version>0.11.1</version>
 	<licence>AGPL-3.0-or-later</licence>
 	<author mail="it@wasmitleder.de">Felix Kurth</author>
 	<namespace>EbookReader</namespace>
@@ -256,7 +256,7 @@ Uygulama beta aşamasındadır. Düzenleyici dosyaları değiştirir, bu yüzden
 	<screenshot>https://raw.githubusercontent.com/SomeCatCode/nextcloud_ebook_reader/main/docs/screenshot-editor.png</screenshot>
 	<dependencies>
 		<php min-version="8.2"/>
-		<nextcloud min-version="34" max-version="34"/>
+		<nextcloud min-version="31" max-version="35"/>
 	</dependencies>
 	<repair-steps>
 		<post-migration>

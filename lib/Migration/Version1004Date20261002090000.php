@@ -49,7 +49,7 @@ class Version1004Date20261002090000 extends SimpleMigrationStep {
 			$t->addColumn('file_id', Types::BIGINT, ['notnull' => true]);
 			$t->addColumn('position', Types::INTEGER, ['notnull' => true, 'default' => 0]);
 			$t->addColumn('added_at', Types::BIGINT, ['notnull' => true, 'default' => 0]);
-			$t->setPrimaryKey(['id']);
+			$t->setPrimaryKey(['id'], 'ebr_shelfb_pk');
 			$t->addUniqueIndex(['shelf_id', 'file_id'], 'ebr_shelfb_sf');
 			$t->addIndex(['file_id'], 'ebr_shelfb_file');
 			$changed = true;

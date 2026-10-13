@@ -5,6 +5,17 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+## 0.11.1 – 2026-10-13
+
+### Geändert
+- **Unterstützte Nextcloud-Versionen: 31 bis 35** (bisher nur 34). Nextcloud 35 wird damit unterstützt; auf einem auf 35 aktualisierten Server wurde die App vorher wegen `max-version` deaktiviert, und der Cron meldete u. a. „Could not resolve OCA\EbookReader\BackgroundJob\SyncSharedShelvesJob“. Neuere Server-APIs (`IAppManager::isEnabledForAnyone`, `IFilenameValidator::sanitizeFilename`, `IShare::canSeeContent`) werden mit abgesicherten Fallbacks genutzt, damit Nextcloud 31 weiter funktioniert.
+
+### Hinzugefügt
+- CI: Psalm läuft gegen die OCP-Stubs aller unterstützten Nextcloud-Versionen (31–35, zusätzlich `master` als Vorwarnung). Ein Integrationstest installiert die App in ein echtes Nextcloud (31–35, mehrere PHP-Versionen, SQLite), lädt ein Test-EPUB hoch, scannt die Bibliothek, ruft die wichtigsten API-Endpunkte und die Web-Oberfläche auf und führt die Hintergrundjobs der App aus.
+
+### Behoben
+- Die Zeile „Weiterlesen“ unter „Alle Bücher“ zeigt jetzt dieselben Bücher wie der Menüpunkt „Weiterlesen“ (Lesestatus „Wird gelesen“, zuletzt gelesene zuerst), wie schon das Dashboard-Widget. Bisher entschied der Lesefortschritt: Bücher mit Status „Wird gelesen“ ohne Fortschritt fehlten, und die Auswahl wich vom Menüpunkt ab.
+
 ## 0.11.0 – 2026-10-13
 
 ### Hinzugefügt

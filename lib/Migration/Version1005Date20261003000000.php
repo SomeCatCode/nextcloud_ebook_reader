@@ -43,7 +43,7 @@ class Version1005Date20261003000000 extends SimpleMigrationStep {
 		$t->addColumn('updated_at', Types::BIGINT, ['notnull' => true, 'default' => 0]);
 		$t->addColumn('client_updated_at', Types::BIGINT, ['notnull' => true, 'default' => 0]);
 		$t->addColumn('deleted', Types::SMALLINT, ['notnull' => true, 'default' => 0]);
-		$t->setPrimaryKey(['id']);
+		$t->setPrimaryKey(['id'], 'ebr_annot_pk');
 		$t->addUniqueIndex(['user_id', 'uuid'], 'ebr_annot_uuid');
 		$t->addIndex(['user_id', 'file_id'], 'ebr_annot_ufile');
 		$t->addIndex(['user_id', 'updated_at'], 'ebr_annot_uupd');
