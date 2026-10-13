@@ -24,7 +24,6 @@ jobs:
       - run: composer run cs:check
       - run: composer run psalm
       - run: composer run test:unit
-      - run: composer run test:unit
 
   # Static analysis against the OCP stubs of every supported Nextcloud version (the lowest is pinned in composer.json).
   psalm:
