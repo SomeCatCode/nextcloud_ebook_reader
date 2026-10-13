@@ -1,6 +1,7 @@
 import { createPinia } from 'pinia'
 import { createApp } from 'vue'
 import App from './App.vue'
+import { applyDocumentDirection } from './direction.ts'
 import { router } from './router.ts'
 
 /**
@@ -12,4 +13,5 @@ import '@nextcloud/dialogs/style.css'
 const app = createApp(App)
 app.use(createPinia())
 app.use(router)
+applyDocumentDirection()
 app.mount('#ebookreader-app')

@@ -5,6 +5,14 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+## 0.11.0 – 2026-10-13
+
+### Hinzugefügt
+- **Neue Sprachen:** Die App ist jetzt auch auf **Französisch**, **Arabisch** (Hocharabisch), **Türkisch** und **Persisch** (`fa`) verfügbar – zusätzlich zu Deutsch, Englisch, Spanisch und Japanisch, also in denselben Sprachen wie die Android-App. Alle Oberflächentexte sind übersetzt (inklusive der Pluralformen, bei Arabisch mit allen sechs); Name, Kurzbeschreibung und Beschreibung im App Store gibt es zusätzlich auf Französisch, Arabisch, Türkisch und Persisch. Für Arabisch und Persisch wird die Oberfläche von rechts nach links dargestellt; die Karten der Bibliothek verwenden dafür logische statt fester Positionen. Persisch erscheint in Nextclouds Sprachauswahl als „فارسی“ und wird dort wie alle anderen Sprachen ausgewählt.
+
+### Geändert
+- Bibliothek: Suche, Sortierung, Filter und die Auswahlleiste bleiben beim Scrollen oben sichtbar. „Auswahl bearbeiten“ ist so auch in langen Listen ohne Zurückscrollen erreichbar.
+
 ## 0.10.0 – 2026-10-08
 
 ### Hinzugefügt

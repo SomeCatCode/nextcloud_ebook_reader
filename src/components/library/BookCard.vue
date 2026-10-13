@@ -117,7 +117,7 @@ const percent = computed(() => progressPercent(props.book))
 	&__format {
 		position: absolute;
 		top: 6px;
-		left: 6px;
+		inset-inline-start: 6px;
 		padding: 0 6px;
 		border-radius: var(--border-radius-small, 4px);
 		background: rgba(0, 0, 0, 0.6);
@@ -130,13 +130,13 @@ const percent = computed(() => progressPercent(props.book))
 	&__share {
 		position: absolute;
 		bottom: 10px;
-		right: 6px;
+		inset-inline-end: 6px;
 	}
 
 	&__age {
 		position: absolute;
 		top: 6px;
-		right: 6px;
+		inset-inline-end: 6px;
 		padding: 0 6px;
 		border-radius: var(--border-radius-small, 4px);
 		background: rgba(0, 0, 0, 0.6);
@@ -164,7 +164,7 @@ const percent = computed(() => progressPercent(props.book))
 	&__check {
 		position: absolute;
 		top: 4px;
-		right: 4px;
+		inset-inline-end: 4px;
 		display: flex;
 		border-radius: 50%;
 		background: var(--color-main-background);
@@ -173,8 +173,8 @@ const percent = computed(() => progressPercent(props.book))
 
 	&__progress {
 		position: absolute;
-		left: 0;
-		right: 0;
+		inset-inline-start: 0;
+		inset-inline-end: 0;
 		bottom: 0;
 		height: 5px;
 		background: rgba(0, 0, 0, 0.35);
