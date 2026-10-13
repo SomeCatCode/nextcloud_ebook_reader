@@ -25,6 +25,171 @@ jobs:
       - run: composer run psalm
       - run: composer run test:unit
 
+  # Static analysis against the OCP stubs of every supported Nextcloud version (the lowest is pinned in composer.json).
+  psalm:
+    name: psalm (Nextcloud ${{ matrix.nc }})
+    runs-on: ubuntu-24.04
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        nc: ['31', '32', '33', '34', '35']
+        experimental: [false]
+        include:
+          # heads-up for the next major (master = Nextcloud 36); may fail without blocking
+          - nc: master
+            experimental: true
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: '8.3'
+          extensions: zip, gd, intl, xml, dom, mbstring
+          tools: composer:v2
+      - name: Install dependencies
+        run: |
+          composer install --no-interaction --prefer-dist
+          if [ "${{ matrix.nc }}" != "31" ]; then
+            branch="stable${{ matrix.nc }}"
+            [ "${{ matrix.nc }}" = "master" ] && branch="master"
+            # the platform php of composer.json is the app minimum (8.2), newer ocp needs a newer PHP
+            composer require --dev "nextcloud/ocp:dev-$branch" --no-interaction --no-progress --update-with-dependencies --ignore-platform-req=php
+          fi
+      - run: composer run psalm
+
+  # The installable app package is built once and reused by the integration matrix.
+  package:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: make appstore
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ebookreader-package
+          path: build/artifacts/ebookreader.tar.gz
+          retention-days: 3
+
+  # Installs the package into a real Nextcloud (sqlite, PHP built-in web server) and exercises the main endpoints.
+  integration:
+    name: nextcloud ${{ matrix.nc }} / php ${{ matrix.php }}
+    needs: package
+    runs-on: ubuntu-24.04
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { nc: '31', php: '8.3', experimental: false }
+          - { nc: '32', php: '8.2', experimental: false }
+          - { nc: '32', php: '8.4', experimental: false }
+          - { nc: '33', php: '8.2', experimental: false }
+          - { nc: '33', php: '8.4', experimental: false }
+          - { nc: '34', php: '8.3', experimental: false }
+          - { nc: '34', php: '8.5', experimental: false }
+          - { nc: '35', php: '8.3', experimental: false }
+          - { nc: '35', php: '8.5', experimental: false }
+          - { nc: 'master', php: '8.4', experimental: true }
+    env:
+      NC_URL: http://localhost:8080
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          path: app-src
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: nextcloud/server
+          ref: ${{ matrix.nc == 'master' && 'master' || format('stable{0}', matrix.nc) }}
+          submodules: true
+          fetch-depth: 1
+          path: server
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: ctype, curl, dom, fileinfo, gd, intl, json, mbstring, openssl, pdo_sqlite, posix, sqlite3, xml, zip
+          ini-values: memory_limit=1G
+          coverage: none
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ebookreader-package
+          path: package
+      - name: Install Nextcloud
+        working-directory: server
+        run: |
+          PW="$(openssl rand -hex 16)"
+          echo "::add-mask::$PW"
+          echo "ADMIN_PW=$PW" >> "$GITHUB_ENV"
+          php occ maintenance:install --database sqlite --admin-user admin --admin-pass "$PW"
+          php occ config:system:set debug --value=true --type=boolean
+          php occ config:system:set loglevel --value=0 --type=integer
+          php occ config:system:set trusted_domains 1 --value=localhost:8080
+          php occ --version
+      - name: Install and enable the app
+        working-directory: server
+        run: |
+          tar -xzf ../package/ebookreader.tar.gz -C apps
+          php occ app:enable ebookreader
+          php occ app:list | grep ebookreader
+          php occ migrations:status ebookreader | head -20
+      - name: Start web server
+        working-directory: server
+        run: |
+          nohup php -S localhost:8080 -t . > ../php-server.log 2>&1 &
+          for i in $(seq 1 30); do curl -fs "$NC_URL/status.php" > /dev/null && break; sleep 1; done
+          curl -fs "$NC_URL/status.php"
+      - name: Smoke tests
+        run: |
+          set -euo pipefail
+          auth=(-u "admin:$ADMIN_PW" -H 'OCS-APIRequest: true' -H 'Accept: application/json')
+          api="$NC_URL/ocs/v2.php/apps/ebookreader/api/v1"
+
+          echo "--- capabilities"
+          curl -fsS "${auth[@]}" "$NC_URL/ocs/v2.php/cloud/capabilities?format=json" | jq -e '.ocs.data.capabilities.ebookreader' > /dev/null
+
+          echo "--- upload a book via WebDAV"
+          dav="$NC_URL/remote.php/dav/files/admin"
+          curl -sS "${auth[@]}" -X MKCOL "$dav/Books" -o /dev/null
+          curl -fsS "${auth[@]}" -T app-src/tests/fixtures/books/epub3.epub "$dav/Books/epub3.epub"
+
+          echo "--- scan"
+          (cd server && php occ ebookreader:scan admin)
+
+          echo "--- books"
+          curl -fsS "${auth[@]}" "$api/books?format=json" | tee books.json | jq -e '[.. | strings | select(. == "The Third Book")] | length > 0' > /dev/null
+
+          for ep in folders series shares sync settings; do
+            echo "--- $ep"
+            curl -fsS "${auth[@]}" "$api/$ep?format=json" | jq -e '.ocs.meta.statuscode' > /dev/null
+          done
+
+          echo "--- web page"
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -u "admin:$ADMIN_PW" "$NC_URL/index.php/apps/ebookreader/")
+          echo "HTTP $code"
+          [ "$code" = "200" ]
+      - name: Background jobs
+        working-directory: server
+        run: |
+          set -euo pipefail
+          php occ background-job:list --output=json > ../jobs.json
+          ids=$(php -r '$j=json_decode(file_get_contents("../jobs.json"),true);foreach($j as $r){if(str_contains($r["class"],"EbookReader")){echo $r["id"],"\n";}}')
+          echo "ebookreader jobs: $ids"
+          [ -n "$ids" ]
+          for id in $ids; do php occ background-job:execute --force-execute "$id"; done
+      - name: Disable and re-enable the app
+        working-directory: server
+        run: |
+          php occ app:disable ebookreader
+          php occ app:enable ebookreader
+      - name: Server logs
+        if: always()
+        working-directory: server
+        run: |
+          tail -n 30 ../php-server.log || true
+          jq -c 'select(.level >= 3)' data/nextcloud.log 2>/dev/null | tail -n 30 || true
+
   js:
     runs-on: ubuntu-24.04
     steps:
