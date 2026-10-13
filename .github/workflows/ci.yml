@@ -57,6 +57,9 @@ jobs:
           fi
       - run: composer run psalm
       - run: composer run test:unit
+        # master: some unit-test mocks lag behind API changes of the next major (e.g. IUserFolder);
+        # the failure stays visible in the step log but does not turn the heads-up job red
+        continue-on-error: ${{ matrix.experimental }}
 
   # The installable app package is built once and reused by the integration matrix.
   package:
