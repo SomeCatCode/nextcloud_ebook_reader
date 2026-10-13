@@ -31,7 +31,9 @@ class OrganizeServiceTest extends TestCase {
 
 	protected function setUp(): void {
 		$validator = $this->createMock(IFilenameValidator::class);
-		$validator->method('sanitizeFilename')->willReturnArgument(0);
+		if (method_exists($validator, 'sanitizeFilename')) {
+			$validator->method('sanitizeFilename')->willReturnArgument(0);
+		}
 		$this->library = $this->createMock(LibraryService::class);
 		$this->settings = $this->createMock(SettingsService::class);
 		$this->settings->method('get')->willReturn(['libraryFolders' => ['/Books'], 'reader' => [], 'filenamePattern' => '', 'genreList' => null]);

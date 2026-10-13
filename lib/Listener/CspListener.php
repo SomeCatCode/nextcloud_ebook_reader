@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace OCA\EbookReader\Listener;
 
+use OCA\EbookReader\Service\Compat;
 use OCP\App\IAppManager;
 use OCP\AppFramework\Http\ContentSecurityPolicy;
 use OCP\EventDispatcher\Event;
@@ -76,7 +77,7 @@ class CspListener implements IEventListener {
 			return true;
 		}
 		if (self::matchesPath($path, self::FILES_PREFIXES)) {
-			return $this->appManager->isEnabledForAnyone('viewer');
+			return Compat::isAppEnabledForAnyone($this->appManager, 'viewer');
 		}
 		return false;
 	}

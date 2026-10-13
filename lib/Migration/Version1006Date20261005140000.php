@@ -36,7 +36,7 @@ class Version1006Date20261005140000 extends SimpleMigrationStep {
 			$t->addColumn('recipient_id', Types::STRING, ['notnull' => true, 'length' => 64]);
 			$t->addColumn('created_at', Types::BIGINT, ['notnull' => true, 'default' => 0]);
 			$t->addColumn('synced_at', Types::BIGINT, ['notnull' => true, 'default' => 0]);
-			$t->setPrimaryKey(['id']);
+			$t->setPrimaryKey(['id'], 'ebr_shsh_pk');
 			$t->addUniqueIndex(['shelf_id', 'recipient_id'], 'ebr_shsh_uniq');
 			$t->addIndex(['recipient_id'], 'ebr_shsh_recip');
 			$t->addIndex(['owner_id'], 'ebr_shsh_owner');
@@ -54,7 +54,7 @@ class Version1006Date20261005140000 extends SimpleMigrationStep {
 			// full id of the Nextcloud share created by the app ("ocinternal:42"); null = not created by the app (never deleted by it)
 			$t->addColumn('share_id', Types::STRING, ['notnull' => false, 'length' => 64]);
 			$t->addColumn('created_at', Types::BIGINT, ['notnull' => true, 'default' => 0]);
-			$t->setPrimaryKey(['id']);
+			$t->setPrimaryKey(['id'], 'ebr_fsh_pk');
 			$t->addUniqueIndex(['owner_id', 'recipient_id', 'file_id', 'shelf_share_id'], 'ebr_fsh_uniq');
 			$t->addIndex(['recipient_id', 'file_id'], 'ebr_fsh_recip');
 			$t->addIndex(['shelf_share_id'], 'ebr_fsh_shelf');

@@ -140,8 +140,8 @@ class SidecarService {
 			return self::LOCATION_BESIDE;
 		}
 		try {
-			$uid = $node->getOwner()?->getUID();
-			return $uid === null || $uid === '' ? self::LOCATION_BESIDE : $this->settings->sidecarLocation($uid);
+			$uid = (string)$node->getOwner()?->getUID();
+			return $uid === '' ? self::LOCATION_BESIDE : $this->settings->sidecarLocation($uid);
 		} catch (\Throwable) {
 			return self::LOCATION_BESIDE;
 		}

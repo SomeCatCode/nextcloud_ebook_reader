@@ -838,8 +838,8 @@ class ShareService {
 	}
 
 	public function displayName(string $userId): string {
-		$name = $this->users->getDisplayName($userId);
-		return $name !== null && $name !== '' ? $name : $userId;
+		$name = (string)$this->users->getDisplayName($userId);
+		return trim($name) !== '' ? $name : $userId;
 	}
 
 	// ---- Nextcloud share events -----------------------------------------------------------------------------------

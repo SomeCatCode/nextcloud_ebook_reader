@@ -1628,7 +1628,7 @@ class LibraryService {
 		if ($share->getAttributes()?->getAttribute('permissions', 'download') === false) {
 			return false;
 		}
-		return $share->canSeeContent();
+		return Compat::canSeeShareContent($share);
 	}
 
 	/** @throws NotFoundException */

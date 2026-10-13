@@ -125,7 +125,9 @@ class SharedFileGuardTest extends TestCase {
 		$root = $this->createMock(IRootFolder::class);
 		$root->method('getUserFolder')->willReturn($userFolder);
 		$validator = $this->createMock(IFilenameValidator::class);
-		$validator->method('sanitizeFilename')->willReturnArgument(0);
+		if (method_exists($validator, 'sanitizeFilename')) {
+			$validator->method('sanitizeFilename')->willReturnArgument(0);
+		}
 		$service = new OrganizeService($mapper, $this->createMock(TagMapper::class), $library, new RenameService(), $settings, $root, $validator, $this->createMock(LoggerInterface::class), $this->createMock(SidecarService::class));
 		return $service->apply('bob', [5], 'new', null)['items'];
 	}
