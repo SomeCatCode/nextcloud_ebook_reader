@@ -116,14 +116,14 @@ const stackIds = computed(() => props.series.coverFileIds.slice(0, 3).slice().re
 	&__share {
 		position: absolute;
 		top: 12px;
-		left: 12px;
+		inset-inline-start: 12px;
 		z-index: 1;
 	}
 
 	&__menu {
 		position: absolute;
 		top: 8px;
-		right: 8px;
+		inset-inline-end: 8px;
 		z-index: 2;
 		opacity: 0;
 		border-radius: var(--border-radius-element, 8px);
