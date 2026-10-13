@@ -2,6 +2,7 @@
  * SPDX-FileCopyrightText: 2026 Felix Kurth
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
+import type { IFileAction } from '@nextcloud/files'
 import { Permission, registerFileAction } from '@nextcloud/files'
 import { translate as t } from '@nextcloud/l10n'
 import { generateUrl } from '@nextcloud/router'
@@ -30,7 +31,7 @@ function isEbook(nodes: { mime?: string, fileid?: number }[]): boolean {
 	return nodes.length === 1 && nodes[0].fileid !== undefined && EBOOK_MIMES.includes(nodes[0].mime ?? '')
 }
 
-registerFileAction({
+const openAction: IFileAction = {
 	id: 'ebookreader-open',
 	displayName: () => t('ebookreader', 'Open in E-Book Reader'),
 	iconSvgInline: () => BOOK_SVG,
@@ -40,9 +41,9 @@ registerFileAction({
 		return null
 	},
 	order: 50,
-})
+}
 
-registerFileAction({
+const editAction: IFileAction = {
 	id: 'ebookreader-edit',
 	displayName: () => t('ebookreader', 'Edit e-book'),
 	iconSvgInline: () => PENCIL_SVG,
@@ -52,4 +53,22 @@ registerFileAction({
 		return null
 	},
 	order: 51,
-})
+}
+
+/**
+ * @nextcloud/files 4 registers actions in a scope that only the Files app of Nextcloud 33+ reads. Nextcloud 31 and 32
+ * still read the legacy `window._nc_fileactions` array, so the actions are added there as well on those versions.
+ */
+function serverMajor(): number {
+	const version = (window as unknown as { _oc_config?: { version?: string } })._oc_config?.version
+	return parseInt(String(version ?? ''), 10) || 0
+}
+
+for (const action of [openAction, editAction]) {
+	registerFileAction(action)
+	const major = serverMajor()
+	const legacy = (window as unknown as { _nc_fileactions?: IFileAction[] })._nc_fileactions
+	if (major > 0 && major < 33 && Array.isArray(legacy) && !legacy.some((a) => a.id === action.id)) {
+		legacy.push(action)
+	}
+}

@@ -12,7 +12,6 @@ namespace OCA\EbookReader\Service;
 use OCP\App\IAppManager;
 use OCP\Files\IFilenameValidator;
 use OCP\Share\IShare;
-use OCP\User\Events\UserDeletedEvent;
 
 /**
  * Guarded shims for server APIs that were added after Nextcloud 31 (the oldest supported version).

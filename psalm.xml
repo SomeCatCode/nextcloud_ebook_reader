@@ -4,6 +4,7 @@
 	resolveFromConfigFile="true"
 	findUnusedBaselineEntry="false"
 	findUnusedCode="false"
+	findUnusedIssueHandlerSuppression="false"
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xmlns="https://getpsalm.org/schema/config"
 	xsi:schemaLocation="https://getpsalm.org/schema/config vendor/vimeo/psalm/config.xsd"
@@ -25,7 +26,6 @@
 	<issueHandlers>
 		<!-- #[\Override] exists only since PHP 8.3; the app supports PHP 8.2 -->
 		<MissingOverrideAttribute errorLevel="suppress" />
-		<UnusedIssueHandlerSuppression errorLevel="suppress" />
 		<MissingDependency>
 			<errorLevel type="suppress">
 				<directory name="lib" />
