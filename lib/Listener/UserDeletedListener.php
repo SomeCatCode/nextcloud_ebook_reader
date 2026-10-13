@@ -50,7 +50,7 @@ class UserDeletedListener implements IEventListener {
 		if (!$event instanceof UserDeletedEvent) {
 			return;
 		}
-		$userId = $event->getUid();
+		$userId = $event->getUser()->getUID();
 		$fileIds = [];
 		$bookIds = [];
 		$this->step($userId, 'collect books', function () use ($userId, &$fileIds, &$bookIds): void {

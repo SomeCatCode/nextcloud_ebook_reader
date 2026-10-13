@@ -984,7 +984,7 @@ class EditorService {
 			throw new InvalidEditRequestException('The file name must not be empty.');
 		}
 		try {
-			$base = $this->filenameValidator->sanitizeFilename($base);
+			$base = Compat::sanitizeFilename($this->filenameValidator, $base);
 		} catch (\InvalidArgumentException $e) {
 			throw new InvalidEditRequestException('The file name is not valid.', $e);
 		}
