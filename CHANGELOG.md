@@ -5,6 +5,8 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+## 0.11.1 – 2026-10-13
+
 ### Geändert
 - **Unterstützte Nextcloud-Versionen: 31 bis 35** (bisher nur 34). Nextcloud 35 wird damit unterstützt; auf einem auf 35 aktualisierten Server wurde die App vorher wegen `max-version` deaktiviert, und der Cron meldete u. a. „Could not resolve OCA\EbookReader\BackgroundJob\SyncSharedShelvesJob“. Neuere Server-APIs (`IAppManager::isEnabledForAnyone`, `IFilenameValidator::sanitizeFilename`, `IShare::canSeeContent`) werden mit abgesicherten Fallbacks genutzt, damit Nextcloud 31 weiter funktioniert.
 

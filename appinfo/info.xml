@@ -238,7 +238,7 @@ Uygulama beta aşamasındadır. Düzenleyici dosyaları değiştirir, bu yüzden
 برای کارهای پس‌زمینه استفاده از Cron توصیه می‌شود. وجود 7-Zip یا bsdtar روی سرور اختیاری است و پردازش CBR و CB7 را روی سرور ممکن می‌کند.
 
 برنامه در مرحلهٔ آزمایشی (بتا) است. ویرایشگر فایل‌ها را تغییر می‌دهد، پس از کتاب‌های خود نسخهٔ پشتیبان نگه دارید.]]></description>
-	<version>0.11.0</version>
+	<version>0.11.1</version>
 	<licence>AGPL-3.0-or-later</licence>
 	<author mail="it@wasmitleder.de">Felix Kurth</author>
 	<namespace>EbookReader</namespace>
