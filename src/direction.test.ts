@@ -9,8 +9,8 @@ describe('isRtlLanguage', () => {
 	it('detects right-to-left languages', () => {
 		expect(isRtlLanguage('ar')).toBe(true)
 		expect(isRtlLanguage('fa')).toBe(true)
-		expect(isRtlLanguage('fa_AF')).toBe(true)
-		expect(isRtlLanguage('fa-AF')).toBe(true)
+		expect(isRtlLanguage('fa_IR')).toBe(true)
+		expect(isRtlLanguage('fa-IR')).toBe(true)
 	})
 
 	it('keeps the other languages left to right', () => {

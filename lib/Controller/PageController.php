@@ -19,10 +19,11 @@ use OCP\AppFramework\Http\TemplateResponse;
 use OCP\AppFramework\Services\IInitialState;
 use OCP\IRequest;
 use OCP\IUserSession;
+use OCP\L10N\IFactory;
 use OCP\Util;
 
 class PageController extends Controller {
-	/** Languages written right to left (primary language subtag). Nextcloud itself does not know Dari (fa_AF). */
+	/** Languages written right to left (primary language subtag). Nextcloud sets dir for them itself; the app repeats it for its own language. */
 	private const RTL_LANGUAGES = ['ar', 'fa', 'he', 'ps', 'ug', 'ur'];
 
 	public function __construct(
@@ -61,7 +62,7 @@ class PageController extends Controller {
 		if ($user !== null) {
 			$this->initialState->provideInitialState('settings', $this->settings->get($user->getUID()));
 		}
-		// The language of the app's translations can differ from the one of the page (Dari, fa_AF, is only provided by this app).
+		// The language of the app's translations can differ from the one of the page (the app may use a different one, e.g. when core has no translation for it).
 		$language = $this->l10nFactory->findLanguage(Application::APP_ID);
 		$this->initialState->provideInitialState('l10n', [
 			'language' => $language,

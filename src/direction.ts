@@ -6,9 +6,9 @@ import { loadState } from '@nextcloud/initial-state'
 import { getLanguage, isRTL } from '@nextcloud/l10n'
 
 /**
- * Whether a UI language is written right to left. Variants such as Dari ("fa_AF") are resolved through their base language.
+ * Whether a UI language is written right to left. Variants such as "fa_IR" are resolved through their base language.
  *
- * @param language language code as used by Nextcloud ("ar", "fa_AF", "fa-AF", …)
+ * @param language language code as used by Nextcloud ("ar", "fa_IR", "fa-IR", …)
  */
 export function isRtlLanguage(language: string): boolean {
 	const code = language.replace(/_/g, '-')
@@ -16,9 +16,9 @@ export function isRtlLanguage(language: string): boolean {
 }
 
 /**
- * Nextcloud only sets dir="rtl" for the languages it knows itself (ar, fa, …). The app also ships Dari ("fa_AF"):
- * the server resolves it for the app only (the page keeps the language of core, and so its direction), so the
- * server tells the frontend the app language's direction and it is corrected here.
+ * Nextcloud sets dir="rtl" itself for the languages it knows (ar, fa, …) from the language of the page. The app's
+ * translation language can differ from that one, so the server tells the frontend the direction of the app's
+ * language and it is applied here.
  */
 export function applyDocumentDirection(): void {
 	if (typeof document === 'undefined') {

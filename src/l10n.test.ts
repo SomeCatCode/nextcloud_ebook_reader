@@ -29,7 +29,7 @@ const languages = Object.keys(files)
 
 describe('l10n files', () => {
 	it('ships the expected languages', () => {
-		expect(languages.sort()).toEqual(['ar', 'de', 'de_DE', 'es', 'fa_AF', 'fr', 'ja', 'tr'])
+		expect(languages.sort()).toEqual(['ar', 'de', 'de_DE', 'es', 'fa', 'fr', 'ja', 'tr'])
 	})
 
 	it.each(languages)('%s: valid structure, plural forms and placeholders', (lang) => {
