@@ -80,6 +80,8 @@ namespace OCA\EbookReader;
  *     completion: 'ongoing'|'completed'|null,
  *     ageRating: 0|6|12|16|18|null,
  *     ageRatingManual: bool,
+ *     longstrip: bool,
+ *     longstripManual: bool,
  *     progress: ?EbookReaderProgress,
  * }
  *
@@ -94,6 +96,7 @@ namespace OCA\EbookReader;
  *     missing: array{genre: int, tag: int, author: int, series: int, description: int, cover: int, language: int},
  *     completion: list<EbookReaderFacetEntry>,
  *     ageRatings: list<EbookReaderFacetEntry>,
+ *     layouts: list<EbookReaderFacetEntry>,
  * }
  *
  * @psalm-type EbookReaderSettings = array{

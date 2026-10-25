@@ -28,8 +28,10 @@ export interface ReaderLayout {
 	comicSpread?: 'single' | 'double'
 	/** comics: right-to-left reading direction (manga) */
 	comicRtl?: boolean
-	/** comics: zoom */
+	/** comics: zoom. Long strips: fit-page = natural page width (capped by the screen), fit-width = screen width */
 	comicZoom?: 'fit-page' | 'fit-width' | number
+	/** comics: long strip (webtoon), all pages in one seamless vertical scroll instead of paging */
+	comicLongstrip?: boolean
 }
 
 export interface ReaderTypography {
@@ -82,6 +84,8 @@ export interface BookInfo {
 	fixedLayout: boolean
 	rtl: boolean
 	pageCount: number
+	/** comic shown as seamless vertical scroll (layout.comicLongstrip) */
+	longstrip: boolean
 }
 
 export type AnnotationColor = 'yellow' | 'green' | 'blue' | 'pink' | 'purple'
@@ -154,6 +158,8 @@ export interface ReaderHandle {
 	goTo(target: ReaderLocator | string): Promise<boolean>
 	next(): Promise<void>
 	prev(): Promise<void>
+	/** Long strips: scroll a small step (arrow keys). No-op otherwise. */
+	step(direction: 1 | -1): void
 	setTheme(theme: ReaderThemeName): void
 	setTypography(typography: ReaderTypography): void
 	setLayout(layout: ReaderLayout): Promise<void>

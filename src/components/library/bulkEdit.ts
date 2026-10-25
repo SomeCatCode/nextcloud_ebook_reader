@@ -23,6 +23,8 @@ export interface BulkEditForm {
 	completion: { change: boolean, value: Completion | null }
 	/** set: manual value (null = no rating); reset: use the value from the file again */
 	age: { change: boolean, mode: 'set' | 'reset', value: AgeRating | null }
+	/** on/off: manual long strip flag; reset: use the value from the file again */
+	longstrip: { change: boolean, mode: 'on' | 'off' | 'reset' }
 }
 
 export type BulkEditError
@@ -59,6 +61,7 @@ export function emptyForm(): BulkEditForm {
 		tags: { change: false, addGenres: [], removeGenres: [], addTags: [], removeTags: [] },
 		completion: { change: false, value: null },
 		age: { change: false, mode: 'set', value: null },
+		longstrip: { change: false, mode: 'on' },
 	}
 }
 
@@ -72,7 +75,7 @@ export function hasMetadataChanges(form: BulkEditForm): boolean {
 }
 
 /**
- * The completion / age rating part (PATCH /books/app-data), null when neither section is ticked.
+ * The completion / age rating / long strip part (PATCH /books/app-data), null when no such section is ticked.
  *
  * @param form
  */
@@ -86,6 +89,13 @@ export function buildAppDataRequest(form: BulkEditForm): Omit<BulkAppDataRequest
 			req.resetAgeRating = true
 		} else {
 			req.ageRating = form.age.value
+		}
+	}
+	if (form.longstrip.change) {
+		if (form.longstrip.mode === 'reset') {
+			req.resetLongstrip = true
+		} else {
+			req.longstrip = form.longstrip.mode === 'on'
 		}
 	}
 	return Object.keys(req).length > 0 ? req : null
@@ -146,7 +156,7 @@ export function validateForm(form: BulkEditForm, bookCount: number): BulkEditErr
 	if (bookCount > MAX_FILES) {
 		errors.push('tooManyBooks')
 	}
-	if (!hasMetadataChanges(form) && !form.completion.change && !form.age.change) {
+	if (!hasMetadataChanges(form) && !form.completion.change && !form.age.change && !form.longstrip.change) {
 		errors.push('nothing')
 	}
 	if (form.authors.change) {

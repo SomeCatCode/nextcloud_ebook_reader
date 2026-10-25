@@ -32,6 +32,7 @@ Bibliothek, Reader und Editor für E-Books und Comics direkt in deiner Nextcloud
 - Paginierte oder scrollende Darstellung, Themes hell, sepia und dunkel, wählbare Schriftart, Schriftgröße und Zeilenhöhe.
 - Inhaltsverzeichnis, Volltextsuche, Tastatur, Tipp-Zonen und Wischgesten.
 - Comics als Einzel- oder Doppelseite, Leserichtung rechts nach links (Manga).
+- **Longstrip-Comics (Webtoons)** werden nahtlos nach unten gescrollt statt geblättert. Die App erkennt sie an ComicInfo.xml (`Format` Webtoon oder Long Strip), die Markierung lässt sich pro Buch ändern.
 - **Markierungen, Notizen und Lesezeichen:** Text markieren (fünf Farben), Notiz dazu schreiben, Seiten mit einem Lesezeichen versehen (auch Comics). Alles steht im Panel „Markierungen & Lesezeichen“, wird auf dem Server gespeichert und lässt sich als Markdown exportieren.
 - **Große Dateien laden schnell.** Comics kommen seitenweise vom Server, auf Bildschirmgröße verkleinert, und EPUBs werden kapitelweise geladen. Die erste Seite erscheint sofort.
 - **Der Lesefortschritt wird auf dem Server gespeichert** und ist auf jedem Gerät an derselben Stelle. Gibt es eine neuere Position von einem anderen Gerät, fragt die App, ob sie dorthin springen soll.

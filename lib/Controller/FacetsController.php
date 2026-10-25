@@ -31,7 +31,7 @@ class FacetsController extends AbstractOCSController {
 	}
 
 	/**
-	 * Genres, tags, authors, series, formats, completion status and age ratings with their counts
+	 * Genres, tags, authors, series, formats, completion status, age ratings and long strip comics with their counts
 	 *
 	 * @return DataResponse<Http::STATUS_OK, EbookReaderFacets, array{}>
 	 * @throws OCSForbiddenException Not logged in

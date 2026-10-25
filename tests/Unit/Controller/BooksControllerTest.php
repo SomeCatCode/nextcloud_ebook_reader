@@ -243,6 +243,34 @@ class BooksControllerTest extends TestCase {
 		$this->assertFalse($book->getAgeRatingManual());
 	}
 
+	public function testPatchLongstripIsManualAndCanBeReset(): void {
+		$book = $this->book();
+		$book->applyFileLongstrip(true);
+		$this->library->method('getBook')->willReturn($book);
+		$this->request->method('getParams')->willReturn(['longstrip' => false]);
+		$this->mapper->expects($this->once())->method('update');
+
+		$this->controller->patchAppData(5, longstrip: false);
+
+		$this->assertFalse($book->getLongstrip());
+		$this->assertTrue($book->getLongstripManual());
+		$this->assertTrue($book->getLongstripFile());
+	}
+
+	public function testPatchResetLongstripUsesTheFileValue(): void {
+		$book = $this->book();
+		$book->applyFileLongstrip(true);
+		$book->setManualLongstrip(false);
+		$this->library->method('getBook')->willReturn($book);
+		$this->request->method('getParams')->willReturn(['resetLongstrip' => true]);
+		$this->mapper->expects($this->once())->method('update');
+
+		$this->controller->patchAppData(5, resetLongstrip: true);
+
+		$this->assertTrue($book->getLongstrip());
+		$this->assertFalse($book->getLongstripManual());
+	}
+
 	public function testPatchSameCompletionDoesNotBumpUpdatedAt(): void {
 		$book = $this->book();
 		$book->setCompletion('ongoing');
@@ -259,6 +287,8 @@ class BooksControllerTest extends TestCase {
 			'completion' => [['completion' => 'finished']],
 			'age' => [['ageRating' => 15]],
 			'age and reset' => [['ageRating' => 12, 'resetAgeRating' => true]],
+			'longstrip null' => [['longstrip' => null]],
+			'longstrip and reset' => [['longstrip' => true, 'resetLongstrip' => true]],
 		];
 	}
 
@@ -269,7 +299,7 @@ class BooksControllerTest extends TestCase {
 		$this->request->method('getParams')->willReturn($params);
 		$this->mapper->expects($this->never())->method('update');
 		$this->expectException(OCSBadRequestException::class);
-		$this->controller->patchAppData(5, completion: $params['completion'] ?? null, ageRating: $params['ageRating'] ?? null, resetAgeRating: $params['resetAgeRating'] ?? false);
+		$this->controller->patchAppData(5, completion: $params['completion'] ?? null, ageRating: $params['ageRating'] ?? null, resetAgeRating: $params['resetAgeRating'] ?? false, longstrip: $params['longstrip'] ?? null, resetLongstrip: $params['resetLongstrip'] ?? false);
 	}
 
 	public function testBulkAppDataReportsPerFileResults(): void {

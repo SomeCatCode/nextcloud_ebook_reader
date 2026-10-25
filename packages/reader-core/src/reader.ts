@@ -23,6 +23,7 @@ import type {
  */
 import { collapseCfi, colorValue, locatorOnPage } from './annotations.ts'
 import { planNavigation, toLocator } from './locator.ts'
+import { LongstripView } from './longstrip.ts'
 import { openBook } from './open-book.ts'
 import { hardenBook } from './secure-sections.ts'
 import { buildCss } from './themes.ts'
@@ -60,6 +61,8 @@ export function createReader(container: HTMLElement, options: ReaderOptions = {}
 	media?.addEventListener?.('change', onMedia)
 
 	let view: Any = null
+	/** long strip comics are rendered by LongstripView instead of foliate */
+	let strip: LongstripView | null = null
 	let opened: OpenedBook | null = null
 	let info: BookInfo | null = null
 	let lastFile: { file: ReaderSource, format: ReaderFormat } | null = null
@@ -84,6 +87,10 @@ export function createReader(container: HTMLElement, options: ReaderOptions = {}
 	 *
 	 */
 	function applyStyles(): void {
+		if (strip) {
+			container.style.background = getComputedBackground()
+			return
+		}
 		if (!view?.renderer) {
 			return
 		}
@@ -104,6 +111,10 @@ export function createReader(container: HTMLElement, options: ReaderOptions = {}
 	 *
 	 */
 	function applyLayout(): void {
+		if (strip) {
+			strip.setZoom(layout.comicZoom)
+			return
+		}
 		const r = view?.renderer
 		if (!r || !opened) {
 			return
@@ -314,6 +325,8 @@ export function createReader(container: HTMLElement, options: ReaderOptions = {}
 	 *
 	 */
 	function teardown(): void {
+		strip?.destroy()
+		strip = null
 		if (view) {
 			try {
 				view.close?.()
@@ -338,13 +351,26 @@ export function createReader(container: HTMLElement, options: ReaderOptions = {}
 	 * @param target
 	 */
 	async function goTo(target: ReaderLocator | string): Promise<boolean> {
-		if (!view || !opened) {
+		if ((!view && !strip) || !opened) {
 			return false
 		}
 		const book: FoliateBook = opened.book
 		const steps = planNavigation(target, { sectionIds: book.sections.map((s: Any) => s.id), isComic: opened.isComic })
 		for (const step of steps) {
 			try {
+				if (strip) {
+					if (step.kind === 'section') {
+						await strip.goTo(step.index, step.progression)
+						return true
+					}
+					if (step.kind === 'fraction') {
+						const pos = step.fraction * book.sections.length
+						const index = Math.min(book.sections.length - 1, Math.floor(pos))
+						await strip.goTo(index, Math.min(1, Math.max(0, pos - index)))
+						return true
+					}
+					continue
+				}
 				if (step.kind === 'cfi') {
 					const r = view.resolveNavigation(step.cfi)
 					if (r && r.index >= 0) {
@@ -372,6 +398,61 @@ export function createReader(container: HTMLElement, options: ReaderOptions = {}
 		return false
 	}
 
+	/**
+	 * @param index page index
+	 * @param progression fraction inside the page
+	 */
+	function onStripRelocate(index: number, progression: number): void {
+		if (!opened) {
+			return
+		}
+		const total = opened.book.sections.length
+		const section = opened.book.sections[index]
+		const fraction = total > 0 ? (index + progression) / total : 0
+		const locator = toLocator({ fraction, sectionIndex: index, sectionHref: String(section?.id ?? '') }, true)
+		// the position inside a (tall) strip page matters: keep it, unlike paged comics
+		locator.locations = { ...locator.locations, progression: Math.round(progression * 1e5) / 1e5 }
+		lastLocator = locator
+		emit('relocate', {
+			locator,
+			percentage: total > 0 ? Math.min(1, (index + 1) / total) : 0,
+			page: { current: index + 1, total },
+		})
+	}
+
+	/**
+	 * Opens a comic in the long strip view (seamless vertical scroll).
+	 *
+	 * @param book
+	 * @param initial
+	 */
+	async function openStrip(book: OpenedBook, initial: ReaderLocator | null): Promise<void> {
+		const sections: Any[] = book.book.sections
+		strip = new LongstripView(host!, {
+			pages: sections.map((s) => ({ id: String(s.id) })),
+			loadBlob: (i) => book.loadPage!(i),
+			onRelocate: onStripRelocate,
+			onTap: (zone) => emit('tap', { zone }),
+		})
+		const md = book.book.metadata ?? {}
+		info = {
+			title: typeof md.title === 'string' ? md.title : '',
+			authors: [],
+			isComic: true,
+			fixedLayout: false,
+			rtl: false,
+			pageCount: sections.length,
+			longstrip: true,
+		}
+		applyLayout()
+		applyStyles()
+		if (!initial || !await goTo(initial)) {
+			await strip.goTo(0, 0)
+		}
+		strip.focus()
+		emit('ready', info)
+	}
+
 	const handle: ReaderHandle = {
 		async open(file, format, initial = null) {
 			teardown()
@@ -381,11 +462,15 @@ export function createReader(container: HTMLElement, options: ReaderOptions = {}
 				await import('../vendor/foliate-js/view.js')
 				const book = await openBook(file, format, options, layout)
 				hardenBook(book.book)
-				opened = book.isComic ? book : book
+				opened = book
 				host = document.createElement('div')
 				host.style.cssText = 'position:absolute;inset:0;'
 				container.style.position ||= 'relative'
 				container.append(host)
+				if (book.isComic && layout.comicLongstrip && book.loadPage) {
+					await openStrip(book, initial)
+					return
+				}
 				view = document.createElement('foliate-view')
 				view.style.cssText = 'display:block;width:100%;height:100%;'
 				host.append(view)
@@ -444,6 +529,7 @@ export function createReader(container: HTMLElement, options: ReaderOptions = {}
 					fixedLayout: !!view.isFixedLayout,
 					rtl: book.book.dir === 'rtl',
 					pageCount: book.book.sections.length,
+					longstrip: false,
 				}
 				applyLayout()
 				applyStyles()
@@ -464,10 +550,21 @@ export function createReader(container: HTMLElement, options: ReaderOptions = {}
 		},
 		goTo,
 		async next() {
+			if (strip) {
+				strip.next()
+				return
+			}
 			await view?.next()
 		},
 		async prev() {
+			if (strip) {
+				strip.prev()
+				return
+			}
 			await view?.prev()
+		},
+		step(direction) {
+			strip?.step(direction)
 		},
 		setTheme(t) {
 			theme = t
@@ -480,9 +577,10 @@ export function createReader(container: HTMLElement, options: ReaderOptions = {}
 		async setLayout(l) {
 			const before = layout
 			layout = { ...layout, ...l }
-			const comicChange = opened?.isComic && (before.comicSpread !== layout.comicSpread || before.comicRtl !== layout.comicRtl)
+			const comicChange = opened?.isComic && (before.comicSpread !== layout.comicSpread || before.comicRtl !== layout.comicRtl
+				|| !!before.comicLongstrip !== !!layout.comicLongstrip)
 			if (comicChange && lastFile) {
-				// spread/direction are fixed when the renderer opens: re-open at the current position
+				// spread/direction/long strip are fixed when the renderer opens: re-open at the current position
 				await handle.open(lastFile.file, lastFile.format, lastLocator)
 				return
 			}

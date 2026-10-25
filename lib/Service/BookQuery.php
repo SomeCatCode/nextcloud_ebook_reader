@@ -17,9 +17,11 @@ final class BookQuery {
 	public const STATUSES = ['unread', 'reading', 'finished'];
 	public const DEFAULT_LIMIT = 50;
 	public const MAX_LIMIT = 200;
-	public const FILTER_TYPES = ['genre', 'tag', 'author', 'series', 'format', 'shelf', 'missing', 'completion', 'age'];
+	public const FILTER_TYPES = ['genre', 'tag', 'author', 'series', 'format', 'shelf', 'missing', 'completion', 'age', 'layout'];
 	/** names a `completion:<name>` term can use (unknown = not set) */
 	public const COMPLETION_TERMS = ['ongoing', 'completed', 'unknown'];
+	/** names a `layout:<name>` term can use (long strip comics; exclude it for the others) */
+	public const LAYOUT_TERMS = ['longstrip'];
 	/** fields a `missing:<field>` term can ask for */
 	public const MISSING_FIELDS = ['genre', 'tag', 'author', 'series', 'description', 'cover', 'language'];
 	public const MATCH_ALL = 'all';
@@ -116,6 +118,11 @@ final class BookQuery {
 			} elseif ($type === 'completion') {
 				$name = strtolower($name);
 				if (!in_array($name, self::COMPLETION_TERMS, true)) {
+					continue;
+				}
+			} elseif ($type === 'layout') {
+				$name = strtolower($name);
+				if (!in_array($name, self::LAYOUT_TERMS, true)) {
 					continue;
 				}
 			} elseif ($type === 'age') {

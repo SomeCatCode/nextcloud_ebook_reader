@@ -563,6 +563,9 @@ class ConvertService {
 			if ($old->getAgeRatingManual()) {
 				$new->setManualAgeRating($old->getAgeRating());
 			}
+			if ($old->getLongstripManual()) {
+				$new->setManualLongstrip($old->getLongstrip());
+			}
 			$new = $this->bookMapper->update($new);
 			foreach ([Tag::TYPE_GENRE, Tag::TYPE_TAG] as $type) {
 				$names = [];

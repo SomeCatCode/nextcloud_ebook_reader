@@ -201,7 +201,7 @@ class BooksController extends AbstractOCSController {
 	}
 
 	/**
-	 * Change app-only fields (rating, read status, completion, age rating) without touching the file
+	 * Change app-only fields (rating, read status, completion, age rating, long strip) without touching the file
 	 *
 	 * Absent fields stay unchanged, an explicit null rating clears the rating.
 	 * The read status also sets the reading progress: finished = 100 % (locator href "" with
@@ -211,7 +211,9 @@ class BooksController extends AbstractOCSController {
 	 * completion: "ongoing", "completed" or null (unknown). ageRating: 0, 6, 12, 16, 18 or null; any value
 	 * given here (also null = "no rating") is a manual value that survives re-indexing (ageRatingManual = true).
 	 * resetAgeRating = true drops the manual value: the rating from the file (ComicInfo.xml AgeRating, EPUB
-	 * schema:typicalAgeRange) applies again. A change bumps updatedAt, so GET /sync delivers it.
+	 * schema:typicalAgeRange) applies again. longstrip: the comic is read as one seamless vertical scroll (webtoon);
+	 * a value given here is manual (longstripManual = true), resetLongstrip = true uses the value recognised in the
+	 * file again (ComicInfo.xml Format/Tags). A change bumps updatedAt, so GET /sync delivers it.
 	 *
 	 * @param int $fileId Nextcloud file id
 	 * @param int|null $rating Rating 0..5 or null
@@ -219,6 +221,8 @@ class BooksController extends AbstractOCSController {
 	 * @param string|null $completion ongoing|completed, or null to clear (unknown)
 	 * @param int|null $ageRating Age rating 0|6|12|16|18, or null for "no rating" (both manual)
 	 * @param bool $resetAgeRating true = use the age rating from the file again (not together with ageRating)
+	 * @param bool|null $longstrip true = long strip comic (vertical scroll), false = paged (both manual)
+	 * @param bool $resetLongstrip true = use the long strip flag from the file again (not together with longstrip)
 	 * @return DataResponse<Http::STATUS_OK, EbookReaderBook, array{}>
 	 * @throws OCSBadRequestException Invalid value
 	 * @throws OCSNotFoundException Book not found
@@ -229,11 +233,11 @@ class BooksController extends AbstractOCSController {
 	#[NoAdminRequired]
 	#[UserRateLimit(limit: 120, period: 60)]
 	#[ApiRoute(verb: 'PATCH', url: '/api/v1/books/{fileId}/app-data', requirements: ['fileId' => '\d+'])]
-	public function patchAppData(int $fileId, ?int $rating = null, ?string $readStatus = null, ?string $completion = null, ?int $ageRating = null, bool $resetAgeRating = false): DataResponse {
+	public function patchAppData(int $fileId, ?int $rating = null, ?string $readStatus = null, ?string $completion = null, ?int $ageRating = null, bool $resetAgeRating = false, ?bool $longstrip = null, bool $resetLongstrip = false): DataResponse {
 		$userId = $this->uid();
 		$book = $this->findBook($userId, $fileId);
 		$params = $this->request->getParams();
-		$flags = $this->flagChanges($params, $completion, $ageRating, $resetAgeRating);
+		$flags = $this->flagChanges($params, $completion, $ageRating, $resetAgeRating, $longstrip, $resetLongstrip);
 		$changed = false;
 
 		if (array_key_exists('rating', $params)) {
@@ -261,16 +265,19 @@ class BooksController extends AbstractOCSController {
 	}
 
 	/**
-	 * Set completion status and/or age rating of several books (max. 500)
+	 * Set completion status, age rating and/or long strip flag of several books (max. 500)
 	 *
 	 * Same semantics as the fields of PATCH /books/{fileId}/app-data: absent fields stay unchanged,
 	 * completion null clears it, ageRating null sets "no rating" by hand, resetAgeRating uses the value
-	 * from the file again. Changed books get a new updatedAt (delivered by GET /sync).
+	 * from the file again, longstrip true/false sets the flag by hand, resetLongstrip uses the value from the file again.
+	 * Changed books get a new updatedAt (delivered by GET /sync).
 	 *
 	 * @param list<int> $fileIds Nextcloud file ids
 	 * @param string|null $completion ongoing|completed, or null to clear (unknown)
 	 * @param int|null $ageRating Age rating 0|6|12|16|18, or null for "no rating"
 	 * @param bool $resetAgeRating true = use the age rating from the file again
+	 * @param bool|null $longstrip true = long strip comic, false = paged
+	 * @param bool $resetLongstrip true = use the long strip flag from the file again
 	 * @return DataResponse<Http::STATUS_OK, array{updated: int, unchanged: int, failed: list<array{fileId: int, error: string}>}, array{}>
 	 * @throws OCSBadRequestException Empty or too large selection, no field or an invalid value
 	 * @throws OCSForbiddenException Not logged in
@@ -280,13 +287,13 @@ class BooksController extends AbstractOCSController {
 	#[NoAdminRequired]
 	#[UserRateLimit(limit: 30, period: 60)]
 	#[ApiRoute(verb: 'PATCH', url: '/api/v1/books/app-data')]
-	public function patchAppDataMany(array $fileIds = [], ?string $completion = null, ?int $ageRating = null, bool $resetAgeRating = false): DataResponse {
+	public function patchAppDataMany(array $fileIds = [], ?string $completion = null, ?int $ageRating = null, bool $resetAgeRating = false, ?bool $longstrip = null, bool $resetLongstrip = false): DataResponse {
 		$userId = $this->uid();
 		$ids = array_values(array_unique(array_map('intval', $fileIds)));
 		if ($ids === [] || count($ids) > self::MAX_BULK_APP_DATA) {
 			throw new OCSBadRequestException('Select between 1 and ' . self::MAX_BULK_APP_DATA . ' books');
 		}
-		$flags = $this->flagChanges($this->request->getParams(), $completion, $ageRating, $resetAgeRating);
+		$flags = $this->flagChanges($this->request->getParams(), $completion, $ageRating, $resetAgeRating, $longstrip, $resetLongstrip);
 		if ($flags === []) {
 			throw new OCSBadRequestException('Nothing to change');
 		}
@@ -342,13 +349,13 @@ class BooksController extends AbstractOCSController {
 	}
 
 	/**
-	 * Validated completion/age rating changes of a request (only the fields that are present).
+	 * Validated completion/age rating/long strip changes of a request (only the fields that are present).
 	 *
 	 * @param array<array-key, mixed> $params request parameters (to tell an explicit null from an absent field)
-	 * @return array{completion?: ?string, ageRating?: ?int, resetAgeRating?: true}
+	 * @return array{completion?: ?string, ageRating?: ?int, resetAgeRating?: true, longstrip?: bool, resetLongstrip?: true}
 	 * @throws OCSBadRequestException
 	 */
-	private function flagChanges(array $params, ?string $completion, ?int $ageRating, bool $resetAgeRating): array {
+	private function flagChanges(array $params, ?string $completion, ?int $ageRating, bool $resetAgeRating, ?bool $longstrip = null, bool $resetLongstrip = false): array {
 		$out = [];
 		if (array_key_exists('completion', $params)) {
 			if ($completion !== null && !in_array($completion, Book::COMPLETIONS, true)) {
@@ -369,11 +376,22 @@ class BooksController extends AbstractOCSController {
 		if ($resetAgeRating) {
 			$out['resetAgeRating'] = true;
 		}
+		if ($longstrip !== null && $resetLongstrip) {
+			throw new OCSBadRequestException('longstrip and resetLongstrip can not be combined');
+		}
+		if ($longstrip !== null) {
+			$out['longstrip'] = $longstrip;
+		} elseif (array_key_exists('longstrip', $params)) {
+			throw new OCSBadRequestException('longstrip must be true or false');
+		}
+		if ($resetLongstrip) {
+			$out['resetLongstrip'] = true;
+		}
 		return $out;
 	}
 
 	/**
-	 * @param array{completion?: ?string, ageRating?: ?int, resetAgeRating?: true} $flags
+	 * @param array{completion?: ?string, ageRating?: ?int, resetAgeRating?: true, longstrip?: bool, resetLongstrip?: true} $flags
 	 * @return bool whether anything that is part of the API changed
 	 */
 	private static function applyFlags(Book $book, array $flags): bool {
@@ -389,6 +407,15 @@ class BooksController extends AbstractOCSController {
 		}
 		if (isset($flags['resetAgeRating']) && $book->getAgeRatingManual()) {
 			$book->resetAgeRating();
+			$changed = true;
+		}
+		if (isset($flags['longstrip'])
+			&& ($book->getLongstrip() !== $flags['longstrip'] || !$book->getLongstripManual())) {
+			$book->setManualLongstrip($flags['longstrip']);
+			$changed = true;
+		}
+		if (isset($flags['resetLongstrip']) && $book->getLongstripManual()) {
+			$book->resetLongstrip();
 			$changed = true;
 		}
 		return $changed;

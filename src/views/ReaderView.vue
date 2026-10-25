@@ -62,7 +62,12 @@
 						</template>
 					</NcButton>
 				</template>
-				<ReaderSettings :model="viewSettings" :isComic="isComic" @change="onSettingsChange" />
+				<ReaderSettings
+					:model="viewSettings"
+					:isComic="isComic"
+					:longstrip="longstrip"
+					@change="onSettingsChange"
+					@longstrip="onLongstripChange" />
 			</NcPopover>
 			<NcButton
 				v-if="fullscreen.supported"
@@ -290,7 +295,7 @@ import { offersNextVolume, volumeLabel } from '../components/library/bookFlags.t
 import { bookTitle } from '../components/library/utils.ts'
 import { loadLibarchive } from '../components/reader/libarchive.ts'
 import { annotationsToMarkdown } from '../services/annotationExport.ts'
-import { getBook, getSettings, nextVolume, putSettings } from '../services/api.ts'
+import { getBook, getSettings, nextVolume, patchAppData, putSettings } from '../services/api.ts'
 import { loadBookSource, needsClientCover, uploadClientCover } from '../services/bookSource.ts'
 import { DownloadDeclinedError } from '../services/largeDownload.ts'
 import { createProgressSync } from '../services/progressSync.ts'
@@ -331,6 +336,8 @@ const percentage = ref(0)
 const pageInfo = ref<{ current: number, total: number } | null>(null)
 const isComic = ref(false)
 const isRtl = ref(false)
+/** comic is shown as long strip (seamless vertical scroll); a flag of the book, see onLongstripChange */
+const longstrip = ref(false)
 const prefersDark = ref(globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false)
 const conflict = ref<Progress | null>(null)
 /** "Continue with volume n+1" at the end of a book in a series; looked up once per book */
@@ -687,7 +694,7 @@ function onSettingsChange(patch: Partial<ViewSettings>): void {
 			comicRtl: viewSettings.comicRtl,
 			comicZoom: viewSettings.comicZoom,
 		})
-		isRtl.value = isComic.value ? viewSettings.comicRtl : isRtl.value
+		isRtl.value = isComic.value && !longstrip.value ? viewSettings.comicRtl : isRtl.value
 	}
 	if (saveTimer) {
 		clearTimeout(saveTimer)
@@ -699,6 +706,28 @@ function onSettingsChange(patch: Partial<ViewSettings>): void {
 			})
 			.catch((e) => logger.warn('ebookreader: could not save reader settings', e))
 	}, 600)
+}
+
+/**
+ * Switches between pages and long strip. This is the book's long strip flag (shown in the library), so it is
+ * stored on the book as a manual value and applies on every device.
+ *
+ * @param value
+ */
+async function onLongstripChange(value: boolean): Promise<void> {
+	const b = book.value
+	if (!b) {
+		return
+	}
+	longstrip.value = value
+	isRtl.value = !value && viewSettings.comicRtl
+	await reader?.setLayout({ comicLongstrip: value })
+	try {
+		book.value = { ...b, ...await patchAppData(b.fileId, { longstrip: value }) }
+	} catch (e) {
+		logger.warn('ebookreader: could not save the long strip flag', e)
+		showError(t('ebookreader', 'Could not save the setting'))
+	}
 }
 
 /**
@@ -840,12 +869,20 @@ function handleKey(key: string, e?: KeyboardEvent, modified = false): void {
 			if (key === 'ArrowDown' && viewSettings.flow === 'scrolled' && !isComic.value) {
 				return
 			}
+			if (key === 'ArrowDown' && longstrip.value) {
+				reader?.step(1)
+				break
+			}
 			void reader?.next()
 			break
 		case 'PageUp':
 		case 'ArrowUp':
 			if (key === 'ArrowUp' && viewSettings.flow === 'scrolled' && !isComic.value) {
 				return
+			}
+			if (key === 'ArrowUp' && longstrip.value) {
+				reader?.step(-1)
+				break
 			}
 			void reader?.prev()
 			break
@@ -963,7 +1000,8 @@ onMounted(async () => {
 		}
 		applyServerSettings(settings?.reader)
 		isComic.value = ['cbz', 'cbr', 'cb7', 'cbt'].includes(b.format)
-		isRtl.value = isComic.value && viewSettings.comicRtl
+		longstrip.value = isComic.value && b.longstrip === true
+		isRtl.value = isComic.value && !longstrip.value && viewSettings.comicRtl
 
 		void annotations.load(fileId)
 		sync = createProgressSync(fileId, {
@@ -972,7 +1010,7 @@ onMounted(async () => {
 			},
 		})
 		const [source, remote] = await Promise.all([
-			loadBookSource(b, abort.signal, largeDownload.ask),
+			loadBookSource(b, abort.signal, largeDownload.ask, () => longstrip.value),
 			sync.loadRemote().catch(() => b.progress),
 		])
 		if (!stage.value) {
@@ -988,6 +1026,7 @@ onMounted(async () => {
 				comicSpread: viewSettings.comicSpread,
 				comicRtl: viewSettings.comicRtl,
 				comicZoom: viewSettings.comicZoom,
+				comicLongstrip: longstrip.value,
 			},
 			loadLibarchive,
 		})

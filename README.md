@@ -122,6 +122,7 @@ sudo -u www-data php occ ebookreader:scan <user> --force --format=cbr
 - Opens from the Files app; paginated or scrolled layout, light/sepia/dark themes, font, size and line height
 - Table of contents, full-text search, keyboard, tap zones and swipe gestures
 - Comics as single or double pages, right-to-left (manga) reading direction
+- Long strip comics (webtoons) scroll down seamlessly instead of paging; recognised from ComicInfo.xml (`Format` Webtoon/Long Strip) or set per book
 - Highlights in five colours, notes and bookmarks (also for comics), listed in a side panel and exportable as Markdown
 - Large files open fast: comic pages are streamed one by one and scaled on the server, EPUBs are loaded chapter by chapter
 - Reading position stored on the server; a newer position from another device is offered when you open a book
