@@ -122,6 +122,7 @@ sudo -u www-data php occ ebookreader:scan <user> --force --format=cbr
 - Opens from the Files app; paginated or scrolled layout, light/sepia/dark themes, font, size and line height
 - Table of contents, full-text search, keyboard, tap zones and swipe gestures
 - Comics as single or double pages, right-to-left (manga) reading direction
+- Long strip comics (webtoons) scroll down seamlessly instead of paging; recognised from ComicInfo.xml (`Format` Webtoon/Long Strip) or set per book
 - Highlights in five colours, notes and bookmarks (also for comics), listed in a side panel and exportable as Markdown
 - Large files open fast: comic pages are streamed one by one and scaled on the server, EPUBs are loaded chapter by chapter
 - Reading position stored on the server; a newer position from another device is offered when you open a book
@@ -144,7 +145,7 @@ sudo -u www-data php occ ebookreader:scan <user> --force --format=cbr
 - Metadata: title, authors, series and index, description, genres, tags, language, publisher, date, ISBN
 - Replace the cover (upload, or use a page)
 - Remove and reorder chapters or pages, edit the table of contents
-- Rename and sort into folders by pattern, e.g. `{author}/{series}/{series_index:2} - {title}`, with a preview
+- Rename and sort into folders by pattern, e.g. `{author}/{series}/{series_index} - {title}`, with a preview. `{series_index}` is zero-padded to the width of the highest volume number of the series (01 … 10, 001 … 120), `{series_index:raw}` is not
 - Convert between CBZ, CB7, CBT and fixed-layout EPUB, with the pros and cons of each format explained (CBR cannot be a target: writing RAR requires proprietary software)
 - Optional, lossy image optimization for comics (downscale pages to 2560 or 1920 px, PNG to JPEG), with a size estimate and bulk mode
 - Save or save as copy; long operations continue on the server with a progress indicator

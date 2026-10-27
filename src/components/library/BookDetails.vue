@@ -90,14 +90,13 @@
 					<NcProgressBar :value="percent" />
 				</div>
 
-				<div v-if="nextBook" class="book-details__next">
-					<NcButton variant="secondary" wide @click="readNext">
-						<template #icon>
-							<NcIconSvgWrapper :path="mdiBookArrowRightOutline" />
-						</template>
-						{{ t('ebookreader', 'Next volume: {title}', { title: nextLabel }) }}
-					</NcButton>
-				</div>
+				<ReadNextSuggestions
+					v-if="suggestions"
+					class="book-details__suggestions"
+					:suggestions="suggestions"
+					@read="readBook"
+					@open="(b: Book) => store.openBook(b)"
+					@dismiss="suggestions = null" />
 
 				<div class="book-details__row">
 					<NcSelect
@@ -130,6 +129,29 @@
 						</NcButton>
 					</p>
 					<p v-else-if="book.ageRating !== null" class="book-details__hint">
+						{{ t('ebookreader', 'From the book file') }}
+					</p>
+				</div>
+
+				<div v-if="isComicFormat" class="book-details__row">
+					<NcCheckboxRadioSwitch
+						type="switch"
+						:modelValue="book.longstrip === true"
+						:disabled="savingLongstrip"
+						@update:modelValue="setLongstrip">
+						{{ t('ebookreader', 'Long strip (scroll down instead of turning pages)') }}
+					</NcCheckboxRadioSwitch>
+					<p v-if="book.longstripManual" class="book-details__hint book-details__inline">
+						<span>{{ t('ebookreader', 'Set in the app') }}</span>
+						<NcButton
+							variant="tertiary"
+							size="small"
+							:disabled="savingLongstrip"
+							@click="resetLongstrip">
+							{{ t('ebookreader', 'Use value from file') }}
+						</NcButton>
+					</p>
+					<p v-else-if="book.longstrip" class="book-details__hint">
 						{{ t('ebookreader', 'From the book file') }}
 					</p>
 				</div>
@@ -229,9 +251,9 @@
 </template>
 
 <script setup lang="ts">
-import type { AgeRating, Book, Completion, FilterTerm, MetadataOverrideField, ReadStatus } from '../../types.ts'
+import type { AgeRating, Book, Completion, FilterTerm, MetadataOverrideField, ReadStatus, Suggestions } from '../../types.ts'
 
-import { mdiBookArrowRightOutline, mdiBookOpenPageVariant, mdiBookOpenVariant, mdiBookshelf, mdiDeleteOutline, mdiFileReplaceOutline, mdiFolderMoveOutline, mdiFolderOutline, mdiPencil, mdiShareVariant, mdiSwapHorizontal } from '@mdi/js'
+import { mdiBookOpenPageVariant, mdiBookOpenVariant, mdiBookshelf, mdiDeleteOutline, mdiFileReplaceOutline, mdiFolderMoveOutline, mdiFolderOutline, mdiPencil, mdiShareVariant, mdiSwapHorizontal } from '@mdi/js'
 import { showError, showSuccess } from '@nextcloud/dialogs'
 import { t } from '@nextcloud/l10n'
 import { generateUrl } from '@nextcloud/router'
@@ -240,6 +262,7 @@ import { useRouter } from 'vue-router'
 import NcAppSidebar from '@nextcloud/vue/components/NcAppSidebar'
 import NcAppSidebarTab from '@nextcloud/vue/components/NcAppSidebarTab'
 import NcButton from '@nextcloud/vue/components/NcButton'
+import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcProgressBar from '@nextcloud/vue/components/NcProgressBar'
@@ -247,14 +270,17 @@ import NcSelect from '@nextcloud/vue/components/NcSelect'
 import ConvertDialog from '../convert/ConvertDialog.vue'
 import AddToShelfDialog from './AddToShelfDialog.vue'
 import BookCover from './BookCover.vue'
+import ReadNextSuggestions from './ReadNextSuggestions.vue'
 import ShareDialog from './ShareDialog.vue'
 import StarRating from './StarRating.vue'
 import TagEditor from './TagEditor.vue'
 import { sanitizeDescription } from '../../editor/sanitize.ts'
-import { nextVolume } from '../../services/api.ts'
+import { getSuggestions } from '../../services/api.ts'
+import { hasFeature } from '../../services/features.ts'
+import { hasSuggestions, normalizeSuggestions } from '../../services/suggestions.ts'
 import { useLibraryStore } from '../../stores/library.ts'
 import { useSettingsStore } from '../../stores/settings.ts'
-import { AGE_RATINGS, ageBadge, completionLabel, volumeLabel } from './bookFlags.ts'
+import { AGE_RATINGS, ageBadge, completionLabel, LONGSTRIP_FORMATS } from './bookFlags.ts'
 import { canEmbed } from './metadataStorage.ts'
 import { bookAuthors, bookTitle, dirName, formatDate, progressPercent } from './utils.ts'
 
@@ -313,42 +339,41 @@ const ageOptions = computed<{ id: AgeRating | null, label: string }[]>(() => [
 ])
 const currentAge = computed(() => ageOptions.value.find((o) => o.id === (props.book.ageRating ?? null)) ?? ageOptions.value[0])
 const savingAge = ref(false)
+const isComicFormat = computed(() => LONGSTRIP_FORMATS.includes(props.book.format))
+const savingLongstrip = ref(false)
 
-/** next volume of a finished book in a series ("continue the series") */
-const nextBook = ref<Book | null>(null)
-const nextLabel = computed(() => (nextBook.value ? volumeLabel(nextBook.value, bookTitle(nextBook.value)) : ''))
-let nextRequest = 0
+/** "Finished reading": next volume and similar titles of a finished book */
+const suggestions = ref<Suggestions | null>(null)
+let suggestionsRequest = 0
 
 /**
- * Looks up the next volume once the book is finished.
+ * Looks up the suggestions once the book is finished.
  */
-async function loadNext(): Promise<void> {
-	const id = ++nextRequest
-	nextBook.value = null
-	if (!props.book.series || props.book.readStatus !== 'finished') {
+async function loadSuggestions(): Promise<void> {
+	const id = ++suggestionsRequest
+	suggestions.value = null
+	if (props.book.readStatus !== 'finished' || !hasFeature('suggestions')) {
 		return
 	}
 	try {
-		const next = await nextVolume(props.book.fileId)
-		if (id === nextRequest) {
-			nextBook.value = next
+		const found = normalizeSuggestions(await getSuggestions(props.book.fileId), props.book.fileId)
+		if (id === suggestionsRequest && hasSuggestions(found)) {
+			suggestions.value = found
 		}
 	} catch {
-		// no link then
+		// no suggestions then
 	}
 }
 
-watch(() => [props.book.fileId, props.book.readStatus, props.book.series], () => {
-	void loadNext()
+watch(() => [props.book.fileId, props.book.readStatus], () => {
+	void loadSuggestions()
 }, { immediate: true })
 
 /**
- *
+ * @param other
  */
-function readNext(): void {
-	if (nextBook.value) {
-		void router.push(`/read/${nextBook.value.fileId}`)
-	}
+function readBook(other: Book): void {
+	void router.push(`/read/${other.fileId}`)
 }
 
 const filesUrl = computed(() => generateUrl('/apps/files/files/{fileId}', { fileId: props.book.fileId })
@@ -546,6 +571,34 @@ async function setAge(option: { id: AgeRating | null } | null): Promise<void> {
 		showError(t('ebookreader', 'Could not save the age rating'))
 	} finally {
 		savingAge.value = false
+	}
+}
+
+/**
+ * @param value
+ */
+async function setLongstrip(value: boolean): Promise<void> {
+	savingLongstrip.value = true
+	try {
+		await store.setLongstrip(props.book.fileId, value)
+	} catch {
+		showError(t('ebookreader', 'Could not save the setting'))
+	} finally {
+		savingLongstrip.value = false
+	}
+}
+
+/**
+ * Drops the long strip flag set in the app: the value recognised in the file applies again.
+ */
+async function resetLongstrip(): Promise<void> {
+	savingLongstrip.value = true
+	try {
+		await store.resetLongstrip(props.book.fileId)
+	} catch {
+		showError(t('ebookreader', 'Could not read the value from the file'))
+	} finally {
+		savingLongstrip.value = false
 	}
 }
 

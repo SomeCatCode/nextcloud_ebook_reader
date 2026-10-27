@@ -154,6 +154,17 @@ describe('completion and age rating sections', () => {
 		expect(buildAppDataRequest(form)).toEqual({ completion: null, resetAgeRating: true })
 	})
 
+	it('builds on, off and reset of the long strip flag', () => {
+		const form = emptyForm()
+		form.longstrip = { change: true, mode: 'on' }
+		expect(validateForm(form, 2)).toEqual([])
+		expect(buildAppDataRequest(form)).toEqual({ longstrip: true })
+		form.longstrip = { change: true, mode: 'off' }
+		expect(buildAppDataRequest(form)).toEqual({ longstrip: false })
+		form.longstrip = { change: true, mode: 'reset' }
+		expect(buildAppDataRequest(form)).toEqual({ resetLongstrip: true })
+	})
+
 	it('merges the results of both requests', () => {
 		expect(mergeBulkResults(null, { updated: 2, unchanged: 1, failed: [{ fileId: 3, error: 'not_found' }] }))
 			.toEqual({ updated: 2, unchanged: 1, failed: [{ fileId: 3, error: 'not_found' }], writeQueued: false })

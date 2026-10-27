@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-export type ServerFeature = 'shared-filter' | 'series-shares' | 'folder-shares' | 'folders' | 'sidecar-meta'
+export type ServerFeature = 'shared-filter' | 'series-shares' | 'folder-shares' | 'folders' | 'sidecar-meta' | 'suggestions'
 
 interface CapabilitiesWindow {
 	OC?: { getCapabilities?: () => unknown }

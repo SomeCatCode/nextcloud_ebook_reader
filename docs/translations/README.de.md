@@ -32,6 +32,7 @@ Bibliothek, Reader und Editor für E-Books und Comics direkt in deiner Nextcloud
 - Paginierte oder scrollende Darstellung, Themes hell, sepia und dunkel, wählbare Schriftart, Schriftgröße und Zeilenhöhe.
 - Inhaltsverzeichnis, Volltextsuche, Tastatur, Tipp-Zonen und Wischgesten.
 - Comics als Einzel- oder Doppelseite, Leserichtung rechts nach links (Manga).
+- **Longstrip-Comics (Webtoons)** werden nahtlos nach unten gescrollt statt geblättert. Die App erkennt sie an ComicInfo.xml (`Format` Webtoon oder Long Strip), die Markierung lässt sich pro Buch ändern.
 - **Markierungen, Notizen und Lesezeichen:** Text markieren (fünf Farben), Notiz dazu schreiben, Seiten mit einem Lesezeichen versehen (auch Comics). Alles steht im Panel „Markierungen & Lesezeichen“, wird auf dem Server gespeichert und lässt sich als Markdown exportieren.
 - **Große Dateien laden schnell.** Comics kommen seitenweise vom Server, auf Bildschirmgröße verkleinert, und EPUBs werden kapitelweise geladen. Die erste Seite erscheint sofort.
 - **Der Lesefortschritt wird auf dem Server gespeichert** und ist auf jedem Gerät an derselben Stelle. Gibt es eine neuere Position von einem anderen Gerät, fragt die App, ob sie dorthin springen soll.
@@ -56,7 +57,7 @@ Bibliothek, Reader und Editor für E-Books und Comics direkt in deiner Nextcloud
 - **Metadaten:** Titel, Autoren, Serie und Band, Beschreibung, Genres, Tags, Sprache, Verlag, Datum, ISBN.
 - **Cover** tauschen (Upload oder eine Seite als Cover wählen).
 - **Kapitel bzw. Seiten** entfernen und per Drag & Drop umsortieren, **Inhaltsverzeichnis** bearbeiten.
-- **Umbenennen und Einsortieren** nach Muster, z. B. `{author}/{series}/{series_index:2} - {title}`, mit Vorschau vor dem Ausführen.
+- **Umbenennen und Einsortieren** nach Muster, z. B. `{author}/{series}/{series_index} - {title}`, mit Vorschau vor dem Ausführen. `{series_index}` erhält führende Nullen passend zur höchsten Bandnummer der Reihe (01 … 10, 001 … 120), `{series_index:raw}` nicht.
 - **Konvertieren** zwischen CBZ, CB7, CBT und EPUB (Fixed Layout). Die Vor- und Nachteile jedes Formats werden erklärt. CBR lässt sich nicht als Ziel anlegen, weil RAR nur mit proprietärer Software geschrieben werden kann.
 - **Bilder optimieren** (optional, verlustbehaftet): Seitenbilder von Comics auf 2560 px oder 1920 px Höhe verkleinern und PNG-Seiten auf Wunsch in JPEG umwandeln, mit Größenschätzung vorab, auch für mehrere markierte Comics auf einmal. Die Dateien werden kleiner, Downloads und Offline-Nutzung schneller; das Verkleinern lässt sich nicht rückgängig machen, das Original landet auf Wunsch im Papierkorb.
 - Speichern oder „Als Kopie speichern“. Lange Vorgänge laufen auf dem Server mit Fortschrittsanzeige weiter.

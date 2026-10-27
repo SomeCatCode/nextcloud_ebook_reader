@@ -30,6 +30,16 @@ class BookSerializerFlagsTest extends TestCase {
 		$this->assertNull($data['completion']);
 		$this->assertNull($data['ageRating']);
 		$this->assertFalse($data['ageRatingManual']);
+		$this->assertFalse($data['longstrip']);
+		$this->assertFalse($data['longstripManual']);
+	}
+
+	public function testLongstripIsSerialized(): void {
+		$book = new Book();
+		$book->applyFileLongstrip(true);
+		$data = $this->serialize($book);
+		$this->assertTrue($data['longstrip']);
+		$this->assertFalse($data['longstripManual']);
 	}
 
 	public function testValuesAreSerialized(): void {

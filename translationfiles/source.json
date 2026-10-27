@@ -589,6 +589,12 @@
 			]
 		},
 		{
+			"id": "Change long strip",
+			"files": [
+				"src/components/library/BulkEditDialog.vue"
+			]
+		},
+		{
 			"id": "Change publisher",
 			"files": [
 				"src/components/library/BulkEditDialog.vue"
@@ -771,9 +777,9 @@
 			]
 		},
 		{
-			"id": "Continue with {title}",
+			"id": "Continue reading: {title}",
 			"files": [
-				"src/views/ReaderView.vue"
+				"src/components/library/ReadNextSuggestions.vue"
 			]
 		},
 		{
@@ -995,6 +1001,13 @@
 			]
 		},
 		{
+			"id": "Could not save the setting",
+			"files": [
+				"src/components/library/BookDetails.vue",
+				"src/views/ReaderView.vue"
+			]
+		},
+		{
 			"id": "Could not save the settings",
 			"files": [
 				"src/components/library/SettingsDialog.vue"
@@ -1197,7 +1210,15 @@
 		{
 			"id": "Dismiss",
 			"files": [
-				"src/views/ReaderView.vue"
+				"src/components/library/ReadNextSuggestions.vue"
+			]
+		},
+		{
+			"id": "Display",
+			"files": [
+				"src/components/library/FilterBar.vue",
+				"src/components/reader/ReaderSettings.vue",
+				"src/views/LibraryView.vue"
 			]
 		},
 		{
@@ -1468,6 +1489,12 @@
 				"src/components/library/BookDetails.vue",
 				"src/components/library/FilterBar.vue",
 				"src/views/LibraryView.vue"
+			]
+		},
+		{
+			"id": "Finished reading",
+			"files": [
+				"src/components/library/ReadNextSuggestions.vue"
 			]
 		},
 		{
@@ -1916,6 +1943,37 @@
 			]
 		},
 		{
+			"id": "Long strip",
+			"files": [
+				"src/components/library/bookFlags.ts",
+				"src/components/reader/ReaderSettings.vue"
+			]
+		},
+		{
+			"id": "Long strip (scroll down instead of turning pages)",
+			"files": [
+				"src/components/library/BookDetails.vue"
+			]
+		},
+		{
+			"id": "Long strip (scroll down)",
+			"files": [
+				"src/components/library/BulkEditDialog.vue"
+			]
+		},
+		{
+			"id": "Long strip comic: read by scrolling down instead of turning pages",
+			"files": [
+				"src/components/library/bookFlags.ts"
+			]
+		},
+		{
+			"id": "Long strip: all pages in one continuous vertical scroll (webtoons). Saved for this book.",
+			"files": [
+				"src/components/reader/ReaderSettings.vue"
+			]
+		},
+		{
 			"id": "Low",
 			"files": [
 				"src/convert/formats.ts"
@@ -2058,12 +2116,6 @@
 			"id": "Next volume",
 			"files": [
 				"src/components/library/ContinueReading.vue"
-			]
-		},
-		{
-			"id": "Next volume: {title}",
-			"files": [
-				"src/components/library/BookDetails.vue"
 			]
 		},
 		{
@@ -2415,6 +2467,12 @@
 			]
 		},
 		{
+			"id": "Original width",
+			"files": [
+				"src/components/reader/ReaderSettings.vue"
+			]
+		},
+		{
 			"id": "Other readers see the changes, but the book file is rewritten.",
 			"files": [
 				"src/components/library/SettingsDialog.vue"
@@ -2461,6 +2519,12 @@
 			"files": [
 				"src/components/reader/ReaderSettings.vue",
 				"src/views/EditorView.vue"
+			]
+		},
+		{
+			"id": "Pages (turn pages)",
+			"files": [
+				"src/components/library/BulkEditDialog.vue"
 			]
 		},
 		{
@@ -3247,6 +3311,12 @@
 			]
 		},
 		{
+			"id": "Similar titles",
+			"files": [
+				"src/components/library/ReadNextSuggestions.vue"
+			]
+		},
+		{
 			"id": "Simple and open",
 			"files": [
 				"src/convert/formats.ts"
@@ -3859,13 +3929,19 @@
 			]
 		},
 		{
+			"id": "Use the value from the file",
+			"files": [
+				"src/components/library/BulkEditDialog.vue"
+			]
+		},
+		{
 			"id": "Use value from file",
 			"files": [
 				"src/components/library/BookDetails.vue"
 			]
 		},
 		{
-			"id": "Used when renaming books. Placeholders: {author}, {title}, {series}, {index}, {year}",
+			"id": "Used when renaming books. Placeholders: {author}, {title}, {series}, {series_index}, {year}. {series_index} gets leading zeros (e.g. 01, 02, 10), {series_index:raw} does not.",
 			"files": [
 				"src/components/library/SettingsDialog.vue"
 			]

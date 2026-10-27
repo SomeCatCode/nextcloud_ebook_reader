@@ -28,6 +28,7 @@
 - EPUB, MOBI, AZW3, FB2, CBZ, CBR, CB7, CBT
 - Opens from the Files app, paginated or scrolled, light, sepia and dark themes
 - Comics as single or double pages, right-to-left for manga
+- Long strip comics (webtoons) scroll down seamlessly
 - Highlights, notes and bookmarks, exportable as Markdown
 - Large files open fast: pages and chapters are streamed
 
@@ -55,6 +56,7 @@ The app is in beta. The editor modifies files, so keep a backup of your books.]]
 - EPUB, MOBI, AZW3, FB2, CBZ, CBR, CB7, CBT
 - Öffnen aus der Dateien-App, seitenweise oder scrollend, helles, Sepia- und dunkles Design
 - Comics als Einzel- oder Doppelseite, Leserichtung rechts nach links für Manga
+- Longstrip-Comics (Webtoons) werden nahtlos nach unten gescrollt
 - Markierungen, Notizen und Lesezeichen, exportierbar als Markdown
 - Große Dateien öffnen schnell: Seiten und Kapitel werden gestreamt
 
@@ -82,6 +84,7 @@ Die App ist in der Beta. Der Editor verändert Dateien, daher ist ein Backup der
 - EPUB, MOBI, AZW3, FB2, CBZ, CBR, CB7, CBT
 - Se abre desde la app Archivos, paginado o con desplazamiento, temas claro, sepia y oscuro
 - Cómics en página simple o doble, de derecha a izquierda para manga
+- Los cómics de tira larga (webtoons) se desplazan hacia abajo sin cortes
 - Subrayados, notas y marcadores, exportables como Markdown
 - Los archivos grandes se abren rápido: páginas y capítulos se cargan por partes
 
@@ -109,6 +112,7 @@ La aplicación está en beta. El editor modifica archivos, conviene tener una co
 - EPUB、MOBI、AZW3、FB2、CBZ、CBR、CB7、CBT
 - ファイルアプリから開けます。ページ送りまたはスクロール、ライト・セピア・ダークテーマ
 - コミックは単ページまたは見開き、マンガ向けの右から左への表示
+- 縦スクロールコミック（ウェブトゥーン）は途切れなく下へスクロール
 - ハイライト、メモ、ブックマーク。Markdown でエクスポート可能
 - 大きなファイルも高速表示。ページと章を順次読み込みます
 

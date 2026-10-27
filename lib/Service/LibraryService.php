@@ -21,6 +21,7 @@ use OCA\EbookReader\Metadata\BookMetadata;
 use OCA\EbookReader\Metadata\MetadataService;
 use OCA\EbookReader\Metadata\SidecarData;
 use OCA\EbookReader\Metadata\SidecarService;
+use OCA\EbookReader\Metadata\VolumeNumber;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\BackgroundJob\IJobList;
 use OCP\DB\Exception as DbException;
@@ -142,7 +143,15 @@ class LibraryService {
 			$book->setSeries($meta->series !== null ? mb_substr($meta->series, 0, 512) : null);
 		}
 		if ($take('seriesIndex')) {
-			$book->setSeriesIndex($meta->seriesIndex);
+			$index = $meta->seriesIndex;
+			$derived = false;
+			if ($index === null && trim((string)$book->getSeries()) !== '') {
+				// no number in the metadata: take it from the title or file name, so "Vol 10" sorts behind "Vol 2"
+				$index = VolumeNumber::fromTitleOrFilename($book->getTitle(), $path);
+				$derived = $index !== null;
+			}
+			$book->setSeriesIndex($index);
+			$book->setSeriesIndexDerived($derived);
 		}
 		if ($take('description')) {
 			$book->setDescription($meta->description);
@@ -161,6 +170,8 @@ class LibraryService {
 		}
 		// the age rating is never written into the file: always take the file's value (a manual one stays in effect)
 		$book->applyFileAgeRating($meta->ageRating);
+		// same for long strip (ComicInfo.xml Format/Tags)
+		$book->applyFileLongstrip($meta->longstrip);
 		$book->setFileMtime($mtime);
 		$book->setFileEtag($etag);
 		$book->setSidecarEtag($sidecarEtag);
@@ -209,6 +220,7 @@ class LibraryService {
 				$other->setIsbn($book->getIsbn());
 				$other->setPublishedAt($book->getPublishedAt());
 				$other->applyFileAgeRating($meta->ageRating);
+				$other->applyFileLongstrip($meta->longstrip);
 				$other->setHasCover($book->getHasCover());
 				$other->setCoverEtag($book->getCoverEtag());
 				$other->setFileMtime($mtime);
@@ -1137,6 +1149,8 @@ class LibraryService {
 				return $this->completionCondition($qb, $name, $negate);
 			case 'age':
 				return $this->ageCondition($qb, $name, $negate);
+			case 'layout':
+				return $this->layoutCondition($qb, $name, $negate);
 			default:
 				$p = $qb->createNamedParameter(strtolower($name));
 				return $negate ? $e->neq($qb->createFunction('LOWER(b.format)'), $p) : $e->eq($qb->createFunction('LOWER(b.format)'), $p);
@@ -1174,6 +1188,18 @@ class LibraryService {
 		}
 		$empty = self::sql($empty);
 		return $negate ? 'NOT ' . $empty : $empty;
+	}
+
+	/**
+	 * `layout:longstrip`: long strip comics; $negate builds the opposite (NULL counts as "not long strip").
+	 */
+	private function layoutCondition(IQueryBuilder $qb, string $name, bool $negate): ?string {
+		if ($name !== 'longstrip') {
+			return null;
+		}
+		$e = $qb->expr();
+		$cond = $e->eq('b.longstrip', $qb->createNamedParameter(true, IQueryBuilder::PARAM_BOOL));
+		return $negate ? '(' . $e->isNull('b.longstrip') . ' OR NOT (' . $cond . '))' : $cond;
 	}
 
 	/**
@@ -1315,7 +1341,8 @@ class LibraryService {
 
 	private function applySort(IQueryBuilder $qb, string $userId, BookQuery $q): void {
 		$dir = strtolower($q->order) === 'desc' ? 'DESC' : 'ASC';
-		$title = 'LOWER(COALESCE(b.title, b.path))';
+		// title_sort: lower case, digit runs zero-padded (natural order, see SeriesOrder::sortKey); rows not yet backfilled fall back
+		$title = 'COALESCE(b.title_sort, LOWER(COALESCE(b.title, b.path)))';
 		switch ($q->sort) {
 			case 'author':
 				$qb->orderBy($qb->createFunction("LOWER(COALESCE(b.authors, ''))"), $dir);
@@ -1324,6 +1351,8 @@ class LibraryService {
 			case 'series':
 				$qb->orderBy($qb->createFunction('CASE WHEN b.series IS NULL THEN 1 ELSE 0 END'), 'ASC');
 				$qb->addOrderBy($qb->createFunction("LOWER(COALESCE(b.series, ''))"), $dir);
+				// volumes without a number last (in both directions), then by number, then by natural title order
+				$qb->addOrderBy($qb->createFunction('CASE WHEN b.series_index IS NULL THEN 1 ELSE 0 END'), 'ASC');
 				$qb->addOrderBy('b.series_index', $dir);
 				$qb->addOrderBy($qb->createFunction($title), 'ASC');
 				break;
@@ -1436,7 +1465,7 @@ class LibraryService {
 	/** @return array<string, mixed> */
 	public function getFacets(string $userId): array {
 		$qb = $this->db->getQueryBuilder();
-		$qb->select('authors', 'series', 'format', 'completion', 'age_rating')->from(self::BOOKS)
+		$qb->select('authors', 'series', 'format', 'completion', 'age_rating', 'longstrip')->from(self::BOOKS)
 			->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
 			->andWhere($qb->expr()->isNull('deleted_at'));
 		$res = $qb->executeQuery();
@@ -1445,7 +1474,12 @@ class LibraryService {
 		$formats = [];
 		$completion = [];
 		$ages = [];
+		$longstrip = 0;
 		while ($row = $res->fetch()) {
+			// booleans come back as bool, int or string depending on the database driver ('t'/'f' on PostgreSQL)
+			if (in_array($row['longstrip'] ?? null, [true, 1, '1', 't', 'true'], true)) {
+				$longstrip++;
+			}
 			$c = is_string($row['completion'] ?? null) ? $row['completion'] : 'unknown';
 			$completion[$c] = ($completion[$c] ?? 0) + 1;
 			$a = is_numeric($row['age_rating'] ?? null) ? (string)(int)$row['age_rating'] : FilterTerms::AGE_NONE;
@@ -1481,6 +1515,7 @@ class LibraryService {
 			'missing' => $this->missingCounts($userId),
 			'completion' => self::buildCompletionFacets($completion),
 			'ageRatings' => self::buildAgeFacets($ages),
+			'layouts' => [['name' => 'longstrip', 'count' => $longstrip]],
 		];
 	}
 

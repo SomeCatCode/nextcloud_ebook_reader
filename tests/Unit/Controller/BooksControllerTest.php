@@ -15,6 +15,7 @@ use OCA\EbookReader\Db\BookMapper;
 use OCA\EbookReader\Http\BookSerializer;
 use OCA\EbookReader\Service\LibraryService;
 use OCA\EbookReader\Service\ProgressService;
+use OCA\EbookReader\Service\SuggestionService;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\OCS\OCSBadRequestException;
 use OCP\AppFramework\OCS\OCSNotFoundException;
@@ -40,7 +41,7 @@ class BooksControllerTest extends TestCase {
 		$time = $this->createMock(ITimeFactory::class);
 		$time->method('now')->willReturn(\DateTimeImmutable::createFromFormat('U.u', '1800000000.500000'));
 		$this->progress = $this->createMock(ProgressService::class);
-		$this->controller = new BooksController($this->request, 'u', $this->library, $this->mapper, $this->serializer, $time, $this->progress);
+		$this->controller = new BooksController($this->request, 'u', $this->library, $this->mapper, $this->serializer, $time, $this->progress, $this->createMock(SuggestionService::class));
 	}
 
 	private function book(): Book {
@@ -141,7 +142,7 @@ class BooksControllerTest extends TestCase {
 		});
 		$time = $this->createMock(ITimeFactory::class);
 		$time->method('now')->willReturn(new \DateTimeImmutable());
-		$controller = new BooksController($this->request, 'u', $this->library, $this->mapper, $serializer, $time, $this->progress);
+		$controller = new BooksController($this->request, 'u', $this->library, $this->mapper, $serializer, $time, $this->progress, $this->createMock(SuggestionService::class));
 
 		$data = $controller->patchAppData(5, null, 'unread')->getData();
 
@@ -243,6 +244,34 @@ class BooksControllerTest extends TestCase {
 		$this->assertFalse($book->getAgeRatingManual());
 	}
 
+	public function testPatchLongstripIsManualAndCanBeReset(): void {
+		$book = $this->book();
+		$book->applyFileLongstrip(true);
+		$this->library->method('getBook')->willReturn($book);
+		$this->request->method('getParams')->willReturn(['longstrip' => false]);
+		$this->mapper->expects($this->once())->method('update');
+
+		$this->controller->patchAppData(5, longstrip: false);
+
+		$this->assertFalse($book->getLongstrip());
+		$this->assertTrue($book->getLongstripManual());
+		$this->assertTrue($book->getLongstripFile());
+	}
+
+	public function testPatchResetLongstripUsesTheFileValue(): void {
+		$book = $this->book();
+		$book->applyFileLongstrip(true);
+		$book->setManualLongstrip(false);
+		$this->library->method('getBook')->willReturn($book);
+		$this->request->method('getParams')->willReturn(['resetLongstrip' => true]);
+		$this->mapper->expects($this->once())->method('update');
+
+		$this->controller->patchAppData(5, resetLongstrip: true);
+
+		$this->assertTrue($book->getLongstrip());
+		$this->assertFalse($book->getLongstripManual());
+	}
+
 	public function testPatchSameCompletionDoesNotBumpUpdatedAt(): void {
 		$book = $this->book();
 		$book->setCompletion('ongoing');
@@ -259,6 +288,8 @@ class BooksControllerTest extends TestCase {
 			'completion' => [['completion' => 'finished']],
 			'age' => [['ageRating' => 15]],
 			'age and reset' => [['ageRating' => 12, 'resetAgeRating' => true]],
+			'longstrip null' => [['longstrip' => null]],
+			'longstrip and reset' => [['longstrip' => true, 'resetLongstrip' => true]],
 		];
 	}
 
@@ -269,7 +300,7 @@ class BooksControllerTest extends TestCase {
 		$this->request->method('getParams')->willReturn($params);
 		$this->mapper->expects($this->never())->method('update');
 		$this->expectException(OCSBadRequestException::class);
-		$this->controller->patchAppData(5, completion: $params['completion'] ?? null, ageRating: $params['ageRating'] ?? null, resetAgeRating: $params['resetAgeRating'] ?? false);
+		$this->controller->patchAppData(5, completion: $params['completion'] ?? null, ageRating: $params['ageRating'] ?? null, resetAgeRating: $params['resetAgeRating'] ?? false, longstrip: $params['longstrip'] ?? null, resetLongstrip: $params['resetLongstrip'] ?? false);
 	}
 
 	public function testBulkAppDataReportsPerFileResults(): void {
@@ -308,10 +339,28 @@ class BooksControllerTest extends TestCase {
 		$this->library->method('nextVolume')->willReturnOnConsecutiveCalls($next, null);
 		$serializer = $this->createMock(BookSerializer::class);
 		$serializer->method('serializeWithProgress')->willReturnCallback(static fn (string $u, Book $b): array => ['fileId' => $b->getFileId()]);
-		$controller = new BooksController($this->request, 'u', $this->library, $this->mapper, $serializer, $this->createMock(ITimeFactory::class), $this->progress);
+		$controller = new BooksController($this->request, 'u', $this->library, $this->mapper, $serializer, $this->createMock(ITimeFactory::class), $this->progress, $this->createMock(SuggestionService::class));
 
 		$this->assertSame(['book' => ['fileId' => 9]], $controller->next(5)->getData());
 		$this->assertSame(['book' => null], $controller->next(5)->getData());
+	}
+
+	public function testSuggestionsSerializesNextAndSimilarAndClampsTheLimit(): void {
+		$next = new Book();
+		$next->setFileId(9);
+		$other = new Book();
+		$other->setFileId(11);
+		$this->library->method('getBook')->willReturn($this->book());
+		$suggester = $this->createMock(SuggestionService::class);
+		$suggester->expects($this->exactly(2))->method('suggest')
+			->with('u', $this->anything(), $this->callback(static fn (int $l): bool => in_array($l, [10, 1], true)))
+			->willReturnOnConsecutiveCalls(['next' => $next, 'similar' => [$other]], ['next' => null, 'similar' => []]);
+		$serializer = $this->createMock(BookSerializer::class);
+		$serializer->method('serializeMany')->willReturnCallback(static fn (string $u, array $books): array => array_map(static fn (Book $b): array => ['fileId' => $b->getFileId()], $books));
+		$controller = new BooksController($this->request, 'u', $this->library, $this->mapper, $serializer, $this->createMock(ITimeFactory::class), $this->progress, $suggester);
+
+		$this->assertSame(['next' => ['fileId' => 9], 'similar' => [['fileId' => 11]]], $controller->suggestions(5, 99)->getData());
+		$this->assertSame(['next' => null, 'similar' => []], $controller->suggestions(5, 0)->getData());
 	}
 
 	public function testIndexForwardsTheSharedFilter(): void {

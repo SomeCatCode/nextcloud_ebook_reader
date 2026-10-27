@@ -24,10 +24,13 @@ const COVER_JPEG_QUALITY = 0.85
 /**
  * Width in device pixels a comic page is requested with: enough for the viewport (a page is
  * roughly 2:3, so the height also bounds the useful width); the server rounds up to a bucket.
+ * Long strip pages are shown in the full width and scrolled, so only the width bounds them.
+ *
+ * @param longstrip
  */
-function comicPageWidth(): number {
+export function comicPageWidth(longstrip = false): number {
 	const dpr = Math.min(window.devicePixelRatio || 1, 2)
-	return Math.min(window.innerWidth, window.innerHeight * 0.75) * dpr
+	return (longstrip ? window.innerWidth : Math.min(window.innerWidth, window.innerHeight * 0.75)) * dpr
 }
 
 /**
@@ -41,20 +44,20 @@ function comicPageWidth(): number {
  * @param b
  * @param signal
  * @param confirmLarge
+ * @param longstrip whether the comic is currently shown as long strip (read for every page, it can be switched while reading)
  */
-export async function loadBookSource(b: Book, signal: AbortSignal, confirmLarge?: ConfirmLargeDownload): Promise<ReaderSource> {
+export async function loadBookSource(b: Book, signal: AbortSignal, confirmLarge?: ConfirmLargeDownload, longstrip: () => boolean = () => false): Promise<ReaderSource> {
 	const name = b.path.split('/').pop() ?? `book.${b.format}`
 	if (SERVER_PAGE_FORMATS.includes(b.format)) {
 		try {
 			const { etag, pages } = await getComicPages(b.fileId, signal)
 			if (pages.length > 0) {
-				const width = comicPageWidth()
 				return {
 					kind: 'remote-comic',
 					name,
 					pages,
 					loadPage: async (index) => {
-						const res = await fetch(comicPageUrl(b.fileId, index, width, etag), { credentials: 'same-origin' })
+						const res = await fetch(comicPageUrl(b.fileId, index, comicPageWidth(longstrip()), etag), { credentials: 'same-origin' })
 						if (!res.ok) {
 							throw new Error(`Could not load page ${index + 1} (${res.status})`)
 						}

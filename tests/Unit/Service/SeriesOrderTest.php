@@ -120,4 +120,47 @@ class SeriesOrderTest extends TestCase {
 		$this->assertCount(1, SeriesOrder::upNext([$a1, $b1], $volumes, [], 1));
 		$this->assertSame([5], array_map(static fn (array $e): int => $e['next']->getFileId(), SeriesOrder::upNext([$a1, $b1], $volumes, [3 => true], 10)));
 	}
+
+	public function testVolumesWithoutIndexSortNaturally(): void {
+		$books = [];
+		foreach ([10, 2, 12, 1, 11, 3, 9] as $n) {
+			$books[] = self::book($n, null, 'Saga ' . $n);
+		}
+		$this->assertSame([1, 2, 3, 9, 10, 11, 12], self::ids(SeriesOrder::sort($books)));
+	}
+
+	public function testMixedIndicesAndDecimals(): void {
+		$books = [
+			self::book(1, 10.0, 'Saga 10'),
+			self::book(2, 2.0, 'Saga 2'),
+			self::book(3, 10.5, 'Saga 10.5'),
+			self::book(4, null, 'Saga Extra 3'),
+			self::book(5, null, 'Saga Extra 12'),
+			self::book(6, 9.0, 'Saga 9'),
+		];
+		$this->assertSame([2, 6, 1, 3, 4, 5], self::ids(SeriesOrder::sort($books)));
+	}
+
+	public function testSortKeyPadsDigitRuns(): void {
+		$this->assertLessThan(0, strcmp(SeriesOrder::sortKey('Saga 2'), SeriesOrder::sortKey('saga 10')));
+		$this->assertLessThan(0, strcmp(SeriesOrder::sortKey('Vol 9 b'), SeriesOrder::sortKey('Vol 10 a')));
+		$this->assertSame(SeriesOrder::sortKey('Vol 007'), SeriesOrder::sortKey('vol 7'));
+		$this->assertSame('vol 000000000007', SeriesOrder::sortKey(' Vol 7 '));
+		$this->assertSame(600, mb_strlen(SeriesOrder::sortKey(str_repeat('ä', 900))));
+	}
+
+	public function testIndexWidthAndFormat(): void {
+		$this->assertSame(2, SeriesOrder::indexWidth([]));
+		$this->assertSame(2, SeriesOrder::indexWidth([1.0, 9.0, null]));
+		$this->assertSame(2, SeriesOrder::indexWidth([1.0, 99.5]));
+		$this->assertSame(3, SeriesOrder::indexWidth([1.0, 100.0]));
+		$this->assertSame(4, SeriesOrder::indexWidth([1000.0]));
+		$this->assertSame('01', SeriesOrder::formatIndex(1.0, 2));
+		$this->assertSame('10', SeriesOrder::formatIndex(10.0, 2));
+		$this->assertSame('05.5', SeriesOrder::formatIndex(5.5, 2));
+		$this->assertSame('007', SeriesOrder::formatIndex(7.0, 3));
+		$this->assertSame('120', SeriesOrder::formatIndex(120.0, 2));
+		$this->assertSame('7', SeriesOrder::formatIndex(7.0));
+		$this->assertSame('0', SeriesOrder::formatIndex(0.0));
+	}
 }

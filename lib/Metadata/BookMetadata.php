@@ -20,6 +20,7 @@ final class BookMetadata {
 	 * @param list<string> $subjects unclassified dc:subject values
 	 * @param ?string $coverData raw image bytes
 	 * @param ?int $ageRating age rating found in the file (0, 6, 12, 16, 18), see AgeRating
+	 * @param bool $longstrip the file marks the comic as long strip (webtoon), see Longstrip
 	 */
 	public function __construct(
 		public readonly ?string $title = null,
@@ -37,6 +38,7 @@ final class BookMetadata {
 		public readonly ?string $coverData = null,
 		public readonly ?string $coverMime = null,
 		public readonly ?int $ageRating = null,
+		public readonly bool $longstrip = false,
 	) {
 	}
 

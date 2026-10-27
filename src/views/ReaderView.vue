@@ -62,7 +62,12 @@
 						</template>
 					</NcButton>
 				</template>
-				<ReaderSettings :model="viewSettings" :isComic="isComic" @change="onSettingsChange" />
+				<ReaderSettings
+					:model="viewSettings"
+					:isComic="isComic"
+					:longstrip="longstrip"
+					@change="onSettingsChange"
+					@longstrip="onLongstripChange" />
 			</NcPopover>
 			<NcButton
 				v-if="fullscreen.supported"
@@ -189,21 +194,14 @@
 			<span class="ebr__pct">{{ progressLabel }}</span>
 		</footer>
 
-		<div v-if="nextPrompt && state === 'ready'" class="ebr__next" role="status">
-			<span class="ebr__next-text">{{ t('ebookreader', 'Continue with {title}', { title: nextPromptLabel }) }}</span>
-			<NcButton variant="primary" size="small" @click="openNext">
-				{{ t('ebookreader', 'Open') }}
-			</NcButton>
-			<NcButton
-				variant="tertiary"
-				size="small"
-				:aria-label="t('ebookreader', 'Dismiss')"
-				@click="dismissNext">
-				<template #icon>
-					<ReaderIcon name="close" />
-				</template>
-			</NcButton>
-		</div>
+		<ReadNextSuggestions
+			v-if="endSuggestions && state === 'ready'"
+			class="ebr__next"
+			role="status"
+			:suggestions="endSuggestions"
+			@read="openNext"
+			@open="openSuggestionDetails"
+			@dismiss="dismissNext" />
 
 		<AnnotationPopup
 			v-if="popup && stage"
@@ -267,7 +265,7 @@
 import type { ReaderHandle, ReaderLocator, ReaderSelection, SearchGroup, TocItem } from '../../packages/reader-core/index.ts'
 import type { ViewSettings } from '../components/reader/ReaderSettings.vue'
 import type { ProgressSync } from '../services/progressSync.ts'
-import type { Annotation, AnnotationColor, Book, Locator, Progress, ReaderSettings as ServerReaderSettings } from '../types.ts'
+import type { Annotation, AnnotationColor, Book, Locator, Progress, ReaderSettings as ServerReaderSettings, Suggestions } from '../types.ts'
 
 import { showError, showSuccess } from '@nextcloud/dialogs'
 import { translate as t } from '@nextcloud/l10n'
@@ -279,6 +277,7 @@ import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcPopover from '@nextcloud/vue/components/NcPopover'
 import LargeDownloadDialog from '../components/common/LargeDownloadDialog.vue'
+import ReadNextSuggestions from '../components/library/ReadNextSuggestions.vue'
 import AnnotationNoteDialog from '../components/reader/AnnotationNoteDialog.vue'
 import AnnotationPopup from '../components/reader/AnnotationPopup.vue'
 import ReaderAnnotations from '../components/reader/ReaderAnnotations.vue'
@@ -286,14 +285,14 @@ import ReaderIcon from '../components/reader/ReaderIcon.vue'
 import ReaderSettings from '../components/reader/ReaderSettings.vue'
 import ReaderToc from '../components/reader/ReaderToc.vue'
 import { createReader, ReaderError } from '../../packages/reader-core/index.ts'
-import { offersNextVolume, volumeLabel } from '../components/library/bookFlags.ts'
-import { bookTitle } from '../components/library/utils.ts'
 import { loadLibarchive } from '../components/reader/libarchive.ts'
 import { annotationsToMarkdown } from '../services/annotationExport.ts'
-import { getBook, getSettings, nextVolume, putSettings } from '../services/api.ts'
+import { getBook, getSettings, getSuggestions, patchAppData, putSettings } from '../services/api.ts'
 import { loadBookSource, needsClientCover, uploadClientCover } from '../services/bookSource.ts'
+import { hasFeature } from '../services/features.ts'
 import { DownloadDeclinedError } from '../services/largeDownload.ts'
 import { createProgressSync } from '../services/progressSync.ts'
+import { createSuggestionsLookup, reachedEnd, setPendingDetails } from '../services/suggestions.ts'
 import { isTypingTarget, useFullscreen } from '../services/useFullscreen.ts'
 import { useLargeDownloadConfirm } from '../services/useLargeDownloadConfirm.ts'
 import { useAnnotationsStore } from '../stores/annotations.ts'
@@ -331,51 +330,54 @@ const percentage = ref(0)
 const pageInfo = ref<{ current: number, total: number } | null>(null)
 const isComic = ref(false)
 const isRtl = ref(false)
+/** comic is shown as long strip (seamless vertical scroll); a flag of the book, see onLongstripChange */
+const longstrip = ref(false)
 const prefersDark = ref(globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false)
 const conflict = ref<Progress | null>(null)
-/** "Continue with volume n+1" at the end of a book in a series; looked up once per book */
-const nextPrompt = ref<Book | null>(null)
-const nextPromptLabel = computed(() => (nextPrompt.value ? volumeLabel(nextPrompt.value, bookTitle(nextPrompt.value)) : ''))
-let nextLookedUp = false
+/** "Finished reading" panel: next volume and similar titles; looked up once when the end of the book is reached */
+const endSuggestions = ref<Suggestions | null>(null)
+const suggestionsLookup = createSuggestionsLookup(getSuggestions, (s) => {
+	endSuggestions.value = s
+})
 
 /**
- * Called on every position change: near the end of a book in a series the next volume is offered.
+ * Called on every position change: at the end of a book the next volume and similar titles are offered.
  *
  * @param p reading position 0..1
  */
-function checkNextVolume(p: number): void {
-	if (nextLookedUp || !offersNextVolume(book.value, p) || !book.value) {
-		return
+function checkEnd(p: number): void {
+	if (book.value && reachedEnd(p, null) && hasFeature('suggestions')) {
+		suggestionsLookup.request(book.value.fileId)
 	}
-	nextLookedUp = true
-	const fileId = book.value.fileId
-	nextVolume(fileId).then((next) => {
-		if (next && book.value?.fileId === fileId) {
-			nextPrompt.value = next
-		}
-	}).catch(() => {
-		// no prompt then
-	})
 }
 
 /**
- * Opens the next volume (the current position is saved first).
+ * Opens a book in the reader (the current position is saved first).
+ *
+ * @param next
  */
-async function openNext(): Promise<void> {
-	const next = nextPrompt.value
-	if (!next) {
-		return
-	}
+async function openNext(next: Book): Promise<void> {
 	await flushBeforeLeave()
 	// replace: closing the next volume goes back to where the first one was opened from
 	void router.replace({ path: `/read/${next.fileId}`, query: route.query })
 }
 
 /**
+ * Shows the details of a suggested title in the library.
+ *
+ * @param other
+ */
+async function openSuggestionDetails(other: Book): Promise<void> {
+	await flushBeforeLeave()
+	setPendingDetails(other)
+	void router.push('/')
+}
+
+/**
  *
  */
 function dismissNext(): void {
-	nextPrompt.value = null
+	endSuggestions.value = null
 }
 
 const viewSettings = reactive<ViewSettings>({
@@ -687,7 +689,7 @@ function onSettingsChange(patch: Partial<ViewSettings>): void {
 			comicRtl: viewSettings.comicRtl,
 			comicZoom: viewSettings.comicZoom,
 		})
-		isRtl.value = isComic.value ? viewSettings.comicRtl : isRtl.value
+		isRtl.value = isComic.value && !longstrip.value ? viewSettings.comicRtl : isRtl.value
 	}
 	if (saveTimer) {
 		clearTimeout(saveTimer)
@@ -699,6 +701,28 @@ function onSettingsChange(patch: Partial<ViewSettings>): void {
 			})
 			.catch((e) => logger.warn('ebookreader: could not save reader settings', e))
 	}, 600)
+}
+
+/**
+ * Switches between pages and long strip. This is the book's long strip flag (shown in the library), so it is
+ * stored on the book as a manual value and applies on every device.
+ *
+ * @param value
+ */
+async function onLongstripChange(value: boolean): Promise<void> {
+	const b = book.value
+	if (!b) {
+		return
+	}
+	longstrip.value = value
+	isRtl.value = !value && viewSettings.comicRtl
+	await reader?.setLayout({ comicLongstrip: value })
+	try {
+		book.value = { ...b, ...await patchAppData(b.fileId, { longstrip: value }) }
+	} catch (e) {
+		logger.warn('ebookreader: could not save the long strip flag', e)
+		showError(t('ebookreader', 'Could not save the setting'))
+	}
 }
 
 /**
@@ -840,12 +864,20 @@ function handleKey(key: string, e?: KeyboardEvent, modified = false): void {
 			if (key === 'ArrowDown' && viewSettings.flow === 'scrolled' && !isComic.value) {
 				return
 			}
+			if (key === 'ArrowDown' && longstrip.value) {
+				reader?.step(1)
+				break
+			}
 			void reader?.next()
 			break
 		case 'PageUp':
 		case 'ArrowUp':
 			if (key === 'ArrowUp' && viewSettings.flow === 'scrolled' && !isComic.value) {
 				return
+			}
+			if (key === 'ArrowUp' && longstrip.value) {
+				reader?.step(-1)
+				break
 			}
 			void reader?.prev()
 			break
@@ -963,7 +995,8 @@ onMounted(async () => {
 		}
 		applyServerSettings(settings?.reader)
 		isComic.value = ['cbz', 'cbr', 'cb7', 'cbt'].includes(b.format)
-		isRtl.value = isComic.value && viewSettings.comicRtl
+		longstrip.value = isComic.value && b.longstrip === true
+		isRtl.value = isComic.value && !longstrip.value && viewSettings.comicRtl
 
 		void annotations.load(fileId)
 		sync = createProgressSync(fileId, {
@@ -972,7 +1005,7 @@ onMounted(async () => {
 			},
 		})
 		const [source, remote] = await Promise.all([
-			loadBookSource(b, abort.signal, largeDownload.ask),
+			loadBookSource(b, abort.signal, largeDownload.ask, () => longstrip.value),
 			sync.loadRemote().catch(() => b.progress),
 		])
 		if (!stage.value) {
@@ -988,13 +1021,14 @@ onMounted(async () => {
 				comicSpread: viewSettings.comicSpread,
 				comicRtl: viewSettings.comicRtl,
 				comicZoom: viewSettings.comicZoom,
+				comicLongstrip: longstrip.value,
 			},
 			loadLibarchive,
 		})
 		unsubs.push(
 			reader.on('relocate', ({ locator, percentage: p, page }) => {
 				percentage.value = p
-				checkNextVolume(p)
+				checkEnd(p)
 				pageInfo.value = page ?? null
 				currentHref.value = locator.href
 				pageTick.value++
@@ -1073,11 +1107,9 @@ onBeforeUnmount(() => {
 .ebr__seek { flex: 1 1 auto; }
 .ebr__pct { min-width: 90px; text-align: end; font-variant-numeric: tabular-nums; }
 .ebr__next {
-	position: absolute; z-index: 3; inset-inline-end: 16px; bottom: 64px; max-width: min(420px, calc(100% - 32px));
-	display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 14px; border-radius: var(--border-radius-large);
-	background: var(--color-main-background); color: var(--color-main-text); box-shadow: 0 2px 10px rgba(0, 0, 0, .3);
+	position: absolute; z-index: 3; inset-inline-end: 16px; bottom: 64px; width: min(420px, calc(100% - 32px));
+	max-height: calc(100% - 140px); overflow-y: auto; box-shadow: 0 2px 10px rgba(0, 0, 0, .3);
 }
-.ebr__next-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ebr__overlay { position: absolute; inset: 0; z-index: 3; display: flex; align-items: center; justify-content: center; background: var(--ebr-bg); }
 .ebr__panel {
 	position: absolute; top: 52px; bottom: 0; inset-inline-start: 0; z-index: 4; width: min(380px, 100%);

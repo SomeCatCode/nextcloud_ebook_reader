@@ -69,7 +69,24 @@ class OrganizeServiceTest extends TestCase {
 		$p = '{series_index:2} {title}';
 		$this->assertSame('01.5 Der Titel.epub', $this->service->renderPath($p, $this->vars(['series_index' => '1.5']), '.epub'));
 		$this->assertSame('123 Der Titel.epub', $this->service->renderPath($p, $this->vars(['series_index' => '123']), '.epub'));
-		$this->assertSame('2 Der Titel.epub', $this->service->renderPath('{series_index} {title}', $this->vars(), '.epub'));
+		$this->assertSame('2 Der Titel.epub', $this->service->renderPath('{series_index:raw} {title}', $this->vars(), '.epub'));
+	}
+
+	public function testPlainSeriesIndexIsPaddedToTheWidthOfTheSeries(): void {
+		$p = '{series_index} {title}';
+		// default width 2: 01 ... 10
+		$this->assertSame('02 Der Titel.epub', $this->service->renderPath($p, $this->vars(), '.epub'));
+		$this->assertSame('10 Der Titel.epub', $this->service->renderPath($p, $this->vars(['series_index' => '10']), '.epub'));
+		// a series with 100 or more volumes
+		$wide = ['series_index_width' => '3'];
+		$this->assertSame('002 Der Titel.epub', $this->service->renderPath($p, $this->vars($wide), '.epub'));
+		$this->assertSame('120 Der Titel.epub', $this->service->renderPath($p, $this->vars($wide + ['series_index' => '120']), '.epub'));
+		// decimals keep their fraction
+		$this->assertSame('05.5 Der Titel.epub', $this->service->renderPath($p, $this->vars(['series_index' => '5.5']), '.epub'));
+		$this->assertSame('005.5 Der Titel.epub', $this->service->renderPath($p, $this->vars($wide + ['series_index' => '5.5']), '.epub'));
+		// raw and an explicit width ignore the series width
+		$this->assertSame('2 Der Titel.epub', $this->service->renderPath('{series_index:raw} {title}', $this->vars($wide), '.epub'));
+		$this->assertSame('02 Der Titel.epub', $this->service->renderPath('{series_index:2} {title}', $this->vars($wide), '.epub'));
 	}
 
 	public function testEmptySeriesDropsFolderLevelAndSeparator(): void {

@@ -508,6 +508,7 @@ import {
 	mdiAccountMultipleOutline,
 	mdiAccountOutline,
 	mdiAlertCircleOutline,
+	mdiArrowExpandVertical,
 	mdiArrowLeft,
 	mdiBookCheckOutline,
 	mdiBookClockOutline,
@@ -579,13 +580,14 @@ import ShelvesNav from '../components/library/ShelvesNav.vue'
 import TagTreeNav from '../components/library/TagTreeNav.vue'
 import UploadPanel from '../components/library/UploadPanel.vue'
 import OrganizeDialog from '../components/organize/OrganizeDialog.vue'
-import { ageEntries, ageTermLabel, completionEntries, completionTermLabel } from '../components/library/bookFlags.ts'
+import { ageEntries, ageTermLabel, completionEntries, completionTermLabel, layoutEntries, layoutTermLabel } from '../components/library/bookFlags.ts'
 import { MISSING_FIELDS, missingEntries, missingLabel } from '../components/library/missing.ts'
 import { splitOptimizable } from '../convert/optimize.ts'
 import { scan } from '../services/api.ts'
 import { hasFeature } from '../services/features.ts'
 import { buildTree } from '../services/hierarchy.ts'
 import { appPageTitle } from '../services/pageTitle.ts'
+import { takePendingDetails } from '../services/suggestions.ts'
 import { ALLOWED_EXTENSIONS } from '../services/upload.ts'
 import { useFoldersStore } from '../stores/folders.ts'
 import { queryToState, useLibraryStore } from '../stores/library.ts'
@@ -718,6 +720,7 @@ const openGroups = reactive<Record<string, boolean>>({
 	formats: false,
 	completion: false,
 	age: false,
+	layout: false,
 	attention: false,
 })
 
@@ -725,19 +728,21 @@ const openGroups = reactive<Record<string, boolean>>({
  * Completion status and age rating groups; a group without books is hidden, an active term stays visible (count 0).
  */
 const flagGroups = computed(() => {
-	const withActive = (filter: 'completion' | 'age', entries: FlagNavEntry[]): FlagNavEntry[] => {
+	const withActive = (filter: 'completion' | 'age' | 'layout', entries: FlagNavEntry[]): FlagNavEntry[] => {
 		const shown = new Set(entries.map((e) => e.name))
 		const active = [...store.filters.include, ...store.filters.exclude]
 			.filter((x) => x.type === filter && !shown.has(x.name))
-			.map((x) => ({ name: x.name, label: filter === 'age' ? ageTermLabel(x.name) : completionTermLabel(x.name), count: 0 }))
+			.map((x) => ({ name: x.name, label: filter === 'age' ? ageTermLabel(x.name) : (filter === 'layout' ? layoutTermLabel(x.name) : completionTermLabel(x.name)), count: 0 }))
 		return entries.concat(active)
 	}
 	const completion = withActive('completion', completionEntries(store.facets.completion))
 	const age = withActive('age', ageEntries(store.facets.ageRatings))
+	const layout = withActive('layout', layoutEntries(store.facets.layouts))
 	return [
 		// "unknown" alone is no useful filter: show the group once a book has a status
 		{ key: 'completion', filter: 'completion' as const, name: t('ebookreader', 'Completion status'), icon: mdiProgressCheck, entries: completion, visible: completion.some((e) => e.name !== 'unknown') },
 		{ key: 'age', filter: 'age' as const, name: t('ebookreader', 'Age rating'), icon: mdiAccountChildOutline, entries: age, visible: age.length > 0 },
+		{ key: 'layout', filter: 'layout' as const, name: t('ebookreader', 'Display'), icon: mdiArrowExpandVertical, entries: layout, visible: layout.length > 0 },
 	].filter((g) => g.visible)
 })
 
@@ -1008,7 +1013,13 @@ onMounted(() => {
 	} else if (Object.keys(store.urlQuery).length > 0) {
 		void router.replace({ query: store.urlQuery })
 	}
-	void store.init()
+	void store.init().then(() => {
+		// the reader sends the user here to see the details of a suggested title
+		const pending = takePendingDetails()
+		if (pending) {
+			store.openBook(pending)
+		}
+	})
 	void shelves.load()
 	if (typeof IntersectionObserver !== 'undefined') {
 		observer = new IntersectionObserver((entries) => {
