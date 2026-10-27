@@ -1146,6 +1146,29 @@
                     }
                 }
             },
+            "Suggestions": {
+                "type": "object",
+                "required": [
+                    "next",
+                    "similar"
+                ],
+                "properties": {
+                    "next": {
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/Book"
+                            }
+                        ]
+                    },
+                    "similar": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/Book"
+                        }
+                    }
+                }
+            },
             "SyncResult": {
                 "type": "object",
                 "required": [
@@ -2990,8 +3013,8 @@
         "/ocs/v2.php/apps/ebookreader/api/v1/books/{fileId}/app-data": {
             "patch": {
                 "operationId": "books-patch-app-data",
-                "summary": "Change app-only fields (rating, read status, completion, age rating) without touching the file",
-                "description": "Absent fields stay unchanged, an explicit null rating clears the rating. The read status also sets the reading progress: finished = 100 % (locator href \"\" with totalProgression 1), unread = 0 % (href \"\", position 1, totalProgression 0; nothing is created without stored progress), reading keeps it. The progress row gets clientUpdatedAt = server time, so it wins over older positions of other devices; the returned book carries the new progress. completion: \"ongoing\", \"completed\" or null (unknown). ageRating: 0, 6, 12, 16, 18 or null; any value given here (also null = \"no rating\") is a manual value that survives re-indexing (ageRatingManual = true). resetAgeRating = true drops the manual value: the rating from the file (ComicInfo.xml AgeRating, EPUB schema:typicalAgeRange) applies again. A change bumps updatedAt, so GET /sync delivers it.",
+                "summary": "Change app-only fields (rating, read status, completion, age rating, long strip) without touching the file",
+                "description": "Absent fields stay unchanged, an explicit null rating clears the rating. The read status also sets the reading progress: finished = 100 % (locator href \"\" with totalProgression 1), unread = 0 % (href \"\", position 1, totalProgression 0; nothing is created without stored progress), reading keeps it. The progress row gets clientUpdatedAt = server time, so it wins over older positions of other devices; the returned book carries the new progress. completion: \"ongoing\", \"completed\" or null (unknown). ageRating: 0, 6, 12, 16, 18 or null; any value given here (also null = \"no rating\") is a manual value that survives re-indexing (ageRatingManual = true). resetAgeRating = true drops the manual value: the rating from the file (ComicInfo.xml AgeRating, EPUB schema:typicalAgeRange) applies again. longstrip: the comic is read as one seamless vertical scroll (webtoon); a value given here is manual (longstripManual = true), resetLongstrip = true uses the value recognised in the file again (ComicInfo.xml Format/Tags). A change bumps updatedAt, so GET /sync delivers it.",
                 "tags": [
                     "books"
                 ],
@@ -3228,8 +3251,8 @@
         "/ocs/v2.php/apps/ebookreader/api/v1/books/app-data": {
             "patch": {
                 "operationId": "books-patch-app-data-many",
-                "summary": "Set completion status and/or age rating of several books (max. 500)",
-                "description": "Same semantics as the fields of PATCH /books/{fileId}/app-data: absent fields stay unchanged, completion null clears it, ageRating null sets \"no rating\" by hand, resetAgeRating uses the value from the file again. Changed books get a new updatedAt (delivered by GET /sync).",
+                "summary": "Set completion status, age rating and/or long strip flag of several books (max. 500)",
+                "description": "Same semantics as the fields of PATCH /books/{fileId}/app-data: absent fields stay unchanged, completion null clears it, ageRating null sets \"no rating\" by hand, resetAgeRating uses the value from the file again, longstrip true/false sets the flag by hand, resetLongstrip uses the value from the file again. Changed books get a new updatedAt (delivered by GET /sync).",
                 "tags": [
                     "books"
                 ],
@@ -3529,6 +3552,174 @@
                                                             ]
                                                         }
                                                     }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Book not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not logged in",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Current user is not logged in",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/ocs/v2.php/apps/ebookreader/api/v1/books/{fileId}/suggestions": {
+            "get": {
+                "operationId": "books-suggestions",
+                "summary": "Read-next suggestions after a book",
+                "description": "next: the next volume in reading order (see GET /books/{fileId}/next), null for the last volume, books without a series and when that volume is already finished. similar: up to limit unread books, never the book itself or a book of its series, at most one per other series (its first unread volume). Score: +3 per shared author, +2 per shared genre, +1 per shared tag, +1 same primary language, +1 same format family (comic formats cbz/cbr/cb7/cbt vs. ebook formats); only books with a score above 0, ties: more recently added first, then title.",
+                "tags": [
+                    "books"
+                ],
+                "security": [
+                    {
+                        "bearer_auth": []
+                    },
+                    {
+                        "basic_auth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "fileId",
+                        "in": "path",
+                        "description": "Nextcloud file id",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int64"
+                        }
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "description": "Maximum number of similar titles",
+                        "schema": {
+                            "type": "integer",
+                            "format": "int64",
+                            "default": 4,
+                            "minimum": 1,
+                            "maximum": 10
+                        }
+                    },
+                    {
+                        "name": "OCS-APIRequest",
+                        "in": "header",
+                        "description": "Required to be true for the API request to pass",
+                        "required": true,
+                        "schema": {
+                            "type": "boolean",
+                            "default": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Suggestions returned",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "$ref": "#/components/schemas/Suggestions"
                                                 }
                                             }
                                         }
@@ -8599,7 +8790,7 @@
         "/ocs/v2.php/apps/ebookreader/api/v1/facets": {
             "get": {
                 "operationId": "facets-index",
-                "summary": "Genres, tags, authors, series, formats, completion status and age ratings with their counts",
+                "summary": "Genres, tags, authors, series, formats, completion status, age ratings and long strip comics with their counts",
                 "tags": [
                     "facets"
                 ],
@@ -9495,7 +9686,7 @@
         "/ocs/v2.php/apps/ebookreader/api/v1/progress/recent": {
             "get": {
                 "operationId": "progress-recent",
-                "summary": "Most recently read books that are started and not finished (\"continue reading\"), plus the next volumes to start",
+                "summary": "Books with the read status \"reading\" (the same books as the \"Continue reading\" view), most recently read first, plus the next volumes to start",
                 "description": "upNext: for each series whose most recently read volume is finished, the next volume in reading order (see GET /books/{fileId}/next) that is not finished yet, if it has not been started (status unread). previousFileId is the finished volume. At most limit entries, most recently finished series first.",
                 "tags": [
                     "progress"

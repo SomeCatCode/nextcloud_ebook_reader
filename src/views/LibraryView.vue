@@ -587,6 +587,7 @@ import { scan } from '../services/api.ts'
 import { hasFeature } from '../services/features.ts'
 import { buildTree } from '../services/hierarchy.ts'
 import { appPageTitle } from '../services/pageTitle.ts'
+import { takePendingDetails } from '../services/suggestions.ts'
 import { ALLOWED_EXTENSIONS } from '../services/upload.ts'
 import { useFoldersStore } from '../stores/folders.ts'
 import { queryToState, useLibraryStore } from '../stores/library.ts'
@@ -1012,7 +1013,13 @@ onMounted(() => {
 	} else if (Object.keys(store.urlQuery).length > 0) {
 		void router.replace({ query: store.urlQuery })
 	}
-	void store.init()
+	void store.init().then(() => {
+		// the reader sends the user here to see the details of a suggested title
+		const pending = takePendingDetails()
+		if (pending) {
+			store.openBook(pending)
+		}
+	})
 	void shelves.load()
 	if (typeof IntersectionObserver !== 'undefined') {
 		observer = new IntersectionObserver((entries) => {

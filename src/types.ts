@@ -208,6 +208,14 @@ export interface RecentResult {
 	upNext?: UpNext[]
 }
 
+/** Read-next suggestions after a book (GET /books/{fileId}/suggestions) */
+export interface Suggestions {
+	/** next volume of the series when it is not finished yet */
+	next: Book | null
+	/** unread titles similar to the book (at most one per series) */
+	similar: Book[]
+}
+
 export interface BookMetadata {
 	title: string | null
 	authors: string[]

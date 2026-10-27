@@ -21,6 +21,7 @@ use OCA\EbookReader\Service\GenreClassifier;
 use OCA\EbookReader\Service\LibraryService;
 use OCA\EbookReader\Service\ProgressService;
 use OCA\EbookReader\Service\SettingsService;
+use OCA\EbookReader\Service\SuggestionService;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\IJobList;
 use OCP\DB\QueryBuilder\IQueryBuilder;
@@ -141,7 +142,7 @@ class FolderFilterTest extends TestCase {
 		});
 		$serializer = $this->createMock(BookSerializer::class);
 		$serializer->method('serializeMany')->willReturn([]);
-		$controller = new BooksController($this->createMock(IRequest::class), 'u', $library, $this->createMock(BookMapper::class), $serializer, $this->createMock(ITimeFactory::class), $this->createMock(ProgressService::class));
+		$controller = new BooksController($this->createMock(IRequest::class), 'u', $library, $this->createMock(BookMapper::class), $serializer, $this->createMock(ITimeFactory::class), $this->createMock(ProgressService::class), $this->createMock(SuggestionService::class));
 		$controller->index(folder: '/Books/Saga/', folderRecursive: true);
 		$this->assertSame('/Books/Saga', $captured?->folder);
 		$this->assertTrue($captured->folderRecursive);

@@ -17,6 +17,7 @@ use OCA\EbookReader\Service\BookQuery;
 use OCA\EbookReader\Service\LibraryService;
 use OCA\EbookReader\Service\ProgressService;
 use OCA\EbookReader\Service\SharedBookException;
+use OCA\EbookReader\Service\SuggestionService;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\ApiRoute;
@@ -34,6 +35,7 @@ use OCP\IRequest;
 /**
  * @psalm-import-type EbookReaderBook from \OCA\EbookReader\ResponseDefinitions
  * @psalm-import-type EbookReaderBookList from \OCA\EbookReader\ResponseDefinitions
+ * @psalm-import-type EbookReaderSuggestions from \OCA\EbookReader\ResponseDefinitions
  */
 class BooksController extends AbstractOCSController {
 	private const MAX_BULK_DELETE = 100;
@@ -47,6 +49,7 @@ class BooksController extends AbstractOCSController {
 		private BookSerializer $serializer,
 		private ITimeFactory $time,
 		private ProgressService $progress,
+		private SuggestionService $suggester,
 	) {
 		parent::__construct($request, $userId);
 	}
@@ -346,6 +349,35 @@ class BooksController extends AbstractOCSController {
 		$userId = $this->uid();
 		$next = $this->library->nextVolume($userId, $this->findBook($userId, $fileId));
 		return new DataResponse(['book' => $next === null ? null : $this->serializer->serializeWithProgress($userId, $next)]);
+	}
+
+	/**
+	 * Read-next suggestions after a book
+	 *
+	 * next: the next volume in reading order (see GET /books/{fileId}/next), null for the last volume, books without
+	 * a series and when that volume is already finished. similar: up to limit unread books, never the book itself or a
+	 * book of its series, at most one per other series (its first unread volume). Score: +3 per shared author, +2 per
+	 * shared genre, +1 per shared tag, +1 same primary language, +1 same format family (comic formats cbz/cbr/cb7/cbt
+	 * vs. ebook formats); only books with a score above 0, ties: more recently added first, then title.
+	 *
+	 * @param int $fileId Nextcloud file id
+	 * @param int<1, 10> $limit Maximum number of similar titles
+	 * @return DataResponse<Http::STATUS_OK, EbookReaderSuggestions, array{}>
+	 * @throws OCSNotFoundException Book not found
+	 * @throws OCSForbiddenException Not logged in
+	 *
+	 * 200: Suggestions returned
+	 */
+	#[NoAdminRequired]
+	#[ApiRoute(verb: 'GET', url: '/api/v1/books/{fileId}/suggestions', requirements: ['fileId' => '\d+'])]
+	public function suggestions(int $fileId, int $limit = 4): DataResponse {
+		$userId = $this->uid();
+		$book = $this->findBook($userId, $fileId);
+		$result = $this->suggester->suggest($userId, $book, max(1, min(10, $limit)));
+		$next = $result['next'];
+		$books = $this->serializer->serializeMany($userId, array_merge($next === null ? [] : [$next], $result['similar']));
+		$serializedNext = $next === null ? null : array_shift($books);
+		return new DataResponse(['next' => $serializedNext, 'similar' => $books]);
 	}
 
 	/**
