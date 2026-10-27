@@ -57,7 +57,7 @@ Bibliothek, Reader und Editor für E-Books und Comics direkt in deiner Nextcloud
 - **Metadaten:** Titel, Autoren, Serie und Band, Beschreibung, Genres, Tags, Sprache, Verlag, Datum, ISBN.
 - **Cover** tauschen (Upload oder eine Seite als Cover wählen).
 - **Kapitel bzw. Seiten** entfernen und per Drag & Drop umsortieren, **Inhaltsverzeichnis** bearbeiten.
-- **Umbenennen und Einsortieren** nach Muster, z. B. `{author}/{series}/{series_index:2} - {title}`, mit Vorschau vor dem Ausführen.
+- **Umbenennen und Einsortieren** nach Muster, z. B. `{author}/{series}/{series_index} - {title}`, mit Vorschau vor dem Ausführen. `{series_index}` erhält führende Nullen passend zur höchsten Bandnummer der Reihe (01 … 10, 001 … 120), `{series_index:raw}` nicht.
 - **Konvertieren** zwischen CBZ, CB7, CBT und EPUB (Fixed Layout). Die Vor- und Nachteile jedes Formats werden erklärt. CBR lässt sich nicht als Ziel anlegen, weil RAR nur mit proprietärer Software geschrieben werden kann.
 - **Bilder optimieren** (optional, verlustbehaftet): Seitenbilder von Comics auf 2560 px oder 1920 px Höhe verkleinern und PNG-Seiten auf Wunsch in JPEG umwandeln, mit Größenschätzung vorab, auch für mehrere markierte Comics auf einmal. Die Dateien werden kleiner, Downloads und Offline-Nutzung schneller; das Verkleinern lässt sich nicht rückgängig machen, das Original landet auf Wunsch im Papierkorb.
 - Speichern oder „Als Kopie speichern“. Lange Vorgänge laufen auf dem Server mit Fortschrittsanzeige weiter.

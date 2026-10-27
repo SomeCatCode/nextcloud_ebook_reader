@@ -46,7 +46,7 @@
 					v-model="pattern"
 					:label="t('ebookreader', 'File name pattern')"
 					placeholder="{author} - {title}"
-					:helperText="t('ebookreader', 'Used when renaming books. Placeholders: {author}, {title}, {series}, {index}, {year}')" />
+					:helperText="t('ebookreader', 'Used when renaming books. Placeholders: {author}, {title}, {series}, {series_index}, {year}. {series_index} gets leading zeros (e.g. 01, 02, 10), {series_index:raw} does not.')" />
 			</section>
 
 			<section>

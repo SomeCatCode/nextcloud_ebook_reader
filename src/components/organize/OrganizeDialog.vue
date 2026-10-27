@@ -110,7 +110,7 @@ const library = useLibraryStore()
 const settings = useSettingsStore()
 
 const presets = [
-	'{author}/{series}/{series_index:2} - {title}',
+	'{author}/{series}/{series_index} - {title}',
 	'{author} - {title}',
 	'{author}/{title}',
 	'{genre}/{author} - {title}',
@@ -121,6 +121,7 @@ const placeholders = [
 	'{title}',
 	'{series}',
 	'{series_index}',
+	'{series_index:raw}',
 	'{series_index:2}',
 	'{year}',
 	'{publisher}',

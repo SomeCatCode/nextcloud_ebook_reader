@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 import { describe, expect, it } from 'vitest'
-import { ageBadge, ageEntries, ageTermLabel, completionEntries, completionTermLabel, isAgeRating, layoutEntries, layoutTermLabel, normalizeAgeTerm, offersNextVolume, volumeLabel } from './bookFlags.ts'
+import { ageBadge, ageEntries, ageTermLabel, completionEntries, completionTermLabel, isAgeRating, layoutEntries, layoutTermLabel, normalizeAgeTerm, volumeLabel } from './bookFlags.ts'
 
 describe('age terms', () => {
 	it('normalises like the server', () => {
@@ -77,13 +77,6 @@ describe('next volume', () => {
 	it('labels volumes by index', () => {
 		expect(volumeLabel({ seriesIndex: 3 }, 'The End')).toBe('Volume 3: The End')
 		expect(volumeLabel({ seriesIndex: null }, 'The End')).toBe('The End')
-	})
-
-	it('is offered at the end of a book in a series', () => {
-		expect(offersNextVolume({ series: 'Saga' }, 0.99)).toBe(true)
-		expect(offersNextVolume({ series: 'Saga' }, 0.5)).toBe(false)
-		expect(offersNextVolume({ series: null }, 1)).toBe(false)
-		expect(offersNextVolume(null, 1)).toBe(false)
 	})
 })
 

@@ -145,7 +145,7 @@ sudo -u www-data php occ ebookreader:scan <user> --force --format=cbr
 - Metadata: title, authors, series and index, description, genres, tags, language, publisher, date, ISBN
 - Replace the cover (upload, or use a page)
 - Remove and reorder chapters or pages, edit the table of contents
-- Rename and sort into folders by pattern, e.g. `{author}/{series}/{series_index:2} - {title}`, with a preview
+- Rename and sort into folders by pattern, e.g. `{author}/{series}/{series_index} - {title}`, with a preview. `{series_index}` is zero-padded to the width of the highest volume number of the series (01 … 10, 001 … 120), `{series_index:raw}` is not
 - Convert between CBZ, CB7, CBT and fixed-layout EPUB, with the pros and cons of each format explained (CBR cannot be a target: writing RAR requires proprietary software)
 - Optional, lossy image optimization for comics (downscale pages to 2560 or 1920 px, PNG to JPEG), with a size estimate and bulk mode
 - Save or save as copy; long operations continue on the server with a progress indicator

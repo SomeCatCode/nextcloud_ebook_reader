@@ -21,6 +21,7 @@ use OCA\EbookReader\Metadata\BookMetadata;
 use OCA\EbookReader\Metadata\MetadataService;
 use OCA\EbookReader\Metadata\SidecarData;
 use OCA\EbookReader\Metadata\SidecarService;
+use OCA\EbookReader\Metadata\VolumeNumber;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\BackgroundJob\IJobList;
 use OCP\DB\Exception as DbException;
@@ -142,7 +143,15 @@ class LibraryService {
 			$book->setSeries($meta->series !== null ? mb_substr($meta->series, 0, 512) : null);
 		}
 		if ($take('seriesIndex')) {
-			$book->setSeriesIndex($meta->seriesIndex);
+			$index = $meta->seriesIndex;
+			$derived = false;
+			if ($index === null && trim((string)$book->getSeries()) !== '') {
+				// no number in the metadata: take it from the title or file name, so "Vol 10" sorts behind "Vol 2"
+				$index = VolumeNumber::fromTitleOrFilename($book->getTitle(), $path);
+				$derived = $index !== null;
+			}
+			$book->setSeriesIndex($index);
+			$book->setSeriesIndexDerived($derived);
 		}
 		if ($take('description')) {
 			$book->setDescription($meta->description);
@@ -1332,7 +1341,8 @@ class LibraryService {
 
 	private function applySort(IQueryBuilder $qb, string $userId, BookQuery $q): void {
 		$dir = strtolower($q->order) === 'desc' ? 'DESC' : 'ASC';
-		$title = 'LOWER(COALESCE(b.title, b.path))';
+		// title_sort: lower case, digit runs zero-padded (natural order, see SeriesOrder::sortKey); rows not yet backfilled fall back
+		$title = 'COALESCE(b.title_sort, LOWER(COALESCE(b.title, b.path)))';
 		switch ($q->sort) {
 			case 'author':
 				$qb->orderBy($qb->createFunction("LOWER(COALESCE(b.authors, ''))"), $dir);
@@ -1341,6 +1351,8 @@ class LibraryService {
 			case 'series':
 				$qb->orderBy($qb->createFunction('CASE WHEN b.series IS NULL THEN 1 ELSE 0 END'), 'ASC');
 				$qb->addOrderBy($qb->createFunction("LOWER(COALESCE(b.series, ''))"), $dir);
+				// volumes without a number last (in both directions), then by number, then by natural title order
+				$qb->addOrderBy($qb->createFunction('CASE WHEN b.series_index IS NULL THEN 1 ELSE 0 END'), 'ASC');
 				$qb->addOrderBy('b.series_index', $dir);
 				$qb->addOrderBy($qb->createFunction($title), 'ASC');
 				break;

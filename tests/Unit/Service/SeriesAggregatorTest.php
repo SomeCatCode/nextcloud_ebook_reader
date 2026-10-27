@@ -47,6 +47,17 @@ class SeriesAggregatorTest extends TestCase {
 		$this->assertSame([3, 2, 1], $out[0]['coverFileIds']);
 	}
 
+	public function testTitlesWithoutIndexAreOrderedNaturally(): void {
+		$out = SeriesAggregator::aggregate([
+			self::row(1, 'S', null, 1, 'unread', 'Saga 10'),
+			self::row(2, 'S', null, 1, 'unread', 'Saga 2'),
+			self::row(3, 'S', null, 1, 'unread', 'Saga 1'),
+			self::row(4, 'S', null, 1, 'unread', 'saga 11'),
+		]);
+		$this->assertSame([3, 2, 1], $out[0]['coverFileIds']);
+		$this->assertSame(3, $out[0]['firstFileId']);
+	}
+
 	public function testNaturalNameSortAndDirection(): void {
 		$rows = [self::row(1, 'Band 10', 1.0), self::row(2, 'band 2', 1.0), self::row(3, 'Alpha', 1.0)];
 		$this->assertSame(['Alpha', 'band 2', 'Band 10'], array_column(SeriesAggregator::aggregate($rows), 'name'));

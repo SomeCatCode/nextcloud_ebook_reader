@@ -30,6 +30,9 @@ class BookMapper extends QBMapper {
 	 */
 	#[\Override]
 	public function insert(Entity $entity): Entity {
+		if ($entity instanceof Book) {
+			$entity->refreshTitleSort();
+		}
 		if ($entity instanceof Book && $entity->getMetaUpdatedAt() === 0) {
 			$entity->setMetaUpdatedAt($entity->getUpdatedAt() > 0 ? $entity->getUpdatedAt() : (int)(microtime(true) * 1000.0));
 		}
@@ -44,6 +47,9 @@ class BookMapper extends QBMapper {
 	 */
 	#[\Override]
 	public function update(Entity $entity): Entity {
+		if ($entity instanceof Book && ($entity->getTitleSort() === null || array_key_exists('title', $entity->getUpdatedFields()) || array_key_exists('path', $entity->getUpdatedFields()))) {
+			$entity->refreshTitleSort();
+		}
 		if ($entity instanceof Book && $entity->hasPendingMetaChange() && !array_key_exists('metaUpdatedAt', $entity->getUpdatedFields())) {
 			$entity->setMetaUpdatedAt((int)(microtime(true) * 1000.0));
 		}

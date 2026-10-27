@@ -777,9 +777,9 @@
 			]
 		},
 		{
-			"id": "Continue with {title}",
+			"id": "Continue reading: {title}",
 			"files": [
-				"src/views/ReaderView.vue"
+				"src/components/library/ReadNextSuggestions.vue"
 			]
 		},
 		{
@@ -1210,7 +1210,7 @@
 		{
 			"id": "Dismiss",
 			"files": [
-				"src/views/ReaderView.vue"
+				"src/components/library/ReadNextSuggestions.vue"
 			]
 		},
 		{
@@ -1489,6 +1489,12 @@
 				"src/components/library/BookDetails.vue",
 				"src/components/library/FilterBar.vue",
 				"src/views/LibraryView.vue"
+			]
+		},
+		{
+			"id": "Finished reading",
+			"files": [
+				"src/components/library/ReadNextSuggestions.vue"
 			]
 		},
 		{
@@ -2110,12 +2116,6 @@
 			"id": "Next volume",
 			"files": [
 				"src/components/library/ContinueReading.vue"
-			]
-		},
-		{
-			"id": "Next volume: {title}",
-			"files": [
-				"src/components/library/BookDetails.vue"
 			]
 		},
 		{
@@ -3311,6 +3311,12 @@
 			]
 		},
 		{
+			"id": "Similar titles",
+			"files": [
+				"src/components/library/ReadNextSuggestions.vue"
+			]
+		},
+		{
 			"id": "Simple and open",
 			"files": [
 				"src/convert/formats.ts"
@@ -3935,7 +3941,7 @@
 			]
 		},
 		{
-			"id": "Used when renaming books. Placeholders: {author}, {title}, {series}, {index}, {year}",
+			"id": "Used when renaming books. Placeholders: {author}, {title}, {series}, {series_index}, {year}. {series_index} gets leading zeros (e.g. 01, 02, 10), {series_index:raw} does not.",
 			"files": [
 				"src/components/library/SettingsDialog.vue"
 			]

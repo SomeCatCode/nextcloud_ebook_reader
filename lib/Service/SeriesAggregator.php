@@ -61,7 +61,8 @@ final class SeriesAggregator {
 				} elseif ($a['index'] !== $b['index']) {
 					return $a['index'] <=> $b['index'];
 				}
-				return [$a['title'], $a['id']] <=> [$b['title'], $b['id']];
+				$cmp = strnatcasecmp($a['title'], $b['title']);
+				return $cmp !== 0 ? $cmp : $a['id'] <=> $b['id'];
 			});
 			$ids = array_map(static fn (array $b): int => $b['id'], $books);
 			$out[] = [
