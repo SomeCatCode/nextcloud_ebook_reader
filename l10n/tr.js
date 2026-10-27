@@ -635,7 +635,7 @@ OC.L10N.register(
     "Use the age rating from the file" : "Dosyadaki yaş sınırını kullan",
     "Use the value from the file" : "Dosyadaki değeri kullan",
     "Use value from file" : "Dosyadaki değeri kullan",
-    "Used when renaming books. Placeholders: {author}, {title}, {series}, {index}, {year}" : "Kitapları yeniden adlandırırken kullanılır. Yer tutucular: {author}, {title}, {series}, {index}, {year}",
+    "Used when renaming books. Placeholders: {author}, {title}, {series}, {series_index}, {year}. {series_index} gets leading zeros (e.g. 01, 02, 10), {series_index:raw} does not." : "Kitapları yeniden adlandırırken kullanılır. Yer tutucular: {author}, {title}, {series}, {series_index}, {year}. {series_index} başına sıfır alır (01, 02, 10), {series_index:raw} almaz.",
     "User search is not available" : "Kullanıcı arama kullanılamıyor",
     "Very common in old collections, so most comic readers can open it" : "Eski koleksiyonlarda çok yaygındır, bu yüzden çoğu çizgi roman okuyucusu bunu açabilir",
     "View-only share" : "Salt görüntüleme paylaşımı",

@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace OCA\EbookReader\Db;
 
+use OCA\EbookReader\Service\SeriesOrder;
 use OCP\AppFramework\Db\Entity;
 
 /**
@@ -29,7 +30,10 @@ use OCP\AppFramework\Db\Entity;
  * @method string|null getSeries()
  * @method void setSeries(?string $series)
  * @method float|null getSeriesIndex()
- * @method void setSeriesIndex(?float $seriesIndex)
+ * @method bool getSeriesIndexDerived()
+ * @method void setSeriesIndexDerived(bool $seriesIndexDerived)
+ * @method string|null getTitleSort()
+ * @method void setTitleSort(?string $titleSort)
  * @method string|null getDescription()
  * @method void setDescription(?string $description)
  * @method string|null getLanguage()
@@ -120,6 +124,10 @@ class Book extends Entity {
 	protected ?string $authors = null;
 	protected ?string $series = null;
 	protected ?float $seriesIndex = null;
+	/** seriesIndex was not in the metadata but parsed from the title or file name at the last indexing */
+	protected bool $seriesIndexDerived = false;
+	/** natural sort key of the title (see SeriesOrder::sortKey), kept up to date by BookMapper */
+	protected ?string $titleSort = null;
 	protected ?string $description = null;
 	protected ?string $language = null;
 	protected ?string $publisher = null;
@@ -169,6 +177,7 @@ class Book extends Entity {
 		$this->addType('fileId', 'integer');
 		$this->addType('size', 'integer');
 		$this->addType('seriesIndex', 'float');
+		$this->addType('seriesIndexDerived', 'boolean');
 		$this->addType('rating', 'integer');
 		$this->addType('readStatusManual', 'boolean');
 		$this->addType('hasCover', 'boolean');
@@ -183,6 +192,22 @@ class Book extends Entity {
 		$this->addType('longstripFile', 'boolean');
 		$this->addType('longstripManual', 'boolean');
 		$this->addType('metaUpdatedAt', 'integer');
+	}
+
+	/**
+	 * Sets the series index; a value set this way is a real one (metadata, editor), not parsed from the title.
+	 * Indexing marks a parsed value with setSeriesIndexDerived(true) afterwards.
+	 */
+	public function setSeriesIndex(?float $seriesIndex): void {
+		$this->setter('seriesIndex', [$seriesIndex]);
+		$this->setter('seriesIndexDerived', [false]);
+	}
+
+	/** Brings titleSort in line with title (file name when there is no title). */
+	public function refreshTitleSort(): void {
+		$title = $this->getTitle();
+		$source = $title !== null && $title !== '' ? $title : pathinfo($this->getPath(), PATHINFO_FILENAME);
+		$this->setTitleSort(SeriesOrder::sortKey($source));
 	}
 
 	/** Whether the pending (not yet stored) changes touch the descriptive data. */

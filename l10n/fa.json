@@ -634,7 +634,7 @@
 		"Use the age rating from the file": "استفاده از رده‌بندی سنی فایل",
 		"Use the value from the file": "استفاده از مقدار فایل",
 		"Use value from file": "استفاده از مقدار فایل",
-		"Used when renaming books. Placeholders: {author}, {title}, {series}, {index}, {year}": "هنگام تغییر نام کتاب‌ها استفاده می‌شود. جای‌نگهدارها: {author}، {title}، {series}، {index}، {year}",
+		"Used when renaming books. Placeholders: {author}, {title}, {series}, {series_index}, {year}. {series_index} gets leading zeros (e.g. 01, 02, 10), {series_index:raw} does not.": "هنگام تغییر نام کتاب‌ها استفاده می‌شود. جای‌نگهدارها: {author}، {title}، {series}، {series_index}، {year}. {series_index} صفرهای ابتدایی می‌گیرد (01، 02، 10)، {series_index:raw} نمی‌گیرد.",
 		"User search is not available": "جستجوی کاربر موجود نیست",
 		"Very common in old collections, so most comic readers can open it": "در مجموعه‌های قدیمی بسیار رایج است، بنابراین بیشتر خوانندهٔ کمیک‌ها می‌توانند آن را باز کنند",
 		"View-only share": "اشتراک‌گذاری فقط برای دیدن",

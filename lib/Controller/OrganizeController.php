@@ -38,7 +38,7 @@ class OrganizeController extends AbstractOCSController {
 	 * Preview where books would be moved to by a pattern
 	 *
 	 * @param list<int> $fileIds Nextcloud file ids (max 500)
-	 * @param string $pattern Path pattern, e.g. "{author}/{series}/{series_index:2} - {title}"
+	 * @param string $pattern Path pattern, e.g. "{author}/{series}/{series_index} - {title}"
 	 * @param string|null $targetFolder Base folder inside a library folder (default: first library folder)
 	 * @return DataResponse<Http::STATUS_OK, EbookReaderOrganizePreview, array{}>
 	 * @throws OCSBadRequestException Invalid selection, pattern or target folder
@@ -62,7 +62,7 @@ class OrganizeController extends AbstractOCSController {
 	 * Move and rename books by a pattern
 	 *
 	 * @param list<int> $fileIds Nextcloud file ids (max 500)
-	 * @param string $pattern Path pattern, e.g. "{author}/{series}/{series_index:2} - {title}"
+	 * @param string $pattern Path pattern, e.g. "{author}/{series}/{series_index} - {title}"
 	 * @param string|null $targetFolder Base folder inside a library folder (default: first library folder)
 	 * @return DataResponse<Http::STATUS_OK, EbookReaderOrganizeResult, array{}>
 	 * @throws OCSBadRequestException Invalid selection, pattern or target folder

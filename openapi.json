@@ -9172,7 +9172,7 @@
                                     "pattern": {
                                         "type": "string",
                                         "default": "",
-                                        "description": "Path pattern, e.g. \"{author}/{series}/{series_index:2} - {title}\""
+                                        "description": "Path pattern, e.g. \"{author}/{series}/{series_index} - {title}\""
                                     },
                                     "targetFolder": {
                                         "type": "string",
@@ -9349,7 +9349,7 @@
                                     "pattern": {
                                         "type": "string",
                                         "default": "",
-                                        "description": "Path pattern, e.g. \"{author}/{series}/{series_index:2} - {title}\""
+                                        "description": "Path pattern, e.g. \"{author}/{series}/{series_index} - {title}\""
                                     },
                                     "targetFolder": {
                                         "type": "string",

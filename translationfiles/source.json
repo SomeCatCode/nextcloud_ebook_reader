@@ -3935,7 +3935,7 @@
 			]
 		},
 		{
-			"id": "Used when renaming books. Placeholders: {author}, {title}, {series}, {index}, {year}",
+			"id": "Used when renaming books. Placeholders: {author}, {title}, {series}, {series_index}, {year}. {series_index} gets leading zeros (e.g. 01, 02, 10), {series_index:raw} does not.",
 			"files": [
 				"src/components/library/SettingsDialog.vue"
 			]

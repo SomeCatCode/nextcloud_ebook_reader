@@ -635,7 +635,7 @@ OC.L10N.register(
     "Use the age rating from the file" : "Usar la clasificación por edad del archivo",
     "Use the value from the file" : "Usar el valor del archivo",
     "Use value from file" : "Usar el valor del archivo",
-    "Used when renaming books. Placeholders: {author}, {title}, {series}, {index}, {year}" : "Se usa al renombrar libros. Marcadores de posición: {author}, {title}, {series}, {index}, {year}",
+    "Used when renaming books. Placeholders: {author}, {title}, {series}, {series_index}, {year}. {series_index} gets leading zeros (e.g. 01, 02, 10), {series_index:raw} does not." : "Se usa al renombrar libros. Marcadores de posición: {author}, {title}, {series}, {series_index}, {year}. {series_index} lleva ceros a la izquierda (01, 02, 10), {series_index:raw} no.",
     "User search is not available" : "La búsqueda de usuarios no está disponible",
     "Very common in old collections, so most comic readers can open it" : "Muy habitual en colecciones antiguas, así que la mayoría de lectores de cómics pueden abrirlo",
     "View-only share" : "Recurso compartido de solo visualización",

@@ -634,7 +634,7 @@
 		"Use the age rating from the file": "Altersfreigabe aus der Datei verwenden",
 		"Use the value from the file": "Wert aus der Datei verwenden",
 		"Use value from file": "Wert aus der Datei verwenden",
-		"Used when renaming books. Placeholders: {author}, {title}, {series}, {index}, {year}": "Wird beim Umbenennen von Büchern verwendet. Platzhalter: {author}, {title}, {series}, {index}, {year}",
+		"Used when renaming books. Placeholders: {author}, {title}, {series}, {series_index}, {year}. {series_index} gets leading zeros (e.g. 01, 02, 10), {series_index:raw} does not.": "Wird beim Umbenennen von Büchern verwendet. Platzhalter: {author}, {title}, {series}, {series_index}, {year}. {series_index} erhält führende Nullen (z. B. 01, 02, 10), {series_index:raw} nicht.",
 		"User search is not available": "Die Benutzersuche ist nicht verfügbar",
 		"Very common in old collections, so most comic readers can open it": "In alten Sammlungen sehr verbreitet, daher können es die meisten Comic-Reader öffnen",
 		"View-only share": "Freigabe nur zum Ansehen",
