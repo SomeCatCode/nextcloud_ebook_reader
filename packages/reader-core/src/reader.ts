@@ -288,6 +288,28 @@ export function createReader(container: HTMLElement, options: ReaderOptions = {}
 	}
 
 	/**
+	 * Whether the end of the book is on screen: the spread with the last page (fixed layout), or the last page of
+	 * the last section (paged text), or its bottom (scrolled text).
+	 *
+	 * @param index section shown
+	 */
+	function rendererAtEnd(index: number): boolean {
+		const r: Any = view?.renderer
+		const sections: Any[] = opened?.book.sections ?? []
+		if (!r || sections.length === 0) {
+			return false
+		}
+		if (typeof r.getSpreadOf === 'function') {
+			const last = r.getSpreadOf(sections[sections.length - 1])
+			return !!last && r.getSpreadOf(sections[index])?.index === last.index
+		}
+		if (!r.atEnd) {
+			return false
+		}
+		return !r.scrolled || r.viewSize - r.end <= 2
+	}
+
+	/**
 	 * @param detail
 	 * @param detail.fraction
 	 */
@@ -316,6 +338,7 @@ export function createReader(container: HTMLElement, options: ReaderOptions = {}
 		emit('relocate', {
 			locator,
 			percentage,
+			atEnd: rendererAtEnd(index),
 			label: loc.tocItem?.label,
 			page: isComic ? { current: index + 1, total: info?.pageCount ?? 0 } : (loc.location ? { current: loc.location.current + 1, total: loc.location.total } : undefined),
 		})
@@ -401,8 +424,9 @@ export function createReader(container: HTMLElement, options: ReaderOptions = {}
 	/**
 	 * @param index page index
 	 * @param progression fraction inside the page
+	 * @param atEnd scrolled to the bottom of the strip
 	 */
-	function onStripRelocate(index: number, progression: number): void {
+	function onStripRelocate(index: number, progression: number, atEnd: boolean): void {
 		if (!opened) {
 			return
 		}
@@ -416,6 +440,7 @@ export function createReader(container: HTMLElement, options: ReaderOptions = {}
 		emit('relocate', {
 			locator,
 			percentage: total > 0 ? Math.min(1, (index + 1) / total) : 0,
+			atEnd,
 			page: { current: index + 1, total },
 		})
 	}

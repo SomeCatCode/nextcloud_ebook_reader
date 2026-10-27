@@ -343,10 +343,10 @@ const suggestionsLookup = createSuggestionsLookup(getSuggestions, (s) => {
 /**
  * Called on every position change: at the end of a book the next volume and similar titles are offered.
  *
- * @param p reading position 0..1
+ * @param atEnd the reader shows the end of the book
  */
-function checkEnd(p: number): void {
-	if (book.value && reachedEnd(p, null) && hasFeature('suggestions')) {
+function checkEnd(atEnd: boolean): void {
+	if (book.value && reachedEnd(atEnd, null) && hasFeature('suggestions')) {
 		suggestionsLookup.request(book.value.fileId)
 	}
 }
@@ -1026,9 +1026,9 @@ onMounted(async () => {
 			loadLibarchive,
 		})
 		unsubs.push(
-			reader.on('relocate', ({ locator, percentage: p, page }) => {
+			reader.on('relocate', ({ locator, percentage: p, atEnd, page }) => {
 				percentage.value = p
-				checkEnd(p)
+				checkEnd(atEnd)
 				pageInfo.value = page ?? null
 				currentHref.value = locator.href
 				pageTick.value++

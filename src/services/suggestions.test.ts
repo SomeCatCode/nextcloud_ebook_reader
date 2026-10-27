@@ -7,7 +7,6 @@ import type { Book, Suggestions } from '../types.ts'
 import { describe, expect, it, vi } from 'vitest'
 import {
 	createSuggestionsLookup,
-	END_OF_BOOK_THRESHOLD,
 	hasSuggestions,
 	normalizeSuggestions,
 	reachedEnd,
@@ -18,13 +17,12 @@ import {
 const book = (fileId: number): Book => ({ fileId, title: `B${fileId}` }) as Book
 
 describe('reachedEnd', () => {
-	it('is true from 99 percent or for finished books', () => {
-		expect(reachedEnd(END_OF_BOOK_THRESHOLD)).toBe(true)
-		expect(reachedEnd(1)).toBe(true)
-		expect(reachedEnd(0.98)).toBe(false)
-		expect(reachedEnd(0.1, 'finished')).toBe(true)
-		expect(reachedEnd(0.1, 'reading')).toBe(false)
-		expect(reachedEnd(0.1, null)).toBe(false)
+	it('is true when the reader shows the end or for finished books', () => {
+		expect(reachedEnd(true)).toBe(true)
+		expect(reachedEnd(false)).toBe(false)
+		expect(reachedEnd(false, 'finished')).toBe(true)
+		expect(reachedEnd(false, 'reading')).toBe(false)
+		expect(reachedEnd(false, null)).toBe(false)
 	})
 })
 

@@ -111,7 +111,11 @@ export interface ReaderSelection {
 }
 
 export interface ReaderEvents {
-	relocate: { locator: ReaderLocator, percentage: number, label?: string, page?: { current: number, total: number } }
+	/**
+	 * `atEnd`: the end of the book is on screen (last page or spread, bottom of a long strip or of a scrolled text).
+	 * `percentage` alone is no end signal: a comic counts its last page as 100 % from the moment it is shown.
+	 */
+	relocate: { locator: ReaderLocator, percentage: number, atEnd: boolean, label?: string, page?: { current: number, total: number } }
 	ready: BookInfo
 	error: Error
 	/** Emitted for a tap/click on the page */

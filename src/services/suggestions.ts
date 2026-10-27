@@ -4,20 +4,19 @@
  */
 import type { Book, ReadStatus, Suggestions } from '../types.ts'
 
-/** Reading position (0..1) from which a book counts as read to the end. */
-export const END_OF_BOOK_THRESHOLD = 0.99
-
 /** Number of similar titles shown. */
 export const SIMILAR_LIMIT = 4
 
 /**
- * Whether the "finished reading" panel is due: the end of the book is reached or the book is already finished.
+ * Whether the "finished reading" panel is due: the end of the book is on screen or the book is already finished.
+ * The reading percentage is no signal: a comic reports 100 % as soon as its last page is shown, a long strip as soon
+ * as the top of its last page is, and 99 % of a long text book are still several pages.
  *
- * @param percentage current reading position 0..1
+ * @param atEnd the reader shows the end of the book (last page or spread, bottom of a long strip)
  * @param status read status of the book, if known
  */
-export function reachedEnd(percentage: number, status?: ReadStatus | null): boolean {
-	return percentage >= END_OF_BOOK_THRESHOLD || status === 'finished'
+export function reachedEnd(atEnd: boolean, status?: ReadStatus | null): boolean {
+	return atEnd || status === 'finished'
 }
 
 /**
