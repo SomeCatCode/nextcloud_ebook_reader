@@ -21,7 +21,8 @@ use OCP\IDBConnection;
  *
  * Similar titles are scored in SQL (one query on the books table with correlated sub-selects on the tag table),
  * so the library is never scanned in PHP. Score: +3 per shared author, +2 per shared genre, +1 per shared tag,
- * +1 same primary language, +1 same format family (comic vs. ebook). Only books with a score above 0 qualify.
+ * +1 same primary language, +1 same format family (comic vs. ebook). Only books sharing at least one author, genre
+ * or tag qualify; language and format family only rank them.
  * The same algorithm runs in the Android app (Room).
  */
 class SuggestionService {
@@ -80,6 +81,8 @@ class SuggestionService {
 		$qb = $this->db->getQueryBuilder();
 		$e = $qb->expr();
 		$score = self::scoreSql($qb, $this->db, $book, $tags);
+		// language and format family only rank; a suggestion needs a shared author, genre or tag
+		$content = self::scoreSql($qb, $this->db, $book, $tags, true);
 		$qb->select('b.*')->selectAlias($qb->createFunction($score), 'suggest_score')->from(self::BOOKS, 'b')
 			->where($e->eq('b.user_id', $qb->createNamedParameter($userId)))
 			->andWhere($e->isNull('b.deleted_at'))
@@ -90,7 +93,7 @@ class SuggestionService {
 			$same = $e->iLike('b.series', $qb->createNamedParameter($this->db->escapeLikeParameter($series)));
 			$qb->andWhere($e->orX($e->isNull('b.series'), $e->eq('b.series', $qb->createNamedParameter('')), $qb->createFunction('NOT (' . $same . ')')));
 		}
-		$qb->andWhere($qb->createFunction('(' . $score . ') > 0'))
+		$qb->andWhere($qb->createFunction('(' . ($content === '' ? '0' : $content) . ') > 0'))
 			->orderBy($qb->createFunction('(' . $score . ')'), 'DESC')
 			->addOrderBy('b.added_at', 'DESC')
 			->addOrderBy($qb->createFunction('LOWER(COALESCE(b.title, b.path))'), 'ASC')
@@ -112,8 +115,9 @@ class SuggestionService {
 	 * SQL expression (a number) of the similarity of a row of `b` to the given book.
 	 *
 	 * @param list<Tag> $tags genres and tags of the source book
+	 * @param bool $contentOnly only authors, genres and tags (empty string when the book has none)
 	 */
-	public static function scoreSql(IQueryBuilder $qb, IDBConnection $db, Book $book, array $tags): string {
+	public static function scoreSql(IQueryBuilder $qb, IDBConnection $db, Book $book, array $tags, bool $contentOnly = false): string {
 		$e = $qb->expr();
 		$parts = [];
 		foreach (array_slice(array_values(array_unique($book->getAuthorsArray())), 0, self::MAX_TERMS) as $author) {
@@ -141,6 +145,9 @@ class SuggestionService {
 				->andWhere($sub->expr()->eq('st.type', $qb->createNamedParameter($type)))
 				->andWhere($sub->expr()->in($qb->createFunction('LOWER(st.name)'), $qb->createNamedParameter($names, IQueryBuilder::PARAM_STR_ARRAY)));
 			$parts[] = '(' . $sub->getSQL() . ') * ' . $weight;
+		}
+		if ($contentOnly) {
+			return implode(' + ', $parts);
 		}
 		$language = self::primaryLanguage($book->getLanguage());
 		if ($language !== null) {

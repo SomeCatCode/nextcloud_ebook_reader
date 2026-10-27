@@ -10,6 +10,16 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 - Erkennung beim Indizieren aus ComicInfo.xml (`Format` „Webtoon“, „Long Strip“ oder „Vertical“, oder ein solcher Tag bzw. ein solches Genre). Die Markierung lässt sich in den Buchdetails, in der Massenbearbeitung und direkt in den Reader-Einstellungen („Darstellung: Seiten / Longstrip“) ändern. Ein von Hand gesetzter Wert übersteht das erneute Indizieren und lässt sich auf den Wert aus der Datei zurücksetzen.
 - Longstrip-Comics tragen ein Abzeichen auf der Karte und in der Liste. In der Navigation gibt es die Gruppe „Darstellung“ mit dem Filter `layout:longstrip`.
 - API: Das Buch-JSON hat `longstrip` und `longstripManual`. `PATCH /books/{fileId}/app-data` und `PATCH /books/app-data` kennen `longstrip` (true/false) und `resetLongstrip`. Die Facetten haben `layouts` mit der Anzahl der Longstrip-Comics. Neue Spalten `longstrip`, `longstrip_file`, `longstrip_manual` (Migration `Version1009Date20261025100000`). Bereits indizierte Comics erhalten den Wert aus der Datei beim nächsten Scan mit `--force`.
+- **Lesevorschläge:** Am Ende eines Buchs (ab 99 %) zeigt der Reader „Fertig gelesen“ mit „Weiterlesen: <nächster Band>“ und 3–4 ähnlichen, ungelesenen Titeln. Der Block erscheint auch in den Details gelesener Bücher und lässt sich schließen. Ähnlich heißt: mindestens ein gemeinsamer Autor, ein Genre oder ein Tag; Sprache und Comic/E-Book verbessern nur die Reihenfolge. Pro Serie erscheint höchstens ein Titel (ihr erster ungelesener Band), Bände derselben Serie nie. Neuer Endpunkt `GET /api/v1/books/{fileId}/suggestions` (Capability-Feature `suggestions`).
+- Fehlt die Bandnummer in den Metadaten, liest der Server sie beim Indizieren aus Titel oder Dateiname (z. B. „Vol. 10“, „v02“, „Band 3“, „#7“, „Tome 4“, „第3巻“, „Saga 10“; Jahreszahlen zählen nicht). Eine Nummer aus den Metadaten oder aus dem Editor hat immer Vorrang. Capability-Feature `series-order`; Migration `Version1010Date20261027100000` (Spalten `title_sort` und `series_index_derived`, für vorhandene Bücher gefüllt).
+
+### Geändert
+- **Bände sortieren natürlich nach Bandnummer:** „Band 2“ steht vor „Band 10“ (Sortierung „Serie“, Serienansicht, `GET /series`, OPDS, „Als Nächstes“). Auch die Sortierung „Titel“ ist natürlich. Bände ohne Nummer stehen immer am Ende.
+- **Umbenennen/Einsortieren mit führenden Nullen:** `{series_index}` schreibt die Bandnummer passend zur höchsten Nummer der Serie (01–99, ab 100 Bänden 001); Dezimalzahlen behalten den Bruch (05.5). `{series_index:raw}` schreibt ohne Nullen, `{series_index:N}` genau N Stellen. **Achtung:** Bestehende Muster mit `{series_index}` erzeugen jetzt „02“ statt „2“.
+
+### Behoben
+- `GET /series`: `coverFileIds` und `firstFileId` ordneten Titel ohne Bandnummer nicht natürlich.
+- Hilfetext für das Dateinamen-Muster nannte den ungültigen Platzhalter `{index}`; richtig ist `{series_index}`.
 
 ## 0.11.1 – 2026-10-13
 

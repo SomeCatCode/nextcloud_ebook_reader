@@ -50,7 +50,7 @@ Response `data`: `{ "next": Book|null, "similar": Book[] }`. `Book` is the norma
 | same primary language (`en-US` and `en_GB` are both `en`) | +1 |
 | same format family (comic: cbz/cbr/cb7/cbt; otherwise ebook) | +1 |
 
-- Only score > 0 qualifies. Ties: more recently added (`addedAt`) first, then title (case-insensitive), then id.
+- Only books sharing at least one author, genre or tag qualify (language and format family only rank them). Ties: more recently added (`addedAt`) first, then title (case-insensitive), then id.
 - The server scores in one SQL query (limited to the 300 best rows before the one-per-series reduction), so large libraries stay cheap. Only the first 12 authors, 12 genres and 12 tags of the source book count.
 
 **Android app (Room):** same algorithm locally. Show it when a book becomes finished (end reached or status `finished`) and in the details of finished books. Gate server calls on the feature `suggestions` (or server version >= 0.12.0). Offline and for local libraries compute it from Room.

@@ -95,6 +95,20 @@ class SuggestionServiceTest extends TestCase {
 		$this->assertStringNotContainsString('SELECT', $sql);
 	}
 
+	public function testContentScoreLeavesOutLanguageAndFormat(): void {
+		// a suggestion needs a shared author, genre or tag: language and format family alone never qualify
+		[$qb, $db] = $this->fakeDb();
+		$source = self::book(1, 'Source', format: 'cbz');
+		$source->setAuthorsArray(['Ann Author']);
+		$source->setLanguage('en');
+		$sql = SuggestionService::scoreSql($qb, $db, $source, [self::tag(Tag::TYPE_GENRE, 'Fantasy')], true);
+		$this->assertStringContainsString('"Ann Author"', $sql);
+		$this->assertStringContainsString(') * 2', $sql);
+		$this->assertStringNotContainsString('b.language', $sql);
+		$this->assertStringNotContainsString('b.format', $sql);
+		$this->assertSame('', SuggestionService::scoreSql($qb, $db, self::book(2, 'Bare'), [], true));
+	}
+
 	public function testPrimaryLanguageAndComicFormats(): void {
 		$this->assertSame('en', SuggestionService::primaryLanguage('en-US'));
 		$this->assertSame('de', SuggestionService::primaryLanguage(' DE_de '));

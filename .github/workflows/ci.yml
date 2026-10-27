@@ -164,6 +164,11 @@ jobs:
           echo "--- books"
           curl -fsS "${auth[@]}" "$api/books?format=json" | tee books.json | jq -e '[.. | strings | select(. == "The Third Book")] | length > 0' > /dev/null
 
+          echo "--- suggestions and series order (SQL on a real database)"
+          file_id=$(jq -er '.ocs.data.books[0].fileId' books.json)
+          curl -fsS "${auth[@]}" "$api/books/$file_id/suggestions?limit=4&format=json" | jq -e '.ocs.data | has("next") and (.similar | type == "array")' > /dev/null
+          curl -fsS "${auth[@]}" "$api/books?sort=series&format=json" | jq -e '.ocs.data.books | length > 0' > /dev/null
+
           for ep in folders series shares sync settings; do
             echo "--- $ep"
             curl -fsS "${auth[@]}" "$api/$ep?format=json" | jq -e '.ocs.meta.statuscode' > /dev/null
