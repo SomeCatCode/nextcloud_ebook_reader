@@ -1663,7 +1663,7 @@ class LibraryService {
 		if ($share->getAttributes()?->getAttribute('permissions', 'download') === false) {
 			return false;
 		}
-		return Compat::canSeeShareContent($share);
+		return $share->canSeeContent();
 	}
 
 	/** @throws NotFoundException */

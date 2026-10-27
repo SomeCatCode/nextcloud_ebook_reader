@@ -14,6 +14,7 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 - Fehlt die Bandnummer in den Metadaten, liest der Server sie beim Indizieren aus Titel oder Dateiname (z. B. „Vol. 10“, „v02“, „Band 3“, „#7“, „Tome 4“, „第3巻“, „Saga 10“; Jahreszahlen zählen nicht). Eine Nummer aus den Metadaten oder aus dem Editor hat immer Vorrang. Capability-Feature `series-order`; Migration `Version1010Date20261027100000` (Spalten `title_sort` und `series_index_derived`, für vorhandene Bücher gefüllt).
 
 ### Geändert
+- **Unterstützte Nextcloud-Versionen: 33 bis 35.** Nextcloud 31 und 32 entfallen. Die Kompatibilitäts-Shims dafür sind entfernt (`Compat`-Klasse, Fallback für `window._nc_fileactions`); die Server-APIs `IAppManager::isEnabledForAnyone`, `IFilenameValidator::sanitizeFilename` und `IShare::canSeeContent` werden direkt genutzt. CI prüft nur noch 33–35.
 - **Bände sortieren natürlich nach Bandnummer:** „Band 2“ steht vor „Band 10“ (Sortierung „Serie“, Serienansicht, `GET /series`, OPDS, „Als Nächstes“). Auch die Sortierung „Titel“ ist natürlich. Bände ohne Nummer stehen immer am Ende.
 - **Umbenennen/Einsortieren mit führenden Nullen:** `{series_index}` schreibt die Bandnummer passend zur höchsten Nummer der Serie (01–99, ab 100 Bänden 001); Dezimalzahlen behalten den Bruch (05.5). `{series_index:raw}` schreibt ohne Nullen, `{series_index:N}` genau N Stellen. **Achtung:** Bestehende Muster mit `{series_index}` erzeugen jetzt „02“ statt „2“.
 

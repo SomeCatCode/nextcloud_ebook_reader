@@ -63,9 +63,7 @@ class ViewOnlyShareTest extends TestCase {
 		$attributes->method('getAttribute')->willReturnCallback(static fn (string $scope, string $key): mixed => $scope === 'permissions' && $key === 'download' ? $download : null);
 		$share = $this->createMock(IShare::class);
 		$share->method('getAttributes')->willReturn($download === null ? null : $attributes);
-		if (method_exists($share, 'canSeeContent')) {
-			$share->method('canSeeContent')->willReturn($canSeeContent);
-		}
+		$share->method('canSeeContent')->willReturn($canSeeContent);
 		$storage = $this->createMock(ISharedStorage::class);
 		$storage->method('instanceOfStorage')->willReturnCallback(static fn (string $c): bool => $c === ISharedStorage::class);
 		$storage->method('getShare')->willReturn($share);
@@ -92,9 +90,6 @@ class ViewOnlyShareTest extends TestCase {
 	}
 
 	public function testShareWithoutContentAccessIsNotReadable(): void {
-		if (!method_exists(IShare::class, 'canSeeContent')) {
-			$this->markTestSkipped('IShare::canSeeContent() exists since Nextcloud 32');
-		}
 		$this->assertFalse($this->library()->canReadContent($this->fileOnShare(true, false)));
 	}
 
