@@ -18,7 +18,7 @@
 		"ext-mbstring": "*"
 	},
 	"require-dev": {
-		"nextcloud/ocp": "dev-stable31",
+		"nextcloud/ocp": "dev-stable33",
 		"phpunit/phpunit": "^11",
 		"vimeo/psalm": "^6",
 		"nextcloud/coding-standard": "^1.3",

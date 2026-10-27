@@ -33,7 +33,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        nc: ['31', '32', '33', '34', '35']
+        nc: ['33', '34', '35']
         experimental: [false]
         include:
           # heads-up for the next major (master = Nextcloud 36); may fail without blocking
@@ -49,7 +49,7 @@ jobs:
       - name: Install dependencies
         run: |
           composer install --no-interaction --prefer-dist
-          if [ "${{ matrix.nc }}" != "31" ]; then
+          if [ "${{ matrix.nc }}" != "33" ]; then
             branch="stable${{ matrix.nc }}"
             [ "${{ matrix.nc }}" = "master" ] && branch="master"
             # the platform php of composer.json is the app minimum (8.2), newer ocp needs a newer PHP
@@ -87,9 +87,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { nc: '31', php: '8.3', experimental: false }
-          - { nc: '32', php: '8.2', experimental: false }
-          - { nc: '32', php: '8.4', experimental: false }
           - { nc: '33', php: '8.2', experimental: false }
           - { nc: '33', php: '8.4', experimental: false }
           - { nc: '34', php: '8.3', experimental: false }

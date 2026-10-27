@@ -8,7 +8,7 @@ It is a regular Nextcloud app (PHP backend, Vue frontend). It needs no extra con
 
 [![CI](https://github.com/SomeCatCode/nextcloud_ebook_reader/actions/workflows/ci.yml/badge.svg)](https://github.com/SomeCatCode/nextcloud_ebook_reader/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/SomeCatCode/nextcloud_ebook_reader?include_prereleases)](https://github.com/SomeCatCode/nextcloud_ebook_reader/releases)
-![Nextcloud 34](https://img.shields.io/badge/Nextcloud-34-0082c9?logo=nextcloud&logoColor=white)
+![Nextcloud 33-35](https://img.shields.io/badge/Nextcloud-33--35-0082c9?logo=nextcloud&logoColor=white)
 ![License AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)
 
 ![Library with series filter and book details](docs/screenshot-library.png)
@@ -24,7 +24,7 @@ It is a regular Nextcloud app (PHP backend, Vue frontend). It needs no extra con
 
 ## Requirements
 
-- Nextcloud 34
+- Nextcloud 33 to 35
 - PHP 8.2 or later with `zip`, `gd`, `dom`, `libxml`, `mbstring` (included in common installations and the official Docker image)
 - Background jobs via **cron** (recommended; with AJAX, large libraries are indexed slowly)
 - Optional: **7-Zip** and/or **bsdtar** for CBR and CB7 comics on the server, see [Archive tools](#archive-tools-optional)

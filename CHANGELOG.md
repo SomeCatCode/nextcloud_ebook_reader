@@ -5,6 +5,9 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+### Geändert
+- **Unterstützte Nextcloud-Versionen: 33 bis 35.** Nextcloud 31 und 32 entfallen. Die Kompatibilitäts-Shims dafür sind entfernt (`Compat`-Klasse, Fallback für `window._nc_fileactions`); die Server-APIs `IAppManager::isEnabledForAnyone`, `IFilenameValidator::sanitizeFilename` und `IShare::canSeeContent` werden direkt genutzt. CI prüft nur noch 33–35.
+
 ## 0.11.1 – 2026-10-13
 
 ### Geändert

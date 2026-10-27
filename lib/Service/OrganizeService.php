@@ -129,7 +129,7 @@ class OrganizeService {
 			return '';
 		}
 		try {
-			$name = Compat::sanitizeFilename($this->filenameValidator, $name);
+			$name = $this->filenameValidator->sanitizeFilename($name);
 		} catch (\InvalidArgumentException) {
 			return '';
 		}
