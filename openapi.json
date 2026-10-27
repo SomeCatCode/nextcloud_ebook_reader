@@ -125,6 +125,8 @@
                     "completion",
                     "ageRating",
                     "ageRatingManual",
+                    "longstrip",
+                    "longstripManual",
                     "progress"
                 ],
                 "properties": {
@@ -271,6 +273,12 @@
                     "ageRatingManual": {
                         "type": "boolean"
                     },
+                    "longstrip": {
+                        "type": "boolean"
+                    },
+                    "longstripManual": {
+                        "type": "boolean"
+                    },
                     "progress": {
                         "nullable": true,
                         "allOf": [
@@ -380,7 +388,8 @@
                     "formats",
                     "missing",
                     "completion",
-                    "ageRatings"
+                    "ageRatings",
+                    "layouts"
                 ],
                 "properties": {
                     "genres": {
@@ -462,6 +471,12 @@
                         }
                     },
                     "ageRatings": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/FacetEntry"
+                        }
+                    },
+                    "layouts": {
                         "type": "array",
                         "items": {
                             "$ref": "#/components/schemas/FacetEntry"
@@ -3025,6 +3040,17 @@
                                         "type": "boolean",
                                         "default": false,
                                         "description": "true = use the age rating from the file again (not together with ageRating)"
+                                    },
+                                    "longstrip": {
+                                        "type": "boolean",
+                                        "nullable": true,
+                                        "default": null,
+                                        "description": "true = long strip comic (vertical scroll), false = paged (both manual)"
+                                    },
+                                    "resetLongstrip": {
+                                        "type": "boolean",
+                                        "default": false,
+                                        "description": "true = use the long strip flag from the file again (not together with longstrip)"
                                     }
                                 }
                             }
@@ -3248,6 +3274,17 @@
                                         "type": "boolean",
                                         "default": false,
                                         "description": "true = use the age rating from the file again"
+                                    },
+                                    "longstrip": {
+                                        "type": "boolean",
+                                        "nullable": true,
+                                        "default": null,
+                                        "description": "true = long strip comic, false = paged"
+                                    },
+                                    "resetLongstrip": {
+                                        "type": "boolean",
+                                        "default": false,
+                                        "description": "true = use the long strip flag from the file again"
                                     }
                                 }
                             }

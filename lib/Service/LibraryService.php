@@ -161,6 +161,8 @@ class LibraryService {
 		}
 		// the age rating is never written into the file: always take the file's value (a manual one stays in effect)
 		$book->applyFileAgeRating($meta->ageRating);
+		// same for long strip (ComicInfo.xml Format/Tags)
+		$book->applyFileLongstrip($meta->longstrip);
 		$book->setFileMtime($mtime);
 		$book->setFileEtag($etag);
 		$book->setSidecarEtag($sidecarEtag);
@@ -209,6 +211,7 @@ class LibraryService {
 				$other->setIsbn($book->getIsbn());
 				$other->setPublishedAt($book->getPublishedAt());
 				$other->applyFileAgeRating($meta->ageRating);
+				$other->applyFileLongstrip($meta->longstrip);
 				$other->setHasCover($book->getHasCover());
 				$other->setCoverEtag($book->getCoverEtag());
 				$other->setFileMtime($mtime);
@@ -1137,6 +1140,8 @@ class LibraryService {
 				return $this->completionCondition($qb, $name, $negate);
 			case 'age':
 				return $this->ageCondition($qb, $name, $negate);
+			case 'layout':
+				return $this->layoutCondition($qb, $name, $negate);
 			default:
 				$p = $qb->createNamedParameter(strtolower($name));
 				return $negate ? $e->neq($qb->createFunction('LOWER(b.format)'), $p) : $e->eq($qb->createFunction('LOWER(b.format)'), $p);
@@ -1174,6 +1179,18 @@ class LibraryService {
 		}
 		$empty = self::sql($empty);
 		return $negate ? 'NOT ' . $empty : $empty;
+	}
+
+	/**
+	 * `layout:longstrip`: long strip comics; $negate builds the opposite (NULL counts as "not long strip").
+	 */
+	private function layoutCondition(IQueryBuilder $qb, string $name, bool $negate): ?string {
+		if ($name !== 'longstrip') {
+			return null;
+		}
+		$e = $qb->expr();
+		$cond = $e->eq('b.longstrip', $qb->createNamedParameter(true, IQueryBuilder::PARAM_BOOL));
+		return $negate ? '(' . $e->isNull('b.longstrip') . ' OR NOT (' . $cond . '))' : $cond;
 	}
 
 	/**
@@ -1436,7 +1453,7 @@ class LibraryService {
 	/** @return array<string, mixed> */
 	public function getFacets(string $userId): array {
 		$qb = $this->db->getQueryBuilder();
-		$qb->select('authors', 'series', 'format', 'completion', 'age_rating')->from(self::BOOKS)
+		$qb->select('authors', 'series', 'format', 'completion', 'age_rating', 'longstrip')->from(self::BOOKS)
 			->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
 			->andWhere($qb->expr()->isNull('deleted_at'));
 		$res = $qb->executeQuery();
@@ -1445,7 +1462,12 @@ class LibraryService {
 		$formats = [];
 		$completion = [];
 		$ages = [];
+		$longstrip = 0;
 		while ($row = $res->fetch()) {
+			// booleans come back as bool, int or string depending on the database driver ('t'/'f' on PostgreSQL)
+			if (in_array($row['longstrip'] ?? null, [true, 1, '1', 't', 'true'], true)) {
+				$longstrip++;
+			}
 			$c = is_string($row['completion'] ?? null) ? $row['completion'] : 'unknown';
 			$completion[$c] = ($completion[$c] ?? 0) + 1;
 			$a = is_numeric($row['age_rating'] ?? null) ? (string)(int)$row['age_rating'] : FilterTerms::AGE_NONE;
@@ -1481,6 +1503,7 @@ class LibraryService {
 			'missing' => $this->missingCounts($userId),
 			'completion' => self::buildCompletionFacets($completion),
 			'ageRatings' => self::buildAgeFacets($ages),
+			'layouts' => [['name' => 'longstrip', 'count' => $longstrip]],
 		];
 	}
 

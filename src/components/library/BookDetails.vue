@@ -134,6 +134,29 @@
 					</p>
 				</div>
 
+				<div v-if="isComicFormat" class="book-details__row">
+					<NcCheckboxRadioSwitch
+						type="switch"
+						:modelValue="book.longstrip === true"
+						:disabled="savingLongstrip"
+						@update:modelValue="setLongstrip">
+						{{ t('ebookreader', 'Long strip (scroll down instead of turning pages)') }}
+					</NcCheckboxRadioSwitch>
+					<p v-if="book.longstripManual" class="book-details__hint book-details__inline">
+						<span>{{ t('ebookreader', 'Set in the app') }}</span>
+						<NcButton
+							variant="tertiary"
+							size="small"
+							:disabled="savingLongstrip"
+							@click="resetLongstrip">
+							{{ t('ebookreader', 'Use value from file') }}
+						</NcButton>
+					</p>
+					<p v-else-if="book.longstrip" class="book-details__hint">
+						{{ t('ebookreader', 'From the book file') }}
+					</p>
+				</div>
+
 				<TagEditor
 					:key="`genres-${book.fileId}`"
 					:label="t('ebookreader', 'Genres')"
@@ -240,6 +263,7 @@ import { useRouter } from 'vue-router'
 import NcAppSidebar from '@nextcloud/vue/components/NcAppSidebar'
 import NcAppSidebarTab from '@nextcloud/vue/components/NcAppSidebarTab'
 import NcButton from '@nextcloud/vue/components/NcButton'
+import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcProgressBar from '@nextcloud/vue/components/NcProgressBar'
@@ -254,7 +278,7 @@ import { sanitizeDescription } from '../../editor/sanitize.ts'
 import { nextVolume } from '../../services/api.ts'
 import { useLibraryStore } from '../../stores/library.ts'
 import { useSettingsStore } from '../../stores/settings.ts'
-import { AGE_RATINGS, ageBadge, completionLabel, volumeLabel } from './bookFlags.ts'
+import { AGE_RATINGS, ageBadge, completionLabel, LONGSTRIP_FORMATS, volumeLabel } from './bookFlags.ts'
 import { canEmbed } from './metadataStorage.ts'
 import { bookAuthors, bookTitle, dirName, formatDate, progressPercent } from './utils.ts'
 
@@ -313,6 +337,8 @@ const ageOptions = computed<{ id: AgeRating | null, label: string }[]>(() => [
 ])
 const currentAge = computed(() => ageOptions.value.find((o) => o.id === (props.book.ageRating ?? null)) ?? ageOptions.value[0])
 const savingAge = ref(false)
+const isComicFormat = computed(() => LONGSTRIP_FORMATS.includes(props.book.format))
+const savingLongstrip = ref(false)
 
 /** next volume of a finished book in a series ("continue the series") */
 const nextBook = ref<Book | null>(null)
@@ -546,6 +572,34 @@ async function setAge(option: { id: AgeRating | null } | null): Promise<void> {
 		showError(t('ebookreader', 'Could not save the age rating'))
 	} finally {
 		savingAge.value = false
+	}
+}
+
+/**
+ * @param value
+ */
+async function setLongstrip(value: boolean): Promise<void> {
+	savingLongstrip.value = true
+	try {
+		await store.setLongstrip(props.book.fileId, value)
+	} catch {
+		showError(t('ebookreader', 'Could not save the setting'))
+	} finally {
+		savingLongstrip.value = false
+	}
+}
+
+/**
+ * Drops the long strip flag set in the app: the value recognised in the file applies again.
+ */
+async function resetLongstrip(): Promise<void> {
+	savingLongstrip.value = true
+	try {
+		await store.resetLongstrip(props.book.fileId)
+	} catch {
+		showError(t('ebookreader', 'Could not read the value from the file'))
+	} finally {
+		savingLongstrip.value = false
 	}
 }
 

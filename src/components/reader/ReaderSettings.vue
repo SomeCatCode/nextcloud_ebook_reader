@@ -80,6 +80,18 @@
 		</template>
 		<template v-else>
 			<div class="reader-settings__row">
+				<span>{{ t('ebookreader', 'Display') }}</span>
+				<div class="reader-settings__group">
+					<NcButton :variant="!longstrip ? 'primary' : 'secondary'" @click="setLongstrip(false)">
+						{{ t('ebookreader', 'Pages') }}
+					</NcButton>
+					<NcButton :variant="longstrip ? 'primary' : 'secondary'" @click="setLongstrip(true)">
+						{{ t('ebookreader', 'Long strip') }}
+					</NcButton>
+				</div>
+				<span class="reader-settings__hint">{{ t('ebookreader', 'Long strip: all pages in one continuous vertical scroll (webtoons). Saved for this book.') }}</span>
+			</div>
+			<div v-if="!longstrip" class="reader-settings__row">
 				<span>{{ t('ebookreader', 'Pages per view') }}</span>
 				<div class="reader-settings__group">
 					<NcButton :variant="model.comicSpread !== 'double' ? 'primary' : 'secondary'" @click="set('comicSpread', 'single')">
@@ -90,7 +102,7 @@
 					</NcButton>
 				</div>
 			</div>
-			<div class="reader-settings__row">
+			<div v-if="!longstrip" class="reader-settings__row">
 				<span>{{ t('ebookreader', 'Reading direction') }}</span>
 				<div class="reader-settings__group">
 					<NcButton :variant="!model.comicRtl ? 'primary' : 'secondary'" @click="set('comicRtl', false)">
@@ -105,7 +117,7 @@
 				<span>{{ t('ebookreader', 'Zoom') }}</span>
 				<div class="reader-settings__group">
 					<NcButton :variant="model.comicZoom !== 'fit-width' ? 'primary' : 'secondary'" @click="set('comicZoom', 'fit-page')">
-						{{ t('ebookreader', 'Fit page') }}
+						{{ longstrip ? t('ebookreader', 'Original width') : t('ebookreader', 'Fit page') }}
 					</NcButton>
 					<NcButton :variant="model.comicZoom === 'fit-width' ? 'primary' : 'secondary'" @click="set('comicZoom', 'fit-width')">
 						{{ t('ebookreader', 'Fit width') }}
@@ -133,8 +145,8 @@ export interface ViewSettings {
 	comicZoom: 'fit-page' | 'fit-width'
 }
 
-const props = defineProps<{ model: ViewSettings, isComic: boolean }>()
-const emit = defineEmits<{ change: [patch: Partial<ViewSettings>] }>()
+const props = defineProps<{ model: ViewSettings, isComic: boolean, longstrip?: boolean }>()
+const emit = defineEmits<{ change: [patch: Partial<ViewSettings>], longstrip: [value: boolean] }>()
 
 const themes = [
 	{ id: 'auto', label: t('ebookreader', 'Auto') },
@@ -160,10 +172,22 @@ function set<K extends keyof ViewSettings>(key: K, value: ViewSettings[K]): void
 		emit('change', { [key]: value } as Partial<ViewSettings>)
 	}
 }
+
+/**
+ * Long strip is a property of the book (not a reader setting for all comics).
+ *
+ * @param value
+ */
+function setLongstrip(value: boolean): void {
+	if (!!props.longstrip !== value) {
+		emit('longstrip', value)
+	}
+}
 </script>
 
 <style scoped>
 .reader-settings { display: flex; flex-direction: column; gap: 12px; padding: 16px; min-width: 280px; }
 .reader-settings__row { display: flex; flex-direction: column; gap: 4px; }
 .reader-settings__group { display: flex; flex-wrap: wrap; gap: 4px; }
+.reader-settings__hint { color: var(--color-text-maxcontrast); font-size: 0.9em; max-width: 280px; }
 </style>

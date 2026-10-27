@@ -72,6 +72,43 @@ export function completionLabel(completion: Completion | 'unknown' | null): stri
 	}
 }
 
+/** Formats that can be shown as long strip (comics) */
+export const LONGSTRIP_FORMATS = ['cbz', 'cbr', 'cb7', 'cbt']
+
+/**
+ * Badge text of a long strip comic.
+ */
+export function longstripLabel(): string {
+	return t('ebookreader', 'Long strip')
+}
+
+/**
+ * Tooltip of the long strip badge.
+ */
+export function longstripTitle(): string {
+	return t('ebookreader', 'Long strip comic: read by scrolling down instead of turning pages')
+}
+
+/**
+ * Label of a `layout:` term name.
+ *
+ * @param name
+ */
+export function layoutTermLabel(name: string): string {
+	return name === 'longstrip' ? longstripLabel() : name
+}
+
+/**
+ * Navigation entries of the "Display" group (only long strip for now); nothing when no book is a long strip.
+ *
+ * @param facets
+ */
+export function layoutEntries(facets: FacetEntry[] | undefined): FlagNavEntry[] {
+	return (facets ?? [])
+		.filter((f) => f.name === 'longstrip' && f.count > 0)
+		.map((f) => ({ name: f.name, label: layoutTermLabel(f.name), count: f.count }))
+}
+
 /**
  * Label of an `age:` term name ("16+", "Up to 12", "No age rating").
  *

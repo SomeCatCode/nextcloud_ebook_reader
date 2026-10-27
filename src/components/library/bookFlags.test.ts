@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 import { describe, expect, it } from 'vitest'
-import { ageBadge, ageEntries, ageTermLabel, completionEntries, completionTermLabel, isAgeRating, normalizeAgeTerm, offersNextVolume, volumeLabel } from './bookFlags.ts'
+import { ageBadge, ageEntries, ageTermLabel, completionEntries, completionTermLabel, isAgeRating, layoutEntries, layoutTermLabel, normalizeAgeTerm, offersNextVolume, volumeLabel } from './bookFlags.ts'
 
 describe('age terms', () => {
 	it('normalises like the server', () => {
@@ -84,5 +84,14 @@ describe('next volume', () => {
 		expect(offersNextVolume({ series: 'Saga' }, 0.5)).toBe(false)
 		expect(offersNextVolume({ series: null }, 1)).toBe(false)
 		expect(offersNextVolume(null, 1)).toBe(false)
+	})
+})
+
+describe('long strip', () => {
+	it('lists the long strip entry only when there are such books', () => {
+		expect(layoutEntries([{ name: 'longstrip', count: 0 }])).toEqual([])
+		expect(layoutEntries(undefined)).toEqual([])
+		expect(layoutEntries([{ name: 'longstrip', count: 4 }])).toEqual([{ name: 'longstrip', label: 'Long strip', count: 4 }])
+		expect(layoutTermLabel('longstrip')).toBe('Long strip')
 	})
 })

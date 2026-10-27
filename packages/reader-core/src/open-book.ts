@@ -135,9 +135,24 @@ async function mobiHasDrm(file: Blob): Promise<boolean> {
 	return rec.byteLength >= 14 && rec.getUint16(12) !== 0
 }
 
+/**
+ * Page images of a comic in foliate's (sorted) section order.
+ *
+ * @param book
+ * @param loader
+ */
+function pageLoader(book: FoliateBook, loader: Pick<ZipLoader, 'loadBlob'>): (index: number) => Promise<Blob> | null {
+	return (index) => {
+		const id = book.sections[index]?.id
+		return typeof id === 'string' ? loader.loadBlob(id) : null
+	}
+}
+
 export interface OpenedBook {
 	book: FoliateBook
 	isComic: boolean
+	/** comics: image of a page by its section index (used by the long strip view, which does not use foliate) */
+	loadPage?: (index: number) => Promise<Blob> | null
 	close: () => void
 }
 
@@ -168,12 +183,13 @@ export async function openBook(file: ReaderSource, format: ReaderFormat, opts: R
 async function openBookUnchecked(source: ReaderSource, format: ReaderFormat, opts: ReaderOptions, layout: ReaderLayout): Promise<OpenedBook> {
 	if (isRemoteComic(source)) {
 		const { makeComicBook } = await import('../vendor/foliate-js/comic-book.js')
-		const book = makeComicBook(makeRemoteComicLoader(source), { name: source.name })
+		const loader = makeRemoteComicLoader(source)
+		const book = makeComicBook(loader, { name: source.name })
 		if (layout.comicSpread !== 'double') {
 			book.rendition.spread = 'none'
 		}
 		book.dir = layout.comicRtl ? 'rtl' : 'ltr'
-		return { book, isComic: true, close: () => book.destroy?.() }
+		return { book, isComic: true, loadPage: pageLoader(book, loader), close: () => book.destroy?.() }
 	}
 	if (isRemoteZip(source)) {
 		const loader = makeRemoteZipLoader(source)
@@ -217,6 +233,7 @@ async function openBookUnchecked(source: ReaderSource, format: ReaderFormat, opt
 			return {
 				book,
 				isComic: true,
+				loadPage: pageLoader(book, loader),
 				close: () => {
 					book.destroy?.()
 					;(loader as { close?: () => void }).close?.()

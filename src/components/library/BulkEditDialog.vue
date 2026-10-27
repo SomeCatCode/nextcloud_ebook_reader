@@ -272,6 +272,35 @@
 				</div>
 			</section>
 
+			<section class="bulk-edit__section">
+				<NcCheckboxRadioSwitch v-model="form.longstrip.change" :disabled="busy">
+					{{ t('ebookreader', 'Change long strip') }}
+				</NcCheckboxRadioSwitch>
+				<div v-if="form.longstrip.change" class="bulk-edit__body">
+					<NcCheckboxRadioSwitch
+						v-model="form.longstrip.mode"
+						type="radio"
+						name="bulk-longstrip-mode"
+						value="on">
+						{{ t('ebookreader', 'Long strip (scroll down)') }}
+					</NcCheckboxRadioSwitch>
+					<NcCheckboxRadioSwitch
+						v-model="form.longstrip.mode"
+						type="radio"
+						name="bulk-longstrip-mode"
+						value="off">
+						{{ t('ebookreader', 'Pages (turn pages)') }}
+					</NcCheckboxRadioSwitch>
+					<NcCheckboxRadioSwitch
+						v-model="form.longstrip.mode"
+						type="radio"
+						name="bulk-longstrip-mode"
+						value="reset">
+						{{ t('ebookreader', 'Use the value from the file') }}
+					</NcCheckboxRadioSwitch>
+				</div>
+			</section>
+
 			<NcNoteCard v-if="visibleProblems.length" type="warning">
 				<ul>
 					<li v-for="p in visibleProblems" :key="p">

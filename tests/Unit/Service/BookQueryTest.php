@@ -72,6 +72,12 @@ class BookQueryTest extends TestCase {
 		$this->assertSame([['type' => 'completion', 'name' => 'unknown'], ['type' => 'age', 'name' => '18']], $q->exclude);
 	}
 
+	public function testLayoutTermIsValidated(): void {
+		$q = BookQuery::fromRequestParams(['include' => ['layout:LongStrip', 'layout:paged'], 'exclude' => 'layout:longstrip']);
+		$this->assertSame([['type' => 'layout', 'name' => 'longstrip']], $q->include);
+		$this->assertSame([['type' => 'layout', 'name' => 'longstrip']], $q->exclude);
+	}
+
 	public function testShelfTermAndSort(): void {
 		$q = BookQuery::fromRequestParams(['include' => ['shelf:12', 'tag:Fantasy/*'], 'exclude' => ['shelf:3'], 'sort' => 'shelf']);
 		$this->assertSame([['type' => 'shelf', 'name' => '12'], ['type' => 'tag', 'name' => 'Fantasy/*']], $q->include);

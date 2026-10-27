@@ -489,6 +489,13 @@ describe('library store', () => {
 		expect(optimisticAppData(b, { completion: null })).toMatchObject({ completion: null, rating: 3, ageRating: 12, ageRatingManual: false })
 		expect(optimisticAppData(b, { ageRating: null })).toMatchObject({ ageRating: null, ageRatingManual: true })
 		expect(optimisticAppData(b, { resetAgeRating: true })).toEqual(b)
+		expect(optimisticAppData(b, { longstrip: true })).toMatchObject({ longstrip: true, longstripManual: true })
+		expect(optimisticAppData(b, { resetLongstrip: true })).toEqual(b)
+	})
+
+	it('accepts the long strip layout term and drops unknown layouts', () => {
+		const state = queryToState({ include: ['layout:longstrip', 'layout:paged'] })
+		expect(state.filters.include).toEqual([{ type: 'layout', name: 'longstrip' }])
 	})
 })
 

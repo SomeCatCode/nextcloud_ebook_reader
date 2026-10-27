@@ -54,7 +54,7 @@ export interface Filters {
 	status: ReadStatus | null
 }
 
-const FILTER_TYPES: FilterType[] = ['genre', 'tag', 'author', 'series', 'format', 'shelf', 'missing', 'completion', 'age']
+const FILTER_TYPES: FilterType[] = ['genre', 'tag', 'author', 'series', 'format', 'shelf', 'missing', 'completion', 'age', 'layout']
 const SORT_KEYS: SortKey[] = ['title', 'author', 'series', 'rating', 'added', 'read', 'shelf']
 const HIDE_FINISHED_KEY = 'ebookreader.hideFinished'
 const STATUSES: ReadStatus[] = ['unread', 'reading', 'finished']
@@ -121,6 +121,9 @@ export function parseTerm(raw: string): FilterTerm | null {
 		return null
 	}
 	if (type === 'completion' && !isCompletionTerm(name)) {
+		return null
+	}
+	if (type === 'layout' && name !== 'longstrip') {
 		return null
 	}
 	if (type === 'age') {
@@ -311,7 +314,7 @@ function storeHideFinished(on: boolean): void {
 	}
 }
 
-const emptyFacets = (): Facets => ({ genres: [], tags: [], authors: [], series: [], formats: [], missing: emptyMissing(), completion: [], ageRatings: [] })
+const emptyFacets = (): Facets => ({ genres: [], tags: [], authors: [], series: [], formats: [], missing: emptyMissing(), completion: [], ageRatings: [], layouts: [] })
 
 /**
  * Progress the server stores for a read status set by hand (optimistic copy):
@@ -359,6 +362,10 @@ export function optimisticAppData(book: Book, patch: AppDataPatch): Book {
 	if ('ageRating' in patch) {
 		out.ageRating = patch.ageRating ?? null
 		out.ageRatingManual = true
+	}
+	if (typeof patch.longstrip === 'boolean') {
+		out.longstrip = patch.longstrip
+		out.longstripManual = true
 	}
 	return out
 }
@@ -1017,7 +1024,7 @@ export const useLibraryStore = defineStore('library', () => {
 	}
 
 	/**
-	 * Optimistic update of app data (rating, read status, completion, age rating); rolls back and rethrows on failure.
+	 * Optimistic update of app data (rating, read status, completion, age rating, long strip); rolls back and rethrows on failure.
 	 * The server couples the status with the progress (finished = 100 %, unread = 0 %); the
 	 * optimistic copy shows that right away, the server copy (with its progress) replaces it.
 	 * Resetting the age rating has no optimistic copy (only the server knows the value from the file).
@@ -1040,7 +1047,7 @@ export const useLibraryStore = defineStore('library', () => {
 				// a finished volume brings its successor into "continue reading"
 				void loadRecent()
 			}
-			if ('completion' in patch || 'ageRating' in patch || patch.resetAgeRating) {
+			if ('completion' in patch || 'ageRating' in patch || patch.resetAgeRating || 'longstrip' in patch || patch.resetLongstrip) {
 				void loadFacets()
 			}
 		} catch (e) {
@@ -1077,7 +1084,26 @@ export const useLibraryStore = defineStore('library', () => {
 	}
 
 	/**
-	 * Completion status / age rating of the selected books (one request), then refreshes list, facets and
+	 * Sets the long strip flag by hand (comic read as vertical scroll); it survives re-indexing.
+	 *
+	 * @param fileId
+	 * @param longstrip
+	 */
+	function setLongstrip(fileId: number, longstrip: boolean): Promise<void> {
+		return updateAppData(fileId, { longstrip })
+	}
+
+	/**
+	 * Uses the long strip flag recognised in the file again.
+	 *
+	 * @param fileId
+	 */
+	function resetLongstrip(fileId: number): Promise<void> {
+		return updateAppData(fileId, { resetLongstrip: true })
+	}
+
+	/**
+	 * Completion status / age rating / long strip of the selected books (one request), then refreshes list, facets and
 	 * "continue reading". The selection stays.
 	 *
 	 * @param changes
@@ -1333,6 +1359,8 @@ export const useLibraryStore = defineStore('library', () => {
 		setCompletion,
 		setAgeRating,
 		resetAgeRating,
+		setLongstrip,
+		resetLongstrip,
 		bulkAppData,
 		saveBookTags,
 		embedMetadata,

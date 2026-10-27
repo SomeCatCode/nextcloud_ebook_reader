@@ -5,6 +5,12 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+### Hinzugefügt
+- **Longstrip-Comics (Webtoons):** Ein als Longstrip markierter Comic wird im Reader nicht geblättert, sondern nahtlos nach unten gescrollt. Alle Seiten liegen ohne Abstand untereinander, Bilder werden in der Nähe des sichtbaren Bereichs geladen und weiter entfernt wieder freigegeben, sodass auch Bände mit Tausenden Seiten flüssig bleiben. Die Position innerhalb einer hohen Seite wird mitgespeichert. Seitliche Tipp-Zonen, Leertaste und Bild-Tasten scrollen eine Bildschirmhöhe, die Pfeiltasten in kleinen Schritten. Zoom: Originalbreite (höchstens Bildschirmbreite) oder Bildschirmbreite.
+- Erkennung beim Indizieren aus ComicInfo.xml (`Format` „Webtoon“, „Long Strip“ oder „Vertical“, oder ein solcher Tag bzw. ein solches Genre). Die Markierung lässt sich in den Buchdetails, in der Massenbearbeitung und direkt in den Reader-Einstellungen („Darstellung: Seiten / Longstrip“) ändern. Ein von Hand gesetzter Wert übersteht das erneute Indizieren und lässt sich auf den Wert aus der Datei zurücksetzen.
+- Longstrip-Comics tragen ein Abzeichen auf der Karte und in der Liste. In der Navigation gibt es die Gruppe „Darstellung“ mit dem Filter `layout:longstrip`.
+- API: Das Buch-JSON hat `longstrip` und `longstripManual`. `PATCH /books/{fileId}/app-data` und `PATCH /books/app-data` kennen `longstrip` (true/false) und `resetLongstrip`. Die Facetten haben `layouts` mit der Anzahl der Longstrip-Comics. Neue Spalten `longstrip`, `longstrip_file`, `longstrip_manual` (Migration `Version1009Date20261025100000`). Bereits indizierte Comics erhalten den Wert aus der Datei beim nächsten Scan mit `--force`.
+
 ## 0.11.1 – 2026-10-13
 
 ### Geändert

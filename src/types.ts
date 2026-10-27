@@ -77,6 +77,10 @@ export interface Book {
 	ageRating: AgeRating | null
 	/** the age rating was set in the app and survives re-indexing */
 	ageRatingManual: boolean
+	/** comic read as one seamless vertical scroll (webtoon); from ComicInfo.xml or set in the app. Missing before 0.12 */
+	longstrip?: boolean
+	/** the long strip flag was set in the app and survives re-indexing */
+	longstripManual?: boolean
 	progress: Progress | null
 }
 
@@ -85,9 +89,10 @@ export type MetadataOverrideField = 'title' | 'authors' | 'series' | 'seriesInde
 export type SortKey = 'title' | 'author' | 'series' | 'rating' | 'added' | 'read' | 'shelf'
 
 /**
- * `completion:ongoing|completed|unknown`; `age:0|6|12|16|18` (exactly), `age:none` (no rating), `age:<=N` (rated N or lower)
+ * `completion:ongoing|completed|unknown`; `age:0|6|12|16|18` (exactly), `age:none` (no rating), `age:<=N` (rated N or lower);
+ * `layout:longstrip` (long strip comics)
  */
-export type FilterType = 'genre' | 'tag' | 'author' | 'series' | 'format' | 'shelf' | 'missing' | 'completion' | 'age'
+export type FilterType = 'genre' | 'tag' | 'author' | 'series' | 'format' | 'shelf' | 'missing' | 'completion' | 'age' | 'layout'
 
 export interface FilterTerm {
 	type: FilterType
@@ -142,6 +147,8 @@ export interface Facets {
 	completion?: FacetEntry[]
 	/** names "0", "6", "12", "16", "18", "none" (fixed order, zeros included) */
 	ageRatings?: FacetEntry[]
+	/** name "longstrip" (number of long strip comics) */
+	layouts?: FacetEntry[]
 }
 
 export type MissingField = 'genre' | 'tag' | 'author' | 'series' | 'description' | 'cover' | 'language'
@@ -167,6 +174,10 @@ export interface AppDataPatch {
 	ageRating?: AgeRating | null
 	/** use the age rating from the file again (not together with ageRating) */
 	resetAgeRating?: true
+	/** manual long strip flag */
+	longstrip?: boolean
+	/** use the long strip flag from the file again (not together with longstrip) */
+	resetLongstrip?: true
 }
 
 /** PATCH /books/app-data: the same flag fields for several books (max. 500) */
@@ -175,6 +186,8 @@ export interface BulkAppDataRequest {
 	completion?: Completion | null
 	ageRating?: AgeRating | null
 	resetAgeRating?: true
+	longstrip?: boolean
+	resetLongstrip?: true
 }
 
 export interface BulkAppDataResult {
