@@ -14,14 +14,7 @@
 		@keydown.space.prevent="$emit('click', book)">
 		<div class="book-card__cover">
 			<BookCover :book="book" />
-			<span class="book-card__format">{{ book.format.toUpperCase() }}</span>
-			<span
-				v-if="book.longstrip"
-				class="book-card__longstrip"
-				:title="longstripTitle()">
-				<NcIconSvgWrapper :path="mdiArrowExpandVertical" :size="12" />
-				{{ longstripLabel() }}
-			</span>
+			<span class="book-card__format" :title="book.longstrip ? longstripTitle() : undefined">{{ formatBadge(book) }}</span>
 			<span
 				v-if="book.ageRating !== null && book.ageRating !== undefined && !selectMode"
 				class="book-card__age"
@@ -69,13 +62,13 @@
 <script setup lang="ts">
 import type { Book, FilterTerm } from '../../types.ts'
 
-import { mdiArrowExpandVertical, mdiCheckCircle, mdiCircleOutline } from '@mdi/js'
+import { mdiCheckCircle, mdiCircleOutline } from '@mdi/js'
 import { t } from '@nextcloud/l10n'
 import { computed } from 'vue'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import BookCover from './BookCover.vue'
 import ShareBadge from './ShareBadge.vue'
-import { ageBadge, ageTitle, completionLabel, longstripLabel, longstripTitle } from './bookFlags.ts'
+import { ageBadge, ageTitle, completionLabel, formatBadge, longstripTitle } from './bookFlags.ts'
 import { bookAuthors, bookTitle, progressPercent } from './utils.ts'
 
 const props = defineProps<{
@@ -129,22 +122,6 @@ const percent = computed(() => progressPercent(props.book))
 		border-radius: var(--border-radius-small, 4px);
 		background: rgba(0, 0, 0, 0.6);
 		color: #fff;
-		font-size: 10px;
-		font-weight: bold;
-		line-height: 18px;
-	}
-
-	&__longstrip {
-		position: absolute;
-		top: 28px;
-		inset-inline-start: 6px;
-		display: flex;
-		align-items: center;
-		gap: 2px;
-		padding: 0 6px 0 4px;
-		border-radius: var(--border-radius-small, 4px);
-		background: var(--color-primary-element);
-		color: var(--color-primary-element-text);
 		font-size: 10px;
 		font-weight: bold;
 		line-height: 18px;

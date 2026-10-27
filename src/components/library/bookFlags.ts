@@ -76,7 +76,16 @@ export function completionLabel(completion: Completion | 'unknown' | null): stri
 export const LONGSTRIP_FORMATS = ['cbz', 'cbr', 'cb7', 'cbt']
 
 /**
- * Badge text of a long strip comic.
+ * Format badge of a book: the format, with "-LS" for a long strip comic ("CBZ-LS").
+ *
+ * @param book
+ */
+export function formatBadge(book: Pick<Book, 'format' | 'longstrip'>): string {
+	return book.format.toUpperCase() + (book.longstrip ? '-LS' : '')
+}
+
+/**
+ * Text of a long strip comic (filter, navigation).
  */
 export function longstripLabel(): string {
 	return t('ebookreader', 'Long strip')

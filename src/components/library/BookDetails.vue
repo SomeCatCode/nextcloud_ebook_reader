@@ -69,92 +69,22 @@
 					</NcButton>
 				</div>
 
-				<div class="book-details__row">
-					<label>{{ t('ebookreader', 'Rating') }}</label>
-					<StarRating :value="book.rating" @update="setRating" />
-				</div>
+				<BookLibraryFields :book="book">
+					<template #afterStatus>
+						<div v-if="percent > 0" class="book-details__row">
+							<label>{{ t('ebookreader', 'Progress') }}: {{ percent }}%</label>
+							<NcProgressBar :value="percent" />
+						</div>
 
-				<div class="book-details__row">
-					<NcSelect
-						:modelValue="currentStatus"
-						:options="statusOptions"
-						:inputLabel="t('ebookreader', 'Reading status')"
-						:clearable="false"
-						:searchable="false"
-						label="label"
-						@update:modelValue="setStatus" />
-				</div>
-
-				<div v-if="percent > 0" class="book-details__row">
-					<label>{{ t('ebookreader', 'Progress') }}: {{ percent }}%</label>
-					<NcProgressBar :value="percent" />
-				</div>
-
-				<ReadNextSuggestions
-					v-if="suggestions"
-					class="book-details__suggestions"
-					:suggestions="suggestions"
-					@read="readBook"
-					@open="(b: Book) => store.openBook(b)"
-					@dismiss="suggestions = null" />
-
-				<div class="book-details__row">
-					<NcSelect
-						:modelValue="currentCompletion"
-						:options="completionOptions"
-						:inputLabel="t('ebookreader', 'Completion status')"
-						:clearable="false"
-						:searchable="false"
-						label="label"
-						@update:modelValue="setCompletion" />
-				</div>
-
-				<div class="book-details__row">
-					<NcSelect
-						:modelValue="currentAge"
-						:options="ageOptions"
-						:inputLabel="t('ebookreader', 'Age rating')"
-						:clearable="false"
-						:searchable="false"
-						label="label"
-						@update:modelValue="setAge" />
-					<p v-if="book.ageRatingManual" class="book-details__hint book-details__inline">
-						<span>{{ t('ebookreader', 'Set in the app') }}</span>
-						<NcButton
-							variant="tertiary"
-							size="small"
-							:disabled="savingAge"
-							@click="resetAge">
-							{{ t('ebookreader', 'Use value from file') }}
-						</NcButton>
-					</p>
-					<p v-else-if="book.ageRating !== null" class="book-details__hint">
-						{{ t('ebookreader', 'From the book file') }}
-					</p>
-				</div>
-
-				<div v-if="isComicFormat" class="book-details__row">
-					<NcCheckboxRadioSwitch
-						type="switch"
-						:modelValue="book.longstrip === true"
-						:disabled="savingLongstrip"
-						@update:modelValue="setLongstrip">
-						{{ t('ebookreader', 'Long strip (scroll down instead of turning pages)') }}
-					</NcCheckboxRadioSwitch>
-					<p v-if="book.longstripManual" class="book-details__hint book-details__inline">
-						<span>{{ t('ebookreader', 'Set in the app') }}</span>
-						<NcButton
-							variant="tertiary"
-							size="small"
-							:disabled="savingLongstrip"
-							@click="resetLongstrip">
-							{{ t('ebookreader', 'Use value from file') }}
-						</NcButton>
-					</p>
-					<p v-else-if="book.longstrip" class="book-details__hint">
-						{{ t('ebookreader', 'From the book file') }}
-					</p>
-				</div>
+						<ReadNextSuggestions
+							v-if="suggestions"
+							class="book-details__suggestions"
+							:suggestions="suggestions"
+							@read="readBook"
+							@open="(b: Book) => store.openBook(b)"
+							@dismiss="suggestions = null" />
+					</template>
+				</BookLibraryFields>
 
 				<TagEditor
 					:key="`genres-${book.fileId}`"
@@ -251,7 +181,7 @@
 </template>
 
 <script setup lang="ts">
-import type { AgeRating, Book, Completion, FilterTerm, MetadataOverrideField, ReadStatus, Suggestions } from '../../types.ts'
+import type { Book, FilterTerm, MetadataOverrideField, Suggestions } from '../../types.ts'
 
 import { mdiBookOpenPageVariant, mdiBookOpenVariant, mdiBookshelf, mdiDeleteOutline, mdiFileReplaceOutline, mdiFolderMoveOutline, mdiFolderOutline, mdiPencil, mdiShareVariant, mdiSwapHorizontal } from '@mdi/js'
 import { showError, showSuccess } from '@nextcloud/dialogs'
@@ -262,17 +192,15 @@ import { useRouter } from 'vue-router'
 import NcAppSidebar from '@nextcloud/vue/components/NcAppSidebar'
 import NcAppSidebarTab from '@nextcloud/vue/components/NcAppSidebarTab'
 import NcButton from '@nextcloud/vue/components/NcButton'
-import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcProgressBar from '@nextcloud/vue/components/NcProgressBar'
-import NcSelect from '@nextcloud/vue/components/NcSelect'
 import ConvertDialog from '../convert/ConvertDialog.vue'
 import AddToShelfDialog from './AddToShelfDialog.vue'
 import BookCover from './BookCover.vue'
+import BookLibraryFields from './BookLibraryFields.vue'
 import ReadNextSuggestions from './ReadNextSuggestions.vue'
 import ShareDialog from './ShareDialog.vue'
-import StarRating from './StarRating.vue'
 import TagEditor from './TagEditor.vue'
 import { sanitizeDescription } from '../../editor/sanitize.ts'
 import { getSuggestions } from '../../services/api.ts'
@@ -280,7 +208,6 @@ import { hasFeature } from '../../services/features.ts'
 import { hasSuggestions, normalizeSuggestions } from '../../services/suggestions.ts'
 import { useLibraryStore } from '../../stores/library.ts'
 import { useSettingsStore } from '../../stores/settings.ts'
-import { AGE_RATINGS, ageBadge, completionLabel, LONGSTRIP_FORMATS } from './bookFlags.ts'
 import { canEmbed } from './metadataStorage.ts'
 import { bookAuthors, bookTitle, dirName, formatDate, progressPercent } from './utils.ts'
 
@@ -318,29 +245,6 @@ const percent = computed(() => progressPercent(props.book))
 const description = computed(() => (props.book.description
 	? sanitizeDescription(props.book.description)
 	: ''))
-
-const statusOptions = computed<{ id: ReadStatus, label: string }[]>(() => [
-	{ id: 'unread', label: t('ebookreader', 'Unread') },
-	{ id: 'reading', label: t('ebookreader', 'Reading') },
-	{ id: 'finished', label: t('ebookreader', 'Finished') },
-])
-const currentStatus = computed(() => statusOptions.value.find((o) => o.id === props.book.readStatus) ?? statusOptions.value[0])
-
-const completionOptions = computed<{ id: Completion | null, label: string }[]>(() => [
-	{ id: null, label: completionLabel(null) },
-	{ id: 'ongoing', label: completionLabel('ongoing') },
-	{ id: 'completed', label: completionLabel('completed') },
-])
-const currentCompletion = computed(() => completionOptions.value.find((o) => o.id === (props.book.completion ?? null)) ?? completionOptions.value[0])
-
-const ageOptions = computed<{ id: AgeRating | null, label: string }[]>(() => [
-	{ id: null, label: t('ebookreader', 'No age rating') },
-	...AGE_RATINGS.map((a) => ({ id: a, label: ageBadge(a) })),
-])
-const currentAge = computed(() => ageOptions.value.find((o) => o.id === (props.book.ageRating ?? null)) ?? ageOptions.value[0])
-const savingAge = ref(false)
-const isComicFormat = computed(() => LONGSTRIP_FORMATS.includes(props.book.format))
-const savingLongstrip = ref(false)
 
 /** "Finished reading": next volume and similar titles of a finished book */
 const suggestions = ref<Suggestions | null>(null)
@@ -528,107 +432,6 @@ function read(): void {
  */
 function edit(): void {
 	void router.push(`/edit/${props.book.fileId}`)
-}
-
-/**
- * @param rating
- */
-async function setRating(rating: number | null): Promise<void> {
-	try {
-		await store.setRating(props.book.fileId, rating)
-	} catch {
-		showError(t('ebookreader', 'Could not save the rating'))
-	}
-}
-
-/**
- * @param option
- * @param option.id
- */
-async function setCompletion(option: { id: Completion | null } | null): Promise<void> {
-	if (!option || option.id === (props.book.completion ?? null)) {
-		return
-	}
-	try {
-		await store.setCompletion(props.book.fileId, option.id)
-	} catch {
-		showError(t('ebookreader', 'Could not save the completion status'))
-	}
-}
-
-/**
- * @param option
- * @param option.id
- */
-async function setAge(option: { id: AgeRating | null } | null): Promise<void> {
-	if (!option || (option.id === (props.book.ageRating ?? null) && props.book.ageRatingManual)) {
-		return
-	}
-	savingAge.value = true
-	try {
-		await store.setAgeRating(props.book.fileId, option.id)
-	} catch {
-		showError(t('ebookreader', 'Could not save the age rating'))
-	} finally {
-		savingAge.value = false
-	}
-}
-
-/**
- * @param value
- */
-async function setLongstrip(value: boolean): Promise<void> {
-	savingLongstrip.value = true
-	try {
-		await store.setLongstrip(props.book.fileId, value)
-	} catch {
-		showError(t('ebookreader', 'Could not save the setting'))
-	} finally {
-		savingLongstrip.value = false
-	}
-}
-
-/**
- * Drops the long strip flag set in the app: the value recognised in the file applies again.
- */
-async function resetLongstrip(): Promise<void> {
-	savingLongstrip.value = true
-	try {
-		await store.resetLongstrip(props.book.fileId)
-	} catch {
-		showError(t('ebookreader', 'Could not read the value from the file'))
-	} finally {
-		savingLongstrip.value = false
-	}
-}
-
-/**
- * Drops the age rating set in the app: the value from the file applies again.
- */
-async function resetAge(): Promise<void> {
-	savingAge.value = true
-	try {
-		await store.resetAgeRating(props.book.fileId)
-	} catch {
-		showError(t('ebookreader', 'Could not read the value from the file'))
-	} finally {
-		savingAge.value = false
-	}
-}
-
-/**
- * @param option
- * @param option.id
- */
-async function setStatus(option: { id: ReadStatus } | null): Promise<void> {
-	if (!option) {
-		return
-	}
-	try {
-		await store.setReadStatus(props.book.fileId, option.id)
-	} catch {
-		showError(t('ebookreader', 'Could not save the reading status'))
-	}
 }
 </script>
 

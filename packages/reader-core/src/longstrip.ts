@@ -16,8 +16,8 @@ export interface LongstripPage {
 export interface LongstripOptions {
 	pages: LongstripPage[]
 	loadBlob: (index: number) => Promise<Blob> | null
-	/** current scroll position: page index and fraction inside that page */
-	onRelocate: (index: number, progression: number) => void
+	/** current scroll position: page index and fraction inside that page; atEnd: scrolled to the bottom */
+	onRelocate: (index: number, progression: number, atEnd: boolean) => void
 	onTap: (zone: 'left' | 'center' | 'right') => void
 }
 
@@ -79,6 +79,13 @@ export class LongstripView {
 		this.slots.forEach((s) => this.observer!.observe(s.el))
 		this.resizeObserver = new ResizeObserver(() => this.applyWidth())
 		this.resizeObserver.observe(this.root)
+	}
+
+	/** Whether the bottom of the last page is visible. */
+	atEnd(): boolean {
+		const r = this.root
+		// not laid out yet (hidden): no end
+		return this.slots.length > 0 && r.scrollHeight > 0 && r.scrollTop + r.clientHeight >= r.scrollHeight - 2
 	}
 
 	/** Index and in-page fraction of the page at the top of the viewport. */
@@ -305,7 +312,7 @@ export class LongstripView {
 			return
 		}
 		const { index, progression } = this.position()
-		this.opts.onRelocate(index, progression)
+		this.opts.onRelocate(index, progression, this.atEnd())
 	}
 
 	private onClick = (e: MouseEvent): void => {

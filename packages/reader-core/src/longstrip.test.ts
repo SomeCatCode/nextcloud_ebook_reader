@@ -113,7 +113,20 @@ describe('LongstripView', () => {
 		await view.goTo(3, 0.25)
 		expect(loadBlob).toHaveBeenCalledWith(3)
 		expect(view.root.scrollTop).toBe(3250)
-		expect(onRelocate).toHaveBeenLastCalledWith(3, 0.25)
+		expect(onRelocate).toHaveBeenLastCalledWith(3, 0.25, false)
+	})
+
+	it('is at the end only when the bottom of the last page is visible', () => {
+		const { view } = setup(3)
+		Object.defineProperty(view.root, 'scrollHeight', { configurable: true, value: 30000 })
+		Object.defineProperty(view.root, 'clientHeight', { configurable: true, value: 800 })
+		// the top of the last (tall) page is on screen: not the end yet
+		view.root.scrollTop = 20000
+		expect(view.atEnd()).toBe(false)
+		view.root.scrollTop = 29000
+		expect(view.atEnd()).toBe(false)
+		view.root.scrollTop = 29200
+		expect(view.atEnd()).toBe(true)
 	})
 
 	it('maps clicks to tap zones', () => {

@@ -224,7 +224,7 @@
 		{
 			"id": "Age rating",
 			"files": [
-				"src/components/library/BookDetails.vue",
+				"src/components/library/BookLibraryFields.vue",
 				"src/components/library/BulkEditDialog.vue",
 				"src/components/library/FilterBar.vue",
 				"src/views/LibraryView.vue"
@@ -738,7 +738,7 @@
 		{
 			"id": "Completion status",
 			"files": [
-				"src/components/library/BookDetails.vue",
+				"src/components/library/BookLibraryFields.vue",
 				"src/components/library/BulkEditDialog.vue",
 				"src/views/LibraryView.vue"
 			]
@@ -937,7 +937,8 @@
 		{
 			"id": "Could not read the value from the file",
 			"files": [
-				"src/components/library/BookDetails.vue"
+				"src/components/library/BookDetails.vue",
+				"src/components/library/BookLibraryFields.vue"
 			]
 		},
 		{
@@ -979,31 +980,31 @@
 		{
 			"id": "Could not save the age rating",
 			"files": [
-				"src/components/library/BookDetails.vue"
+				"src/components/library/BookLibraryFields.vue"
 			]
 		},
 		{
 			"id": "Could not save the completion status",
 			"files": [
-				"src/components/library/BookDetails.vue"
+				"src/components/library/BookLibraryFields.vue"
 			]
 		},
 		{
 			"id": "Could not save the rating",
 			"files": [
-				"src/components/library/BookDetails.vue"
+				"src/components/library/BookLibraryFields.vue"
 			]
 		},
 		{
 			"id": "Could not save the reading status",
 			"files": [
-				"src/components/library/BookDetails.vue"
+				"src/components/library/BookLibraryFields.vue"
 			]
 		},
 		{
 			"id": "Could not save the setting",
 			"files": [
-				"src/components/library/BookDetails.vue",
+				"src/components/library/BookLibraryFields.vue",
 				"src/views/ReaderView.vue"
 			]
 		},
@@ -1486,7 +1487,7 @@
 		{
 			"id": "Finished",
 			"files": [
-				"src/components/library/BookDetails.vue",
+				"src/components/library/BookLibraryFields.vue",
 				"src/components/library/FilterBar.vue",
 				"src/views/LibraryView.vue"
 			]
@@ -1568,7 +1569,7 @@
 		{
 			"id": "From the book file",
 			"files": [
-				"src/components/library/BookDetails.vue"
+				"src/components/library/BookLibraryFields.vue"
 			]
 		},
 		{
@@ -1903,6 +1904,7 @@
 		{
 			"id": "Library",
 			"files": [
+				"src/views/EditorView.vue",
 				"src/views/LibraryView.vue"
 			]
 		},
@@ -1952,7 +1954,7 @@
 		{
 			"id": "Long strip (scroll down instead of turning pages)",
 			"files": [
-				"src/components/library/BookDetails.vue"
+				"src/components/library/BookLibraryFields.vue"
 			]
 		},
 		{
@@ -2127,7 +2129,7 @@
 		{
 			"id": "No age rating",
 			"files": [
-				"src/components/library/BookDetails.vue",
+				"src/components/library/BookLibraryFields.vue",
 				"src/components/library/BulkEditDialog.vue",
 				"src/components/library/bookFlags.ts"
 			]
@@ -2672,7 +2674,7 @@
 		{
 			"id": "Rating",
 			"files": [
-				"src/components/library/BookDetails.vue",
+				"src/components/library/BookLibraryFields.vue",
 				"src/components/library/BookList.vue",
 				"src/components/library/StarRating.vue",
 				"src/views/LibraryView.vue"
@@ -2693,7 +2695,7 @@
 		{
 			"id": "Reading",
 			"files": [
-				"src/components/library/BookDetails.vue",
+				"src/components/library/BookLibraryFields.vue",
 				"src/components/library/FilterBar.vue"
 			]
 		},
@@ -2712,7 +2714,7 @@
 		{
 			"id": "Reading status",
 			"files": [
-				"src/components/library/BookDetails.vue"
+				"src/components/library/BookLibraryFields.vue"
 			]
 		},
 		{
@@ -2928,6 +2930,12 @@
 			]
 		},
 		{
+			"id": "Saved at once in the library, the book file stays unchanged.",
+			"files": [
+				"src/views/EditorView.vue"
+			]
+		},
+		{
 			"id": "Saved instantly in the library and written into the file shortly afterwards in one go.",
 			"files": [
 				"src/components/library/SettingsDialog.vue"
@@ -3093,7 +3101,7 @@
 		{
 			"id": "Set in the app",
 			"files": [
-				"src/components/library/BookDetails.vue"
+				"src/components/library/BookLibraryFields.vue"
 			]
 		},
 		{
@@ -3850,7 +3858,7 @@
 		{
 			"id": "Unread",
 			"files": [
-				"src/components/library/BookDetails.vue",
+				"src/components/library/BookLibraryFields.vue",
 				"src/components/library/FilterBar.vue",
 				"src/views/LibraryView.vue"
 			]
@@ -3937,7 +3945,8 @@
 		{
 			"id": "Use value from file",
 			"files": [
-				"src/components/library/BookDetails.vue"
+				"src/components/library/BookDetails.vue",
+				"src/components/library/BookLibraryFields.vue"
 			]
 		},
 		{

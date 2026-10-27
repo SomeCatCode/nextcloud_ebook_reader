@@ -40,8 +40,7 @@
 					</td>
 					<td class="book-list__title">
 						{{ bookTitle(book) }}
-						<span class="book-list__format">{{ book.format.toUpperCase() }}</span>
-						<span v-if="book.longstrip" class="book-list__format" :title="longstripTitle()">{{ longstripLabel() }}</span>
+						<span class="book-list__format" :title="book.longstrip ? longstripTitle() : undefined">{{ formatBadge(book) }}</span>
 						<span v-if="book.ageRating !== null && book.ageRating !== undefined" class="book-list__format" :title="ageTitle(book.ageRating)">{{ ageBadge(book.ageRating) }}</span>
 						<span v-if="book.completion" class="book-list__format">{{ completionLabel(book.completion) }}</span>
 						<ShareBadge
@@ -82,7 +81,7 @@ import NcProgressBar from '@nextcloud/vue/components/NcProgressBar'
 import BookCover from './BookCover.vue'
 import ShareBadge from './ShareBadge.vue'
 import StarRating from './StarRating.vue'
-import { ageBadge, ageTitle, completionLabel, longstripLabel, longstripTitle } from './bookFlags.ts'
+import { ageBadge, ageTitle, completionLabel, formatBadge, longstripTitle } from './bookFlags.ts'
 import { bookAuthors, bookTitle, formatDate, progressPercent } from './utils.ts'
 
 withDefaults(defineProps<{

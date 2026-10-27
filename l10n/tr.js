@@ -472,6 +472,7 @@ OC.L10N.register(
     "Save as smart shelf" : "Akıllı raf olarak kaydet",
     "Save as smart shelf…" : "Akıllı raf olarak kaydet…",
     "Save changes" : "Değişiklikleri kaydet",
+    "Saved at once in the library, the book file stays unchanged." : "Hemen kitaplığa kaydedilir, kitap dosyası değişmez.",
     "Saved instantly in the library and written into the file shortly afterwards in one go." : "Kütüphanede anında kaydedilir ve kısa süre sonra tek seferde dosyaya yazılır.",
     "Saved with warnings" : "Uyarılarla kaydedildi",
     "Saved – will be written into the file in the background" : "Kaydedildi – arka planda dosyaya yazılacak",

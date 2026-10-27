@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 import { describe, expect, it } from 'vitest'
-import { ageBadge, ageEntries, ageTermLabel, completionEntries, completionTermLabel, isAgeRating, layoutEntries, layoutTermLabel, normalizeAgeTerm, volumeLabel } from './bookFlags.ts'
+import { ageBadge, ageEntries, ageTermLabel, completionEntries, completionTermLabel, formatBadge, isAgeRating, layoutEntries, layoutTermLabel, normalizeAgeTerm, volumeLabel } from './bookFlags.ts'
 
 describe('age terms', () => {
 	it('normalises like the server', () => {
@@ -86,5 +86,11 @@ describe('long strip', () => {
 		expect(layoutEntries(undefined)).toEqual([])
 		expect(layoutEntries([{ name: 'longstrip', count: 4 }])).toEqual([{ name: 'longstrip', label: 'Long strip', count: 4 }])
 		expect(layoutTermLabel('longstrip')).toBe('Long strip')
+	})
+
+	it('marks a long strip comic in the format badge', () => {
+		expect(formatBadge({ format: 'cbz', longstrip: true })).toBe('CBZ-LS')
+		expect(formatBadge({ format: 'cbz', longstrip: false })).toBe('CBZ')
+		expect(formatBadge({ format: 'epub' } as never)).toBe('EPUB')
 	})
 })
