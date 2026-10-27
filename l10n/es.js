@@ -472,6 +472,7 @@ OC.L10N.register(
     "Save as smart shelf" : "Guardar como estantería inteligente",
     "Save as smart shelf…" : "Guardar como estantería inteligente…",
     "Save changes" : "Guardar cambios",
+    "Saved at once in the library, the book file stays unchanged." : "Se guarda al instante en la biblioteca; el archivo del libro no cambia.",
     "Saved instantly in the library and written into the file shortly afterwards in one go." : "Se guarda al instante en la biblioteca y poco después se escribe en el archivo de una sola vez.",
     "Saved with warnings" : "Guardado con advertencias",
     "Saved – will be written into the file in the background" : "Guardado: se escribirá en el archivo en segundo plano",

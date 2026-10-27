@@ -472,6 +472,7 @@ OC.L10N.register(
     "Save as smart shelf" : "スマート本棚として保存",
     "Save as smart shelf…" : "スマート本棚として保存…",
     "Save changes" : "変更を保存",
+    "Saved at once in the library, the book file stays unchanged." : "ライブラリにすぐ保存されます。本のファイルは変更されません。",
     "Saved instantly in the library and written into the file shortly afterwards in one go." : "ライブラリにすぐ保存され、少し後にまとめてファイルに書き込まれます。",
     "Saved with warnings" : "警告付きで保存しました",
     "Saved – will be written into the file in the background" : "保存しました – バックグラウンドでファイルに書き込まれます",

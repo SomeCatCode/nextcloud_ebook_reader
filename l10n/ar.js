@@ -472,6 +472,7 @@ OC.L10N.register(
     "Save as smart shelf" : "الحفظ كرف ذكي",
     "Save as smart shelf…" : "الحفظ كرف ذكي…",
     "Save changes" : "حفظ التغييرات",
+    "Saved at once in the library, the book file stays unchanged." : "يُحفظ فورًا في المكتبة، ويبقى ملف الكتاب دون تغيير.",
     "Saved instantly in the library and written into the file shortly afterwards in one go." : "يُحفظ فورًا في المكتبة ويُكتب في الملف بعد قليل دفعة واحدة.",
     "Saved with warnings" : "تم الحفظ مع تحذيرات",
     "Saved – will be written into the file in the background" : "تم الحفظ – سيُكتب في الملف في الخلفية",

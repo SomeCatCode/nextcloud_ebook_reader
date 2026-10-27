@@ -1001,6 +1001,22 @@ export const useLibraryStore = defineStore('library', () => {
 	 */
 	function findLoaded(fileId: number): Book | undefined {
 		return [...books.value, ...recent.value, ...upNext.value.map((u) => u.book)].find((b) => b.fileId === fileId)
+			?? (detachedBook.value?.fileId === fileId ? detachedBook.value : undefined)
+	}
+
+	/**
+	 * Makes a book loaded outside the lists (editor opened directly) known to the store, so app data changes
+	 * (rating, status, …) apply to it. Returns the copy the store keeps up to date.
+	 *
+	 * @param book
+	 */
+	function adoptBook(book: Book): Book {
+		const known = findLoaded(book.fileId)
+		if (known) {
+			return known
+		}
+		detachedBook.value = book
+		return book
 	}
 
 	/**
@@ -1350,6 +1366,8 @@ export const useLibraryStore = defineStore('library', () => {
 		selectedIds,
 		activeBook,
 		openBook,
+		adoptBook,
+		findLoaded,
 		reload,
 		loadMore,
 		loadFacets,
