@@ -42,6 +42,7 @@ import type {
 	ShelfType,
 	SmartQuery,
 	Structure,
+	Suggestions,
 	SyncResult,
 	Task,
 	TaskStarted,
@@ -382,6 +383,16 @@ export function recentBooks(limit = 10): Promise<RecentResult> {
  */
 export async function nextVolume(fileId: number): Promise<Book | null> {
 	return (await request<{ book: Book | null }>('get', `/books/${fileId}/next`)).book
+}
+
+/**
+ * Read-next suggestions after a book: the next volume and similar unread titles.
+ *
+ * @param fileId
+ * @param limit maximum number of similar titles (1..10)
+ */
+export function getSuggestions(fileId: number, limit = 4): Promise<Suggestions> {
+	return request<Suggestions>('get', `/books/${fileId}/suggestions`, { params: { limit } })
 }
 
 /**

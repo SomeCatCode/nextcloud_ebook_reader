@@ -138,6 +138,11 @@ namespace OCA\EbookReader;
  *     total: int,
  * }
  *
+ * @psalm-type EbookReaderSuggestions = array{
+ *     next: ?EbookReaderBook,
+ *     similar: list<EbookReaderBook>,
+ * }
+ *
  * @psalm-type EbookReaderSmartQuery = array{
  *     include: list<string>,
  *     exclude: list<string>,

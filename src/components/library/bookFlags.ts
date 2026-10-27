@@ -194,16 +194,3 @@ export function volumeLabel(book: Pick<Book, 'seriesIndex'>, title: string): str
 		? t('ebookreader', 'Volume {index}: {title}', { index: String(book.seriesIndex), title })
 		: title
 }
-
-/** Progress from which the reader offers the next volume (same threshold as the server's "finished"). */
-export const NEXT_VOLUME_THRESHOLD = 0.98
-
-/**
- * Whether the reader should offer the next volume: at the end of a book that belongs to a series.
- *
- * @param book
- * @param percentage current reading position 0..1
- */
-export function offersNextVolume(book: Pick<Book, 'series'> | null, percentage: number): boolean {
-	return !!book?.series && percentage >= NEXT_VOLUME_THRESHOLD
-}

@@ -444,9 +444,12 @@ export const useLibraryStore = defineStore('library', () => {
 	const selectedIds = computed(() => [...selection.value])
 	/** selected ids in the order of the loaded list (selected books that are not loaded go last) */
 	const orderedSelectedIds = computed(() => orderSelection(books.value.map((b) => b.fileId), selectedIds.value))
+	/** a book opened from outside the loaded lists (a suggested title) */
+	const detachedBook = ref<Book | null>(null)
 	const activeBook = computed(() => books.value.find((b) => b.fileId === activeFileId.value)
 		?? recent.value.find((b) => b.fileId === activeFileId.value)
 		?? upNext.value.find((u) => u.book.fileId === activeFileId.value)?.book
+		?? (detachedBook.value?.fileId === activeFileId.value ? detachedBook.value : null)
 		?? null)
 
 	/**
@@ -986,6 +989,9 @@ export const useLibraryStore = defineStore('library', () => {
 		books.value = books.value.map((b) => (b.fileId === book.fileId ? book : b))
 		recent.value = recent.value.map((b) => (b.fileId === book.fileId ? book : b))
 		upNext.value = upNext.value.map((u) => (u.book.fileId === book.fileId ? { ...u, book } : u))
+		if (detachedBook.value?.fileId === book.fileId) {
+			detachedBook.value = book
+		}
 	}
 
 	/**
@@ -1264,6 +1270,16 @@ export const useLibraryStore = defineStore('library', () => {
 	}
 
 	/**
+	 * Shows the details of a book that may not be part of the loaded lists (a suggested title).
+	 *
+	 * @param book
+	 */
+	function openBook(book: Book): void {
+		detachedBook.value = book
+		activeFileId.value = book.fileId
+	}
+
+	/**
 	 * Removes deleted books from the loaded lists, the selection and the details sidebar,
 	 * then refreshes the facet counts.
 	 *
@@ -1333,6 +1349,7 @@ export const useLibraryStore = defineStore('library', () => {
 		urlQuery,
 		selectedIds,
 		activeBook,
+		openBook,
 		reload,
 		loadMore,
 		loadFacets,

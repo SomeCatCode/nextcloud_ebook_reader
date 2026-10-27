@@ -28,3 +28,29 @@ A long strip comic (webtoon) is one tall vertical strip split into images. Clien
 **Progress:** the locator of a long strip uses `href` = page entry name, `locations.position` = page number (1-based) and, unlike paged comics, `locations.progression` = scroll position inside that page (0..1), so a position inside a tall page is restored. `totalProgression` = (page index + progression) / page count. Paged clients can ignore `progression`.
 
 **Conversion** carries a manual long strip flag to the new book.
+
+## Round 7: read-next suggestions
+
+`GET /ocs/v2.php/apps/ebookreader/api/v1/books/{fileId}/suggestions?limit=4` (OCS, like every endpoint). Capability feature `suggestions` in `ebookreader.features` (server 0.12.0 planned). `limit` 1..10, default 4; other values are clamped. Unknown `fileId` → 404.
+
+Response `data`: `{ "next": Book|null, "similar": Book[] }`. `Book` is the normal serialized book including `progress`, like `GET /books/{fileId}/next`.
+
+**`next`:** the next volume in reading order after the book (same rules as `GET /books/{fileId}/next` / `LibraryService::nextVolume`). `null` for the last volume, for books without a series and when that volume is already `finished`.
+
+**`similar`:** up to `limit` books, best first.
+- Candidates: books with `readStatus = unread` (other users' shared books count as the user's books), never the book itself, never a book of the same series (series compared case-insensitive and trimmed).
+- At most one book per other series: the first unread volume of that series in reading order. The series ranks by its best scored volume. Books without a series count one by one.
+- Score of a candidate:
+
+| Rule | Points |
+|---|---|
+| per shared author (case-insensitive) | +3 |
+| per shared genre (case-insensitive name) | +2 |
+| per shared tag (case-insensitive name) | +1 |
+| same primary language (`en-US` and `en_GB` are both `en`) | +1 |
+| same format family (comic: cbz/cbr/cb7/cbt; otherwise ebook) | +1 |
+
+- Only score > 0 qualifies. Ties: more recently added (`addedAt`) first, then title (case-insensitive), then id.
+- The server scores in one SQL query (limited to the 300 best rows before the one-per-series reduction), so large libraries stay cheap. Only the first 12 authors, 12 genres and 12 tags of the source book count.
+
+**Android app (Room):** same algorithm locally. Show it when a book becomes finished (end reached or status `finished`) and in the details of finished books. Gate server calls on the feature `suggestions` (or server version >= 0.12.0). Offline and for local libraries compute it from Room.
