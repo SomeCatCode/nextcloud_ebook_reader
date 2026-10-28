@@ -41,7 +41,7 @@ class CbzExtractor implements ExtractorInterface {
 		}
 		usort($images, static fn (string $a, string $b): int => strnatcasecmp($a, $b));
 
-		$parsed = ComicInfoParser::parse($comicInfo === null ? null : $zip->read($comicInfo));
+		$parsed = ComicInfoParser::parse($comicInfo === null ? null : $zip->read($comicInfo, 5 * 1024 * 1024));
 
 		[$coverData, $coverMime] = ComicInfoParser::chooseCover(
 			static fn (int $i): ?string => isset($images[$i]) ? $zip->read($images[$i]) : null,

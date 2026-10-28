@@ -199,6 +199,7 @@ The feeds are validated against the OPDS specification; they should work with KO
 |---|---|---|
 | `max_edit_size_mb` | `500` | maximum file size for the editor |
 | `archive_cache_mb` | `2048` | local cache for books on WebDAV, SMB or S3 storage and with server-side encryption |
+| `comic_cache_mb` | `2048` | cache of scaled comic pages in app data; the oldest pages are removed above this size |
 | `opds_enabled` | `true` | OPDS catalog allowed on this server (each user still enables it) |
 | `async_inline` | `true` | run saves and conversions right after the response in the same PHP process (PHP-FPM); `false` leaves them to the background job |
 
@@ -212,7 +213,7 @@ sudo -u www-data php occ config:app:set ebookreader archive_cache_mb --value=409
 
 - **Your books** stay where they are; the app never moves or copies them on its own. Sidecar files (`.<book file>.opf`) are created next to books when metadata is edited.
 - **Database tables** (prefix `ebookreader_`): `books`, `tags`, `progress`, `annotations`, `shelves`, `shelf_books`, `tasks`. Everything is per user and removed when a user is deleted.
-- **App data:** cached scaled comic pages (`comic-pages`), regenerated on demand.
+- **App data:** cached scaled comic pages (`comic-pages`, bounded by `comic_cache_mb`), regenerated on demand.
 - **Temporary directory:** a bounded archive cache (`archive_cache_mb`) for books on external or encrypted storage.
 
 Back up your books and the Nextcloud database as usual; caches can be deleted at any time.

@@ -12,6 +12,7 @@ namespace OCA\EbookReader\Tests\Unit\Controller;
 use OCA\EbookReader\Controller\ComicController;
 use OCA\EbookReader\Service\ArchiveCache;
 use OCA\EbookReader\Service\ArchiveTools;
+use OCA\EbookReader\Service\ComicPageCache;
 use OCA\EbookReader\Service\LibraryService;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\DataDisplayResponse;
@@ -50,13 +51,15 @@ class ComicControllerTest extends TestCase {
 		}
 	}
 
-	private function controller(?ArchiveTools $tools = null): ComicController {
+	private function controller(?ArchiveTools $tools = null, ?ICache $cache = null): ComicController {
 		$user = $this->createMock(IUser::class);
 		$user->method('getUID')->willReturn('u');
 		$session = $this->createMock(IUserSession::class);
 		$session->method('getUser')->willReturn($user);
-		$cache = $this->createMock(ICache::class);
-		$cache->method('get')->willReturn(null);
+		if ($cache === null) {
+			$cache = $this->createMock(ICache::class);
+			$cache->method('get')->willReturn(null);
+		}
 		$cacheFactory = $this->createMock(ICacheFactory::class);
 		$cacheFactory->method('createDistributed')->willReturn($cache);
 		$appData = $this->createMock(IAppData::class);
@@ -64,7 +67,8 @@ class ComicControllerTest extends TestCase {
 		$request = $this->createMock(IRequest::class);
 		$request->method('getHeader')->willReturn('');
 		return new ComicController($request, $session, $this->library, new ArchiveCache($this->createMock(ITempManager::class), $this->createMock(IAppConfig::class), $this->createMock(LoggerInterface::class)),
-			$appData, $cacheFactory, $this->createMock(LoggerInterface::class), $tools ?? new ArchiveTools([]));
+			new ComicPageCache($appData, $cacheFactory, $this->createMock(IAppConfig::class), $this->createMock(LoggerInterface::class)),
+			$cacheFactory, $this->createMock(LoggerInterface::class), $tools ?? new ArchiveTools([]));
 	}
 
 	private function fileFor(string $localPath, string $name): File&MockObject {
@@ -153,6 +157,39 @@ class ComicControllerTest extends TestCase {
 		}
 	}
 
+	public function testPageThatIsNotScaledIsCachedOnceAsWidthZero(): void {
+		$this->library->method('getFileForUser')->willReturn($this->fileFor($this->makeCbz(), 'c.cbz'));
+		$names = [];
+		$this->cacheFolder->method('newFile')->willReturnCallback(function (string $name) use (&$names) {
+			$names[] = $name;
+			return $this->createMock(\OCP\Files\SimpleFS\ISimpleFile::class);
+		});
+		$this->controller()->page(42, 0, 1600);
+		// the 10 px page is smaller than the bucket: no copy per width bucket
+		$this->assertCount(1, $names);
+		$this->assertMatchesRegularExpression('/-0-0\.png$/', $names[0]);
+	}
+
+	public function testUnreadablePageListIsRememberedSoTheArchiveIsNotOpenedAgain(): void {
+		$broken = tempnam(sys_get_temp_dir(), 'ebr');
+		$this->tmpFiles[] = $broken;
+		file_put_contents($broken, 'not a zip');
+		$this->library->method('getFileForUser')->willReturn($this->fileFor($broken, 'c.cbz'));
+		$store = [];
+		$cache = $this->createMock(ICache::class);
+		$cache->method('get')->willReturnCallback(function (string $key) use (&$store) {
+			return $store[$key] ?? null;
+		});
+		$cache->method('set')->willReturnCallback(function (string $key, mixed $value) use (&$store): bool {
+			$store[$key] = $value;
+			return true;
+		});
+		$controller = $this->controller(null, $cache);
+		$this->assertSame(Http::STATUS_UNPROCESSABLE_ENTITY, $controller->pages(42)->getStatus());
+		$this->assertSame(['failed'], array_values($store));
+		$this->assertSame(Http::STATUS_UNPROCESSABLE_ENTITY, $controller->pages(42)->getStatus());
+	}
+
 	public function testUnknownPageAndNonComicAre404(): void {
 		$this->library->method('getFileForUser')->willReturnOnConsecutiveCalls(
 			$this->fileFor($this->makeCbz(), 'c.cbz'),
@@ -184,13 +221,13 @@ class ComicControllerTest extends TestCase {
 		$user = $this->createMock(IUser::class);
 		$session = $this->createMock(IUserSession::class);
 		$session->method('getUser')->willReturn($user);
-		$controller = new class($this->createMock(IRequest::class), $session, $this->library, new ArchiveCache($this->createMock(ITempManager::class), $this->createMock(IAppConfig::class), $this->createMock(LoggerInterface::class)), $this->createMock(IAppData::class), $this->createMock(ICacheFactory::class), $this->createMock(LoggerInterface::class), new ArchiveTools([]), $decodeCalls) extends ComicController {
+		$controller = new class($this->createMock(IRequest::class), $session, $this->library, new ArchiveCache($this->createMock(ITempManager::class), $this->createMock(IAppConfig::class), $this->createMock(LoggerInterface::class)), $this->createMock(ComicPageCache::class), $this->createMock(ICacheFactory::class), $this->createMock(LoggerInterface::class), new ArchiveTools([]), $decodeCalls) extends ComicController {
 			public function __construct(
 				IRequest $r,
 				IUserSession $s,
 				LibraryService $l,
 				ArchiveCache $t,
-				IAppData $a,
+				ComicPageCache $a,
 				ICacheFactory $c,
 				LoggerInterface $lg,
 				ArchiveTools $at,

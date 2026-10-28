@@ -8,6 +8,7 @@
  */
 import type { ReaderFormat, ReaderLayout, ReaderOptions, ReaderSource, RemoteComicSource, RemoteZipSource } from './types.ts'
 
+import { checkEntryCount, collectLimited, MAX_ENTRY_SIZE, tooLarge } from './archive-limits.ts'
 import { makeArchiveLoader } from './comic-rar.ts'
 import { makeRemoteZipLoader } from './remote-zip.ts'
 
@@ -26,15 +27,27 @@ interface ZipLoader {
  */
 async function makeZipLoader(file: Blob): Promise<ZipLoader> {
 	const zip = await import('../vendor/foliate-js/vendor/zip.js')
-	const { configure, ZipReader, BlobReader, TextWriter, BlobWriter } = zip
+	const { configure, ZipReader, BlobReader } = zip
 	configure({ useWebWorkers: false })
 	const reader = new ZipReader(new BlobReader(file))
 	const entries = await reader.getEntries() as { filename: string, uncompressedSize?: number, getData: (w: unknown) => Promise<unknown> }[]
+	checkEntryCount(entries.length)
 	const map = new Map(entries.map((e) => [e.filename, e]))
+	// zip.js writes into any object with a `writable` stream; the output is counted, so a deflate bomb stops early
+	const load = (name: string, type?: string): Promise<Blob> | null => {
+		const entry = map.get(name)
+		if (!entry) {
+			return null
+		}
+		if ((entry.uncompressedSize ?? 0) > MAX_ENTRY_SIZE) {
+			return Promise.reject(tooLarge(name))
+		}
+		return collectLimited((writable) => entry.getData({ writable }), name, type)
+	}
 	return {
 		entries,
-		loadText: (name) => map.has(name) ? map.get(name)!.getData(new TextWriter()) as Promise<string> : null,
-		loadBlob: (name, type) => map.has(name) ? map.get(name)!.getData(new BlobWriter(type)) as Promise<Blob> : null,
+		loadText: (name) => load(name)?.then((b) => b.text()) ?? null,
+		loadBlob: load,
 		getSize: (name) => map.get(name)?.uncompressedSize ?? 0,
 	}
 }

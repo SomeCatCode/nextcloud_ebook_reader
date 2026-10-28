@@ -300,12 +300,13 @@ class LibraryServiceTest extends TestCase {
 		$this->service->resetOverrides('u', 5, 'rating');
 	}
 
-	public function testRemoveFileCreatesTombstoneAndDropsTags(): void {
+	public function testRemoveFileCreatesTombstoneAndKeepsTags(): void {
 		$existing = new Book();
 		$existing->setId(9);
 		$this->books->method('findByUserAndFile')->willReturn($existing);
 		$this->books->method('countActiveByFileId')->willReturn(0);
-		$this->tags->expects($this->once())->method('deleteByBook')->with(9);
+		// manual tags must survive a trash restore or a move out and back; the purge job deletes them with the row
+		$this->tags->expects($this->never())->method('deleteByBook');
 		$this->covers->expects($this->once())->method('deleteCover')->with(5);
 		$this->books->expects($this->once())->method('update')->willReturnArgument(0);
 		$this->service->removeFile('u', 5);

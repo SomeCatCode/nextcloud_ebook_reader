@@ -112,7 +112,7 @@ class LibraryService {
 		}
 		// a book shared through the app shows the metadata of the sharing user's library (their sidecar and app edits
 		// are not visible to the recipient otherwise)
-		$meta = $this->applySharedMetadata($userId, $fileId, $meta);
+		$meta = $this->applySharedMetadata($userId, $fileId, $meta)->limited();
 		$now = self::nowMs();
 
 		// metadata edits waiting to be written into the file (WriteMetadataJob) must not be overwritten by the old file content
@@ -696,7 +696,8 @@ class LibraryService {
 		$book->setDeletedAt($now);
 		$book->setUpdatedAt($now);
 		$this->bookMapper->update($book);
-		$this->tagMapper->deleteByBook($book->getId());
+		// the tags stay with the tombstone: the row comes back with them when the file shows up again (trash restore,
+		// moved back, share added again); CleanupTombstonesJob deletes them together with the row
 		if ($this->bookMapper->countActiveByFileId($fileId) === 0) {
 			$this->covers->deleteCover($fileId);
 		}

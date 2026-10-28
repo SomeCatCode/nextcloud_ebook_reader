@@ -4,14 +4,15 @@
  */
 
 /**
- * Lazy loader for the libarchive.js worker (CBR). Source and wasm are bundled by Vite as
- * assets; reader-core starts the worker from a blob: URL (needs `worker-src blob:` and
+ * Lazy loader for the libarchive.js worker (CBR). Worker and wasm are our own build with a current
+ * libarchive (packages/libarchive/README.md); the main thread API stays the npm package. Source and
+ * wasm are bundled by Vite as assets; reader-core starts the worker from a blob: URL (needs `worker-src blob:` and
  * `'wasm-unsafe-eval'`, see lib/Listener/CspListener.php).
  */
 export async function loadLibarchive(): Promise<{ workerSource: string, wasmUrl: string }> {
 	const [worker, wasm] = await Promise.all([
-		import('libarchive.js/dist/worker-bundle.js?raw'),
-		import('libarchive.js/dist/libarchive.wasm?url'),
+		import('../../../packages/libarchive/dist/worker-bundle.js?raw'),
+		import('../../../packages/libarchive/dist/libarchive.wasm?url'),
 	])
 	return { workerSource: worker.default, wasmUrl: wasm.default }
 }

@@ -22,6 +22,15 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 ### Behoben
 - `GET /series`: `coverFileIds` und `firstFileId` ordneten Titel ohne Bandnummer nicht natürlich.
 - Hilfetext für das Dateinamen-Muster nannte den ungültigen Platzhalter `{index}`; richtig ist `{series_index}`.
+- **Eigene Tags und Genres gehen nicht mehr verloren,** wenn ein Buch kurz aus der Bibliothek verschwindet (Papierkorb und Wiederherstellen, Verschieben und Zurückschieben, Freigabe neu, Ordner kurz nicht erreichbar). Die Tags bleiben am gelöschten Eintrag und kommen mit dem Buch zurück. Der tägliche Aufräum-Job löscht sie erst zusammen mit dem Eintrag nach 30 Tagen.
+
+### Sicherheit
+- **Reader: Skripte in präparierten Büchern.** Der Reader setzt die Content-Security-Policy jetzt in einen eigenen `<head>`, der das erste Element jedes Kapitels ist. Bisher ließ sich die Regel umgehen: mit einem `<head>` nach dem `<body>`, einem `<head>` in einem fremden Namespace oder einem Skript vor dem `<head>`. Zusätzlich entfernt der Reader aus jedem Kapitel Skripte, `on*`-Attribute, `javascript:`-Links, `<meta http-equiv>` (z. B. Refresh), `<base>`, Frames, Plugins, `<?xml-stylesheet?>` und SVG-Animationen, die Links ändern.
+- **Reader: iframe-Attribut `csp`.** Die Kapitel-iframes tragen dieselbe Regel als Attribut `csp`. Chromium und die Android-WebView setzen sie unabhängig vom Inhalt des Kapitels durch. `docs/SECURITY-READER.md` beschreibt jetzt richtig, dass die Sandbox mit `allow-same-origin` keine Isolation bietet.
+- **Reader: Entpacken im Browser begrenzt.** Höchstens 100 000 Einträge und 256 MB pro Eintrag. Bei ZIP (EPUB, CBZ) zählt der Reader die entpackten Bytes; eine ZIP-Bombe bricht an der Grenze ab. Bei CBR/CB7/CBT prüft der Reader die angegebene und die tatsächliche Größe.
+- **libarchive im Browser aktualisiert:** Die WASM-Datei für CBR/CB7/CBT im Browser enthält jetzt libarchive 3.8.10 statt 3.7.2 (behobene Fehler im RAR-, 7z- und TAR-Parser). Sie ist selbst gebaut, ohne OpenSSL; Bauanleitung in `packages/libarchive/README.md`.
+- **Comic-Seiten-Cache begrenzt:** Der Cache der skalierten Comic-Seiten in den App-Daten zählt zu keinem Kontingent. Er hat jetzt eine Obergrenze (App-Einstellung `comic_cache_mb`, Standard 2048). Darüber entfernt der Server die ältesten Seiten. Eine Seite, die nicht verkleinert werden muss, liegt nur noch einmal im Cache statt einmal pro Breitenstufe. `GET /comic/{fileId}/pages` hat ein Limit (120 Aufrufe pro Minute und Benutzer). Eine nicht lesbare Seitenliste merkt sich der Server 10 Minuten, statt 7z oder unrar bei jedem Aufruf neu zu starten.
+- **Grenzen für Metadaten:** Beschreibungen haben höchstens 64 KB (längere werden als gekürzter Text gespeichert, gelesen werden höchstens 256 KB). Autoren, Genres, Tags und Schlagwörter sind auf je 100 Einträge begrenzt, Namen auf 255 Zeichen. Das OPF-Paketdokument eines EPUB darf höchstens 4 MB groß sein, `container.xml` 64 KB, `ComicInfo.xml` in CBZ 5 MB. Ein präpariertes Buch kann so den PHP-Speicher nicht mehr sprengen.
 
 ## 0.11.1 – 2026-10-13
 

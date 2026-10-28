@@ -14,28 +14,26 @@ use OCA\EbookReader\Db\AnnotationMapper;
 use OCA\EbookReader\Db\BookMapper;
 use OCA\EbookReader\Db\ShelfBookMapper;
 use OCA\EbookReader\Db\ShelfMapper;
+use OCA\EbookReader\Db\TagMapper;
 use OCA\EbookReader\Service\ArchiveCache;
+use OCA\EbookReader\Service\ComicPageCache;
 use OCA\EbookReader\Service\TaskService;
 use OCP\AppFramework\Utility\ITimeFactory;
-use OCP\Files\IAppData;
 use OCP\Files\IRootFolder;
 use OCP\Files\Node;
-use OCP\Files\NotFoundException;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 
 require_once __DIR__ . '/../Service/OcHooksEmitterStub.php';
 
 class CleanupTombstonesShelvesTest extends TestCase {
-	private function job(BookMapper $books, ShelfMapper $shelves, ShelfBookMapper $shelfBooks, ?AnnotationMapper $annotations = null, ?IRootFolder $root = null): CleanupTombstonesJob {
+	private function job(BookMapper $books, ShelfMapper $shelves, ShelfBookMapper $shelfBooks, ?AnnotationMapper $annotations = null, ?IRootFolder $root = null, ?TagMapper $tags = null): CleanupTombstonesJob {
 		$time = $this->createMock(ITimeFactory::class);
 		$time->method('getTime')->willReturn(1800000000);
-		$appData = $this->createMock(IAppData::class);
-		$appData->method('getFolder')->willThrowException(new NotFoundException());
 		return new CleanupTombstonesJob(
 			$time,
 			$books,
-			$appData,
+			$this->createMock(ComicPageCache::class),
 			$this->createMock(LoggerInterface::class),
 			$this->createMock(TaskService::class),
 			$this->createMock(ArchiveCache::class),
@@ -43,6 +41,7 @@ class CleanupTombstonesShelvesTest extends TestCase {
 			$shelfBooks,
 			$annotations ?? $this->createMock(AnnotationMapper::class),
 			$root ?? $this->rootWithFiles([]),
+			$tags ?? $this->createMock(TagMapper::class),
 		);
 	}
 
@@ -78,6 +77,27 @@ class CleanupTombstonesShelvesTest extends TestCase {
 		// each user only touches their own shelves
 		$this->assertSame([[[1, 2], [100, 101]], [[7], [100]]], $calls);
 		$this->assertSame(['assignments', 'assignments', 'rows'], $order);
+	}
+
+	public function testTagsOfPurgedTombstonesAreDeletedBeforeTheRows(): void {
+		$order = [];
+		$books = $this->createMock(BookMapper::class);
+		$books->method('findTombstonesOlderThan')->willReturn([
+			['id' => 10, 'user_id' => 'a', 'file_id' => 100],
+			['id' => 12, 'user_id' => 'b', 'file_id' => 100],
+		]);
+		$books->method('deleteTombstonesOlderThan')->willReturnCallback(function () use (&$order): int {
+			$order[] = 'rows';
+			return 2;
+		});
+		$tags = $this->createMock(TagMapper::class);
+		$tags->expects($this->once())->method('deleteByBooks')->with([10, 12])->willReturnCallback(function () use (&$order): void {
+			$order[] = 'tags';
+		});
+
+		$this->runJob($this->job($books, $this->createMock(ShelfMapper::class), $this->createMock(ShelfBookMapper::class), null, null, $tags));
+
+		$this->assertSame(['tags', 'rows'], $order);
 	}
 
 	public function testAnnotationsOfPurgedBooksAndOldAnnotationTombstonesAreRemoved(): void {

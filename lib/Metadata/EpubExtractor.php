@@ -12,6 +12,9 @@ namespace OCA\EbookReader\Metadata;
 /** EPUB 2 and 3: container.xml -> OPF. */
 class EpubExtractor implements ExtractorInterface {
 	private const MAX_REGEX_INPUT = 2 * 1024 * 1024;
+	/** The package document is parsed as DOM: real ones are a few hundred KB even for large books */
+	private const MAX_OPF = 4 * 1024 * 1024;
+	private const MAX_CONTAINER = 64 * 1024;
 
 	#[\Override]
 	public function supports(string $format): bool {
@@ -30,7 +33,7 @@ class EpubExtractor implements ExtractorInterface {
 
 	private function read(SafeZip $zip): BookMetadata {
 		$opfPath = $this->findOpfPath($zip);
-		$opf = $opfPath === null ? null : XmlUtil::load($zip->read($opfPath) ?? '');
+		$opf = $opfPath === null ? null : XmlUtil::load($zip->read($opfPath, self::MAX_OPF) ?? '');
 		if ($opfPath === null || $opf === null) {
 			throw new UnsafeArchiveException('EPUB has no readable OPF package document');
 		}
@@ -82,7 +85,7 @@ class EpubExtractor implements ExtractorInterface {
 	}
 
 	private function findOpfPath(SafeZip $zip): ?string {
-		$container = XmlUtil::load($zip->read('META-INF/container.xml') ?? '');
+		$container = XmlUtil::load($zip->read('META-INF/container.xml', self::MAX_CONTAINER) ?? '');
 		if ($container !== null) {
 			$xp = new \DOMXPath($container);
 			$nodes = $xp->query("//*[local-name()='rootfile']/@full-path");
