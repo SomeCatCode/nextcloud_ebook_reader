@@ -42,6 +42,28 @@ final class BookMetadata {
 	) {
 	}
 
+	/** At most this many authors, genres, tags and subjects are kept (a crafted book could list thousands) */
+	public const MAX_LIST = 100;
+	/** Longer author names and subjects are cut */
+	public const MAX_NAME = 255;
+
+	/**
+	 * Copy within the limits of the database: lists and names shortened, description at most HtmlSanitizer::MAX_OUTPUT.
+	 */
+	public function limited(): self {
+		$list = static fn (array $names): array => array_values(array_map(
+			static fn (string $n): string => mb_substr($n, 0, self::MAX_NAME),
+			array_slice($names, 0, self::MAX_LIST),
+		));
+		return $this->with([
+			'authors' => $list($this->authors),
+			'genres' => $list($this->genres),
+			'tags' => $list($this->tags),
+			'subjects' => $list($this->subjects),
+			'description' => $this->description !== null ? HtmlSanitizer::limit($this->description) : null,
+		]);
+	}
+
 	/**
 	 * Returns a copy with the given properties replaced (named property => new value).
 	 * @param array<string, mixed> $changes

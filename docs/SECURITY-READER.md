@@ -16,14 +16,24 @@
 1. **Sandbox `allow-same-origin allow-scripts`** (changed in 0.1.3). The first version used `sandbox="allow-same-origin"` only.
    In practice Chromium then refuses to run *foliate's own* event listeners registered inside the section documents
    ("Blocked script execution in 'blob:...' because the document's frame is sandboxed"), which broke navigation and comic
-   rendering - not just in WebKit as upstream's comment suggests. Book scripts are therefore blocked by the layers below instead
-   of the sandbox: section CSP meta (3), inherited Nextcloud page CSP (no inline and no `blob:` scripts), SVG sanitizing (3)
-   and not loading EPUB script resources (2). `sandboxScripts: false` restores the strict sandbox. No `allow-popups`,
-   `allow-top-navigation`, `allow-forms`.
+   rendering - not just in WebKit as upstream's comment suggests. With `allow-same-origin` the sandbox therefore gives **no
+   isolation** against a script that does run: book scripts are blocked by the layers below instead of the sandbox: iframe `csp`
+   attribute (1a), section CSP meta and DOM cleaning (3), inherited Nextcloud page CSP (no inline and no `blob:` scripts) and not
+   loading EPUB script resources (2). `sandboxScripts: false` restores the strict sandbox. No `allow-popups`, `allow-top-navigation`,
+   `allow-forms`.
+1a. **iframe `csp` attribute** (CSP Embedded Enforcement, 0.12.0): both foliate iframes (patched `paginator.js` and `fixed-layout.js`,
+   value from `globalThis.__EBOOKREADER_CSP`) carry the section policy as `csp` attribute. Chromium (and the Android WebView) enforces it
+   on the `blob:` document regardless of what the document contains; tested: the document loads, inline styles and foliate's listeners
+   work, inline scripts and `onerror` handlers are blocked. Firefox and Safari ignore the attribute; there layer 3 applies.
 2. **EPUB script resources are not loaded** (`book.transformTarget` `load` event: `allow = false` for script items).
 3. **Per-section CSP meta** (`packages/reader-core/src/secure-sections.ts`): every HTML/XHTML section is re-serialised through
    `DOMParser` and gets `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src blob: data:; media-src blob: data:; style-src blob: 'unsafe-inline'; font-src blob: data:; script-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'">`
-   as first child of `<head>`. This blocks remote resource loading (tracking pixels, remote fonts/images = privacy) and script execution even if
+   as first child of an XHTML `<head>` that is the **first element** of the document: an existing head is only used when it is the first
+   element and in the XHTML namespace, otherwise a new head is put in front (a head after the body, a head of another namespace or a
+   script before the head do not get past the policy; 0.12.0). The document is also cleaned on the parsed DOM: scripts, `on*` handlers,
+   `javascript:`/`vbscript:`/`data:text/html` URLs (href, src, action, formaction, data, srcdoc), `<meta http-equiv>` (refresh), `<base>`,
+   frames, plugins, processing instructions (`<?xml-stylesheet?>`) and SVG `<set>`/`<animate*>` that change links or handlers.
+   This blocks remote resource loading (tracking pixels, remote fonts/images = privacy) and script execution even if
    an iframe were ever granted `allow-scripts`. The parser-based insertion cannot be bypassed by a fake `<head>` in a comment (covered by unit tests).
    Applied by wrapping each `section.load()` (works for EPUB, MOBI, FB2, CBZ/CBR alike). SVG top-level sections cannot carry a CSP meta;
    they are sanitized instead (sanitizeSvg: scripts, foreignObject, on* handlers and javascript:/data:text/html links removed, unit-tested).
@@ -45,6 +55,9 @@
   tap/keyboard forwarding and touch swipes. reader-core option `sandboxScripts: true` restores upstream behaviour; the CSP meta then remains as the only script barrier
   (SVG sections unprotected). Off by default; untested on Safari here.
 - `style-src 'unsafe-inline'` is needed for foliate's injected styles; CSS in books can not load remote resources (default-src none).
+- Archives unpacked in the browser (`packages/reader-core/src/archive-limits.ts`): at most 100 000 entries and 256 MB per entry. zip.js
+  output is counted while it is inflated (a deflate bomb stops at the limit); libarchive entries are refused by their declared size
+  (RAR and 7z stop there) and checked after unpacking.
 - The CBR worker runs from a `blob:` URL (`worker-src blob:`) and the wasm from the app's own `js/` assets.
 
 ## Viewer integration (decision)

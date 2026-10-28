@@ -18,15 +18,19 @@ final class HtmlSanitizer {
 	private const ALLOWED = ['p', 'br', 'b', 'i', 'em', 'strong', 'ul', 'ol', 'li'];
 	private const TO_P = ['div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote'];
 	private const DROP = ['script', 'style', 'head', 'title', 'object', 'iframe', 'template'];
+	/** Longer input is cut before parsing (a crafted book could hold a description of many MB) */
+	public const MAX_INPUT = 256 * 1024;
+	/** Longer results are turned into plain text paragraphs of half this size */
+	public const MAX_OUTPUT = 64 * 1024;
 
 	/** Returns sanitised HTML ('' if nothing is left). Plain text is turned into paragraphs. */
 	public static function sanitize(string $html): string {
-		$html = trim($html);
+		$html = trim(mb_strcut($html, 0, self::MAX_INPUT, 'UTF-8'));
 		if ($html === '') {
 			return '';
 		}
 		if (!str_contains($html, '<')) {
-			return self::fromPlainText(html_entity_decode($html, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+			return self::limit(self::fromPlainText(html_entity_decode($html, ENT_QUOTES | ENT_HTML5, 'UTF-8')));
 		}
 		$prev = libxml_use_internal_errors(true);
 		try {
@@ -36,7 +40,7 @@ final class HtmlSanitizer {
 				LIBXML_NONET | LIBXML_NOWARNING | LIBXML_NOERROR | LIBXML_HTML_NODEFDTD
 			);
 			if (!$ok) {
-				return self::fromPlainText(strip_tags($html));
+				return self::limit(self::fromPlainText(strip_tags($html)));
 			}
 			$body = $doc->getElementsByTagName('body')->item(0);
 			if ($body === null) {
@@ -48,7 +52,15 @@ final class HtmlSanitizer {
 			libxml_use_internal_errors($prev);
 		}
 		$out = preg_replace('#<p>\s*</p>#u', '', $out) ?? $out;
-		return trim($out);
+		return self::limit(trim($out));
+	}
+
+	/** Sanitised HTML of at most about MAX_OUTPUT bytes: a longer one becomes shortened plain text paragraphs. */
+	public static function limit(string $html): string {
+		if (strlen($html) <= self::MAX_OUTPUT) {
+			return $html;
+		}
+		return self::fromPlainText(mb_strcut(self::toText($html), 0, intdiv(self::MAX_OUTPUT, 2), 'UTF-8') . ' …');
 	}
 
 	/** Plain text version (tags stripped, block ends become line breaks). */

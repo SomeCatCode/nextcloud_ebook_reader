@@ -25,7 +25,7 @@ import { collapseCfi, colorValue, locatorOnPage } from './annotations.ts'
 import { planNavigation, toLocator } from './locator.ts'
 import { LongstripView } from './longstrip.ts'
 import { openBook } from './open-book.ts'
-import { hardenBook } from './secure-sections.ts'
+import { hardenBook, SECTION_CSP } from './secure-sections.ts'
 import { buildCss } from './themes.ts'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -44,9 +44,13 @@ export function createReader(container: HTMLElement, options: ReaderOptions = {}
 	// allow-scripts Chromium and WebKit refuse to run them ("Blocked script execution"), which
 	// breaks navigation and comic rendering. Book scripts stay blocked by the section CSP,
 	// the inherited Nextcloud CSP and SVG sanitizing (see secure-sections.ts).
-	(globalThis as Any).__EBOOKREADER_SANDBOX = options.sandboxScripts === false
+	const vendorConfig = globalThis as Any
+	vendorConfig.__EBOOKREADER_SANDBOX = options.sandboxScripts === false
 		? 'allow-same-origin'
 		: 'allow-same-origin allow-scripts'
+	// The same policy as the CSP meta of every section, enforced by the browser on the iframe (Chromium, WebView): it
+	// applies even when a section document managed to get past the meta.
+	vendorConfig.__EBOOKREADER_CSP = SECTION_CSP
 	let theme: ReaderThemeName = options.theme ?? 'auto'
 	let typography: ReaderTypography = { ...options.typography }
 	let layout: ReaderLayout = { flow: 'paginated', maxColumns: 2, margin: 48, comicSpread: 'single', comicZoom: 'fit-page', ...options.layout }

@@ -5,8 +5,8 @@
 import axios from '@nextcloud/axios'
 import { zipSync } from 'fflate'
 import { Archive } from 'libarchive.js'
-import wasmUrl from 'libarchive.js/dist/libarchive.wasm?url'
-import workerUrl from 'libarchive.js/dist/worker-bundle.js?url'
+import wasmUrl from '../../packages/libarchive/dist/libarchive.wasm?url'
+import workerUrl from '../../packages/libarchive/dist/worker-bundle.js?url'
 import { davUrlForPath, fetchBookBlob } from '../services/api.ts'
 import { davUpload } from '../services/davUpload.ts'
 
