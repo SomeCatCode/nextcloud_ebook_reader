@@ -33,6 +33,16 @@ class FileShareMapper extends QBMapper {
 		return $this->findEntities($qb);
 	}
 
+	/** @return list<FileShare> all reasons for sharing one file of an owner (all recipients) */
+	public function findByOwnerAndFile(string $ownerId, int $fileId): array {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('*')->from($this->getTableName())
+			->where($qb->expr()->eq('owner_id', $qb->createNamedParameter($ownerId)))
+			->andWhere($qb->expr()->eq('file_id', $qb->createNamedParameter($fileId, IQueryBuilder::PARAM_INT)))
+			->orderBy('id', 'ASC');
+		return $this->findEntities($qb);
+	}
+
 	/** @return list<FileShare> */
 	public function findByShelfShare(int $shelfShareId): array {
 		$qb = $this->db->getQueryBuilder();

@@ -104,6 +104,12 @@
 			]
 		},
 		{
+			"id": "Access removed",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
+			]
+		},
+		{
 			"id": "Actions for the folder “{name}”",
 			"files": [
 				"src/components/library/FolderBrowser.vue"
@@ -378,6 +384,12 @@
 			]
 		},
 		{
+			"id": "Book shared in the e-book reader",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
+			]
+		},
+		{
 			"id": "Book {id}",
 			"files": [
 				"src/components/library/BulkEditDialog.vue"
@@ -529,6 +541,7 @@
 				"src/components/convert/OptimizeBooksDialog.vue",
 				"src/components/editor/RenameDialog.vue",
 				"src/components/library/AddToShelfDialog.vue",
+				"src/components/library/BookShareAccess.vue",
 				"src/components/library/BulkEditDialog.vue",
 				"src/components/library/DeleteBooksDialog.vue",
 				"src/components/library/SettingsDialog.vue",
@@ -947,6 +960,12 @@
 			]
 		},
 		{
+			"id": "Could not load the shares of this book",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
+			]
+		},
+		{
 			"id": "Could not organise the books",
 			"files": [
 				"src/components/organize/OrganizeDialog.vue"
@@ -957,6 +976,12 @@
 			"files": [
 				"src/components/library/BookDetails.vue",
 				"src/components/library/BookLibraryFields.vue"
+			]
+		},
+		{
+			"id": "Could not remove the access",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
 			]
 		},
 		{
@@ -1411,6 +1436,12 @@
 			]
 		},
 		{
+			"id": "Everybody who can read this book, and the share that gives the access.",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
+			]
+		},
+		{
 			"id": "Exclude",
 			"files": [
 				"src/components/library/TagTreeNav.vue",
@@ -1427,6 +1458,12 @@
 			"id": "Exit fullscreen",
 			"files": [
 				"src/views/ReaderView.vue"
+			]
+		},
+		{
+			"id": "Expires on {date}",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
 			]
 		},
 		{
@@ -2145,6 +2182,18 @@
 			]
 		},
 		{
+			"id": "Nextcloud share of the file",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
+			]
+		},
+		{
+			"id": "Nextcloud share of the folder \"{path}\"",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
+			]
+		},
+		{
 			"id": "No",
 			"files": [
 				"src/convert/formats.ts"
@@ -2252,6 +2301,12 @@
 			"id": "No shelves yet",
 			"files": [
 				"src/components/library/ShelvesNav.vue"
+			]
+		},
+		{
+			"id": "Nobody else can read this book.",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
 			]
 		},
 		{
@@ -2646,6 +2701,18 @@
 			]
 		},
 		{
+			"id": "Public link",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
+			]
+		},
+		{
+			"id": "Public link \"{label}\"",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
+			]
+		},
+		{
 			"id": "Publication date (YYYY-MM-DD)",
 			"files": [
 				"src/components/editor/MetadataForm.vue"
@@ -2787,7 +2854,14 @@
 		{
 			"id": "Remove",
 			"files": [
+				"src/components/library/BookShareAccess.vue",
 				"src/components/library/SharingOverview.vue"
+			]
+		},
+		{
+			"id": "Remove access",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
 			]
 		},
 		{
@@ -3273,9 +3347,16 @@
 			"id": "Share…",
 			"files": [
 				"src/components/library/BookDetails.vue",
+				"src/components/library/BookShareAccess.vue",
 				"src/components/library/FolderBrowser.vue",
 				"src/components/library/SeriesCard.vue",
 				"src/components/library/ShelvesNav.vue"
+			]
+		},
+		{
+			"id": "Sharing",
+			"files": [
+				"src/components/library/BookDetails.vue"
 			]
 		},
 		{
@@ -3811,6 +3892,18 @@
 			]
 		},
 		{
+			"id": "This deletes the Nextcloud share of the file.",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
+			]
+		},
+		{
+			"id": "This deletes the Nextcloud share of the folder \"{path}\". The share ends for all files in the folder.",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
+			]
+		},
+		{
 			"id": "This file format can not be opened in the reader.",
 			"files": [
 				"src/views/ReaderView.vue"
@@ -3826,6 +3919,42 @@
 			"id": "This is the current format",
 			"files": [
 				"src/convert/formats.ts"
+			]
+		},
+		{
+			"id": "This stops sharing the folder \"{path}\" with {name}. {name} loses all files in the folder.",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
+			]
+		},
+		{
+			"id": "This stops sharing the whole series \"{series}\" with {name}. {name} loses all books of the series.",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
+			]
+		},
+		{
+			"id": "This stops sharing the whole shelf \"{shelf}\" with {name}. {name} loses all books of the shelf.",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
+			]
+		},
+		{
+			"id": "Through the folder \"{path}\"",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
+			]
+		},
+		{
+			"id": "Through the series \"{name}\"",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
+			]
+		},
+		{
+			"id": "Through the shelf \"{name}\"",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
 			]
 		},
 		{
@@ -4535,6 +4664,7 @@
 		{
 			"id": "shared by {name}",
 			"files": [
+				"src/components/library/BookShareAccess.vue",
 				"src/components/library/SharingOverview.vue"
 			]
 		},
@@ -4578,6 +4708,30 @@
 			"id": "{moved} moved, {failed} failed",
 			"files": [
 				"src/components/organize/OrganizeDialog.vue"
+			]
+		},
+		{
+			"id": "{name} (Talk conversation)",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
+			]
+		},
+		{
+			"id": "{name} (group)",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
+			]
+		},
+		{
+			"id": "{name} (team)",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
+			]
+		},
+		{
+			"id": "{name} can no longer read this book. A shelf, series or folder share with {name} stays.",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
 			]
 		},
 		{

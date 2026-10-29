@@ -5,6 +5,7 @@ import type {
 	AppDataPatch,
 	ArchiveEntries,
 	Book,
+	BookAccess,
 	BookList,
 	BookQuery,
 	BulkAppDataRequest,
@@ -772,6 +773,25 @@ export function deleteAnnotation(uuid: string, clientUpdatedAt?: number): Promis
  */
 export function listShares(): Promise<ShareOverview> {
 	return request<ShareOverview>('get', '/shares')
+}
+
+/**
+ * Everybody who can read an own book and why (shares of the app and Nextcloud shares of the file or its folders).
+ *
+ * @param fileId
+ */
+export function getBookAccess(fileId: number): Promise<BookAccess[]> {
+	return request<BookAccess[]>('get', `/books/${fileId}/access`)
+}
+
+/**
+ * Removes a Nextcloud share listed by getBookAccess (via nextcloud).
+ *
+ * @param fileId
+ * @param shareId
+ */
+export async function revokeBookAccess(fileId: number, shareId: string): Promise<void> {
+	await request<unknown>('delete', `/books/${fileId}/access`, { params: { shareId } })
 }
 
 /**

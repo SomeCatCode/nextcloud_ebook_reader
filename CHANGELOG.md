@@ -18,6 +18,12 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
   - Bei „Download verbergen“ oder ohne Download-Recht gibt der Server die Datei nicht heraus. Der Reader zeigt dann einen Hinweis.
   - Neue Routen `GET /s/{token}` (Reader-Seite) und `GET /s/{token}/file` (Buchdatei, mit HTTP-Range, höchstens 60 Aufrufe pro Minute).
 - **Bildfilter für Comics:** Die Reader-Einstellungen haben für Comics die Regler „Helligkeit“ und „Kontrast“ (50–200 %) und den Schalter „Graustufen“. Der Filter gilt nur für die Seitenbilder, der Hintergrund bleibt unverändert. Die Werte gelten für alle Comics und auch im Longstrip. „Bild zurücksetzen“ stellt das Originalbild wieder her. Neue Reader-Einstellungen `comicBrightness`, `comicContrast`, `comicGrayscale`.
+- **Freigaben eines Buchs ansehen und entfernen:** Die Buchdetails haben den neuen Reiter „Freigaben“. Der Reiter zeigt alle Personen, die das Buch lesen können, und die Freigabe, die den Zugriff gibt:
+  - Freigaben der App: Buch, Regal, Serie oder Ordner.
+  - Nextcloud-Freigaben der Datei oder eines übergeordneten Ordners: Benutzer, Gruppen, öffentliche Links, E-Mail, Teams, Talk. Weiterteilungen durch Empfänger erscheinen mit dem Namen der Person.
+  - Der Dialog „Teilen“ eines Buchs zeigt dieselbe Liste. Ein Buch, das über seine Serie geteilt ist, erscheint dort nicht mehr als „Noch mit niemandem geteilt“.
+  - Das Kreuz entfernt eine Freigabe. Vorher zeigt der Reiter die Folge, z. B. „Das ganze Regal … wird nicht mehr geteilt“ oder „Die Freigabe endet für alle Dateien im Ordner“.
+  - Neue Endpunkte `GET /api/v1/books/{fileId}/access` und `DELETE /api/v1/books/{fileId}/access?shareId=…` (nur Nextcloud-Freigaben; Freigaben der App entfernen ihre eigenen Endpunkte). Capability-Feature `book-access`.
 
 ### Geändert
 - **Bearbeiten-Ansicht:** Unter den Metadaten gibt es den Abschnitt „Bibliothek“ mit denselben Feldern wie in den Buchdetails: Bewertung, Lesestatus, Abschluss-Status, Altersfreigabe und Longstrip. Die Werte werden sofort gespeichert; die Buchdatei bleibt unverändert.
@@ -26,6 +32,7 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 - **Umbenennen/Einsortieren mit führenden Nullen:** `{series_index}` schreibt die Bandnummer passend zur höchsten Nummer der Serie (01–99, ab 100 Bänden 001); Dezimalzahlen behalten den Bruch (05.5). `{series_index:raw}` schreibt ohne Nullen, `{series_index:N}` genau N Stellen. **Achtung:** Bestehende Muster mit `{series_index}` erzeugen jetzt „02“ statt „2“.
 
 ### Behoben
+- Dialog „Teilen“: Die Suche nach der Benutzer-ID fand den Benutzer auf dem Server, die Auswahlliste blendete den Treffer aber aus, wenn der Anzeigename anders lautet. Die Liste zeigt jetzt alle Treffer des Servers.
 - `GET /series`: `coverFileIds` und `firstFileId` ordneten Titel ohne Bandnummer nicht natürlich.
 - Hilfetext für das Dateinamen-Muster nannte den ungültigen Platzhalter `{index}`; richtig ist `{series_index}`.
 - **Eigene Tags und Genres gehen nicht mehr verloren,** wenn ein Buch kurz aus der Bibliothek verschwindet (Papierkorb und Wiederherstellen, Verschieben und Zurückschieben, Freigabe neu, Ordner kurz nicht erreichbar). Die Tags bleiben am gelöschten Eintrag und kommen mit dem Buch zurück. Der tägliche Aufräum-Job löscht sie erst zusammen mit dem Eintrag nach 30 Tagen.
