@@ -27,6 +27,7 @@ use OCP\IRequest;
  *
  * @psalm-import-type EbookReaderShareOverview from \OCA\EbookReader\ResponseDefinitions
  * @psalm-import-type EbookReaderShareCreated from \OCA\EbookReader\ResponseDefinitions
+ * @psalm-import-type EbookReaderBookAccess from \OCA\EbookReader\ResponseDefinitions
  */
 class ShareController extends AbstractOCSController {
 	public function __construct(
@@ -278,6 +279,58 @@ class ShareController extends AbstractOCSController {
 		$userId = $this->uid();
 		try {
 			$this->sharing->unshareFolder($userId, $path, $shareWith);
+		} catch (ShareException $e) {
+			throw $this->map($e);
+		}
+		return new DataResponse(['removed' => 1]);
+	}
+
+	/**
+	 * List everybody who can read an own book and why
+	 *
+	 * Lists the shares of the app that include the book (`via` book, shelf, series or folder) and the Nextcloud shares of
+	 * the book file or of one of its parent folders (`via` nextcloud: users, groups, public links, e-mail, ...). A
+	 * Nextcloud share the app created for one of its own shares is listed only once, as the share of the app.
+	 *
+	 * @param int $fileId File id of the book
+	 * @return DataResponse<Http::STATUS_OK, list<EbookReaderBookAccess>, array{}>
+	 * @throws OCSForbiddenException Not logged in
+	 * @throws OCSNotFoundException Book not in the user's library or shared with the user by another user
+	 *
+	 * 200: Access list returned
+	 */
+	#[NoAdminRequired]
+	#[ApiRoute(verb: 'GET', url: '/api/v1/books/{fileId}/access', requirements: ['fileId' => '\d+'])]
+	public function bookAccess(int $fileId): DataResponse {
+		$userId = $this->uid();
+		try {
+			return new DataResponse($this->sharing->bookAccess($userId, $fileId));
+		} catch (ShareException $e) {
+			throw $this->map($e);
+		}
+	}
+
+	/**
+	 * Remove a Nextcloud share that gives access to an own book
+	 *
+	 * Deletes a share listed by the access list with `via` nextcloud. A share of a parent folder ends for all files in
+	 * that folder. Shares of the app are removed with their own endpoints.
+	 *
+	 * @param int $fileId File id of the book
+	 * @param string $shareId `shareId` of the entry in the access list
+	 * @return DataResponse<Http::STATUS_OK, array{removed: int}, array{}>
+	 * @throws OCSForbiddenException Not logged in, or Nextcloud refused to delete the share
+	 * @throws OCSNotFoundException No such share for this book
+	 *
+	 * 200: Share removed
+	 */
+	#[NoAdminRequired]
+	#[UserRateLimit(limit: 60, period: 60)]
+	#[ApiRoute(verb: 'DELETE', url: '/api/v1/books/{fileId}/access', requirements: ['fileId' => '\d+'])]
+	public function revokeAccess(int $fileId, string $shareId = ''): DataResponse {
+		$userId = $this->uid();
+		try {
+			$this->sharing->revokeNextcloudShare($userId, $fileId, $shareId);
 		} catch (ShareException $e) {
 			throw $this->map($e);
 		}

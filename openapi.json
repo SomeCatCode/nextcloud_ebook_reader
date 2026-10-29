@@ -289,6 +289,95 @@
                     }
                 }
             },
+            "BookAccess": {
+                "type": "object",
+                "required": [
+                    "via",
+                    "viaName",
+                    "shelfId",
+                    "series",
+                    "path",
+                    "shareId",
+                    "shareType",
+                    "recipient",
+                    "recipientDisplayName",
+                    "sharedBy",
+                    "sharedByDisplayName",
+                    "folder",
+                    "createdAt",
+                    "expiresAt"
+                ],
+                "properties": {
+                    "via": {
+                        "type": "string",
+                        "enum": [
+                            "book",
+                            "shelf",
+                            "series",
+                            "folder",
+                            "nextcloud"
+                        ]
+                    },
+                    "viaName": {
+                        "type": "string"
+                    },
+                    "shelfId": {
+                        "type": "integer",
+                        "format": "int64",
+                        "nullable": true
+                    },
+                    "series": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "path": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "shareId": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "shareType": {
+                        "type": "string",
+                        "enum": [
+                            "user",
+                            "group",
+                            "link",
+                            "email",
+                            "remote",
+                            "team",
+                            "talk",
+                            "deck",
+                            "other"
+                        ]
+                    },
+                    "recipient": {
+                        "type": "string"
+                    },
+                    "recipientDisplayName": {
+                        "type": "string"
+                    },
+                    "sharedBy": {
+                        "type": "string"
+                    },
+                    "sharedByDisplayName": {
+                        "type": "string"
+                    },
+                    "folder": {
+                        "type": "boolean"
+                    },
+                    "createdAt": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "expiresAt": {
+                        "type": "integer",
+                        "format": "int64",
+                        "nullable": true
+                    }
+                }
+            },
             "BookList": {
                 "type": "object",
                 "required": [
@@ -12810,6 +12899,337 @@
                 }
             }
         },
+        "/ocs/v2.php/apps/ebookreader/api/v1/books/{fileId}/access": {
+            "get": {
+                "operationId": "share-book-access",
+                "summary": "List everybody who can read an own book and why",
+                "description": "Lists the shares of the app that include the book (`via` book, shelf, series or folder) and the Nextcloud shares of the book file or of one of its parent folders (`via` nextcloud: users, groups, public links, e-mail, ...). A Nextcloud share the app created for one of its own shares is listed only once, as the share of the app.",
+                "tags": [
+                    "share"
+                ],
+                "security": [
+                    {
+                        "bearer_auth": []
+                    },
+                    {
+                        "basic_auth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "fileId",
+                        "in": "path",
+                        "description": "File id of the book",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int64"
+                        }
+                    },
+                    {
+                        "name": "OCS-APIRequest",
+                        "in": "header",
+                        "description": "Required to be true for the API request to pass",
+                        "required": true,
+                        "schema": {
+                            "type": "boolean",
+                            "default": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Access list returned",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "$ref": "#/components/schemas/BookAccess"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not logged in",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Book not in the user's library or shared with the user by another user",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Current user is not logged in",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "operationId": "share-revoke-access",
+                "summary": "Remove a Nextcloud share that gives access to an own book",
+                "description": "Deletes a share listed by the access list with `via` nextcloud. A share of a parent folder ends for all files in that folder. Shares of the app are removed with their own endpoints.",
+                "tags": [
+                    "share"
+                ],
+                "security": [
+                    {
+                        "bearer_auth": []
+                    },
+                    {
+                        "basic_auth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "fileId",
+                        "in": "path",
+                        "description": "File id of the book",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int64"
+                        }
+                    },
+                    {
+                        "name": "shareId",
+                        "in": "query",
+                        "description": "`shareId` of the entry in the access list",
+                        "schema": {
+                            "type": "string",
+                            "default": ""
+                        }
+                    },
+                    {
+                        "name": "OCS-APIRequest",
+                        "in": "header",
+                        "description": "Required to be true for the API request to pass",
+                        "required": true,
+                        "schema": {
+                            "type": "boolean",
+                            "default": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Share removed",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "required": [
+                                                        "removed"
+                                                    ],
+                                                    "properties": {
+                                                        "removed": {
+                                                            "type": "integer",
+                                                            "format": "int64"
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not logged in, or Nextcloud refused to delete the share",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such share for this book",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Current user is not logged in",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/ocs/v2.php/apps/ebookreader/api/v1/shelves": {
             "get": {
                 "operationId": "shelf-index",
@@ -14578,6 +14998,10 @@
         {
             "name": "opds",
             "description": "OPDS 1.2 catalog (Atom) for e-reader apps. Authentication is HTTP Basic with an app password: Nextcloud core logs the request in before the controller runs. The routes are #[PublicPage] only so that core does not redirect to the login form; every action refuses requests without a logged-in user itself (401 + WWW-Authenticate) and requests of users who did not switch the catalog on (or if the administrator disallowed it)."
+        },
+        {
+            "name": "public_reader",
+            "description": "Reader for books in a public link share (/s/<token>), without login. Read only: no library, no progress, no annotations on the server (the browser keeps the position). The file is only handed out when the share allows downloads; a password protected share needs the password entered on the share page first (same session as Nextcloud's public WebDAV)."
         }
     ]
 }

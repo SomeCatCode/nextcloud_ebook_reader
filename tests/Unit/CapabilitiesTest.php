@@ -30,7 +30,7 @@ class CapabilitiesTest extends TestCase {
 		$appManager = $this->createMock(IAppManager::class);
 		$appManager->method('getAppVersion')->willReturn('0.10.0');
 		$features = (new Capabilities($appManager))->getCapabilities()['ebookreader']['features'];
-		foreach (['shared-filter', 'series-shares', 'folder-shares', 'series-order', 'suggestions'] as $feature) {
+		foreach (['shared-filter', 'series-shares', 'folder-shares', 'series-order', 'suggestions', 'book-access'] as $feature) {
 			$this->assertContains($feature, $features);
 		}
 	}

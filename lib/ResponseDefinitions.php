@@ -244,6 +244,23 @@ namespace OCA\EbookReader;
  *     bookCount: int,
  * }
  *
+ * @psalm-type EbookReaderBookAccess = array{
+ *     via: 'book'|'shelf'|'series'|'folder'|'nextcloud',
+ *     viaName: string,
+ *     shelfId: ?int,
+ *     series: ?string,
+ *     path: ?string,
+ *     shareId: ?string,
+ *     shareType: 'user'|'group'|'link'|'email'|'remote'|'team'|'talk'|'deck'|'other',
+ *     recipient: string,
+ *     recipientDisplayName: string,
+ *     sharedBy: string,
+ *     sharedByDisplayName: string,
+ *     folder: bool,
+ *     createdAt: int,
+ *     expiresAt: ?int,
+ * }
+ *
  * @psalm-type EbookReaderShareOverview = array{
  *     outgoing: list<EbookReaderShare>,
  *     incoming: list<EbookReaderShare>,

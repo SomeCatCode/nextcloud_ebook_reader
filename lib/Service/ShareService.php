@@ -63,6 +63,7 @@ use Psr\Log\LoggerInterface;
  * library picks the books up wherever the mount sits (LibraryService walks the incoming folder mounts).
  *
  * @psalm-import-type EbookReaderShare from \OCA\EbookReader\ResponseDefinitions
+ * @psalm-import-type EbookReaderBookAccess from \OCA\EbookReader\ResponseDefinitions
  */
 class ShareService {
 	/** Max. number of books shared through one shelf share (the rest is skipped) */
@@ -750,6 +751,197 @@ class ShareService {
 			}
 		}
 		return $indexed;
+	}
+
+	// ---- access of one book ---------------------------------------------------------------------------------------
+
+	/** Nextcloud share types listed by bookAccess (providers that are not installed are skipped) */
+	private const ACCESS_SHARE_TYPES = [
+		IShare::TYPE_USER => 'user',
+		IShare::TYPE_GROUP => 'group',
+		IShare::TYPE_LINK => 'link',
+		IShare::TYPE_EMAIL => 'email',
+		IShare::TYPE_REMOTE => 'remote',
+		IShare::TYPE_REMOTE_GROUP => 'remote',
+		IShare::TYPE_CIRCLE => 'team',
+		IShare::TYPE_ROOM => 'talk',
+		IShare::TYPE_DECK => 'deck',
+	];
+
+	/** parent folders checked for Nextcloud shares (the home is never reached deeper than this) */
+	private const ACCESS_MAX_DEPTH = 50;
+
+	/**
+	 * Everybody who can read an own book and why: shares of the app (book, shelf, series, folder) and Nextcloud shares of
+	 * the file or one of its parent folders (users, groups, links, ...). A Nextcloud share the app created for one of its
+	 * own shares is not listed twice.
+	 * @return list<EbookReaderBookAccess>
+	 * @throws ShareException the book is not an own book of the user
+	 */
+	public function bookAccess(string $owner, int $fileId): array {
+		$book = $this->ownBook($owner, $fileId);
+		if ($book->getSharedOwner() !== null) {
+			throw new ShareException('Book not found', ShareException::NOT_FOUND);
+		}
+		$out = [];
+		$appShareIds = [];
+		$shelfNames = null;
+		foreach ($this->fileShares->findByOwnerAndFile($owner, $fileId) as $row) {
+			if ($row->getShareId() !== null) {
+				$appShareIds[$row->getShareId()] = true;
+			}
+			$reason = $row->getShelfShareId();
+			$entry = ['via' => 'book', 'viaName' => self::titleOf($book), 'recipient' => $row->getRecipientId(), 'createdAt' => $row->getCreatedAt()];
+			try {
+				if ($reason > 0) {
+					$share = $this->shelfShares->findById($reason);
+					if ($shelfNames === null) {
+						$shelfNames = [];
+						foreach ($this->shelves->findByUser($owner) as $shelf) {
+							$shelfNames[$shelf->getId()] = $shelf->getName();
+						}
+					}
+					$entry = ['via' => 'shelf', 'viaName' => $shelfNames[$share->getShelfId()] ?? '', 'shelfId' => $share->getShelfId()] + $entry;
+				} elseif ($reason < 0) {
+					$share = $this->seriesShares->findById(-$reason);
+					$entry = ['via' => 'series', 'viaName' => $share->getSeries(), 'series' => $share->getSeries()] + $entry;
+				}
+			} catch (DoesNotExistException) {
+				// the shelf or series share is being removed
+				continue;
+			}
+			$out[] = $this->accessEntry($entry + ['shareType' => 'user', 'recipientDisplayName' => $this->displayName($row->getRecipientId())]);
+		}
+		foreach ($this->library->sharedFolderPaths($owner) as $folderId => $path) {
+			if (!str_starts_with($book->getPath(), $path . '/')) {
+				continue;
+			}
+			foreach ($this->folderShares->findByFolder($owner, $folderId) as $row) {
+				if ($row->getShareId() !== null) {
+					$appShareIds[$row->getShareId()] = true;
+				}
+				$out[] = $this->accessEntry([
+					'via' => 'folder', 'viaName' => $path, 'path' => $path, 'shareType' => 'user', 'recipient' => $row->getRecipientId(),
+					'recipientDisplayName' => $this->displayName($row->getRecipientId()), 'createdAt' => $row->getCreatedAt(),
+				]);
+			}
+		}
+		foreach ($this->nextcloudShares($owner, $fileId) as [$share, $path, $folder]) {
+			$id = self::fullId($share);
+			if ($id === null || isset($appShareIds[$id])) {
+				continue;
+			}
+			$out[] = $this->accessEntry($this->nextcloudAccess($share, $id, $path, $folder));
+		}
+		return $out;
+	}
+
+	/**
+	 * Deletes a Nextcloud share listed by bookAccess (a share of the file or of a parent folder, not one of the app).
+	 * @throws ShareException no such share for this book
+	 */
+	public function revokeNextcloudShare(string $owner, int $fileId, string $shareId): void {
+		foreach ($this->bookAccess($owner, $fileId) as $entry) {
+			if ($entry['via'] === 'nextcloud' && $entry['shareId'] === $shareId) {
+				try {
+					$this->shareManager->deleteShare($this->shareManager->getShareById($shareId));
+				} catch (ShareNotFound) {
+					// already gone
+				} catch (\Throwable $e) {
+					throw new ShareException($e->getMessage() !== '' ? $e->getMessage() : 'Could not remove the share', ShareException::FORBIDDEN);
+				}
+				return;
+			}
+		}
+		throw new ShareException('Share not found', ShareException::NOT_FOUND);
+	}
+
+	/**
+	 * Nextcloud shares (made by the owner or reshared by others) of the file and of its parent folders up to the home.
+	 * @return list<array{0: IShare, 1: string, 2: bool}> share, path of the shared node (relative to the home, leading
+	 *                                                    slash) and whether the node is a parent folder
+	 */
+	private function nextcloudShares(string $owner, int $fileId): array {
+		try {
+			$node = $this->library->getFileForUser($owner, $fileId);
+		} catch (NotFoundException) {
+			return [];
+		}
+		$home = '/' . $owner . '/files';
+		$out = [];
+		for ($depth = 0; $depth < self::ACCESS_MAX_DEPTH; $depth++) {
+			$path = $node->getPath();
+			if (!str_starts_with($path . '/', $home . '/') || $path === $home) {
+				break;
+			}
+			foreach (array_keys(self::ACCESS_SHARE_TYPES) as $type) {
+				try {
+					foreach ($this->shareManager->getSharesBy($owner, $type, $node, true, -1) as $share) {
+						$out[] = [$share, substr($path, strlen($home)), $depth > 0];
+					}
+				} catch (\Throwable $e) {
+					// share provider not installed (Talk, Deck, Teams) or not usable
+					$this->logger->debug('Listing shares of type ' . $type . ' failed: ' . $e->getMessage(), ['app' => 'ebookreader']);
+				}
+			}
+			try {
+				$node = $node->getParent();
+			} catch (\Throwable) {
+				break;
+			}
+		}
+		return $out;
+	}
+
+	/** @return array<string, mixed> */
+	private function nextcloudAccess(IShare $share, string $id, string $path, bool $folder): array {
+		$type = self::ACCESS_SHARE_TYPES[$share->getShareType()] ?? 'other';
+		$with = (string)$share->getSharedWith();
+		$name = match ($type) {
+			'user' => $this->displayName($with),
+			'link' => (string)$share->getLabel(),
+			default => (string)($share->getSharedWithDisplayName() ?? ''),
+		};
+		$by = $share->getSharedBy();
+		$expires = $share->getExpirationDate();
+		return [
+			'via' => 'nextcloud',
+			'viaName' => $path,
+			'path' => $path,
+			'shareId' => $id,
+			'shareType' => $type,
+			'recipient' => $type === 'link' ? '' : $with,
+			'recipientDisplayName' => trim($name) !== '' ? $name : $with,
+			'sharedBy' => $by,
+			'sharedByDisplayName' => $this->displayName($by),
+			'createdAt' => $share->getShareTime()->getTimestamp() * 1000,
+			'expiresAt' => $expires !== null ? $expires->getTimestamp() * 1000 : null,
+			'folder' => $folder,
+		];
+	}
+
+	/**
+	 * @param array<string, mixed> $e
+	 * @return EbookReaderBookAccess
+	 */
+	private function accessEntry(array $e): array {
+		/** @var EbookReaderBookAccess */
+		return [
+			'via' => $e['via'],
+			'viaName' => (string)$e['viaName'],
+			'shelfId' => $e['shelfId'] ?? null,
+			'series' => $e['series'] ?? null,
+			'path' => $e['path'] ?? null,
+			'shareId' => $e['shareId'] ?? null,
+			'shareType' => $e['shareType'],
+			'recipient' => (string)$e['recipient'],
+			'recipientDisplayName' => (string)$e['recipientDisplayName'],
+			'sharedBy' => $e['sharedBy'] ?? '',
+			'sharedByDisplayName' => $e['sharedByDisplayName'] ?? '',
+			'folder' => $e['folder'] ?? ($e['via'] === 'folder'),
+			'createdAt' => (int)$e['createdAt'],
+			'expiresAt' => $e['expiresAt'] ?? null,
+		];
 	}
 
 	// ---- overview -------------------------------------------------------------------------------------------------

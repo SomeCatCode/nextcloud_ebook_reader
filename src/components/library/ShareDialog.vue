@@ -20,6 +20,7 @@
 			<NcSelectUsers
 				:key="selectKey"
 				:options="options"
+				:filterable="false"
 				:loading="searching"
 				:disabled="busy"
 				:inputLabel="t('ebookreader', 'Share with')"
@@ -116,7 +117,10 @@ const hint = computed(() => {
 	}
 })
 
-/** search results without the users it is already shared with */
+/**
+ * Search results without the users it is already shared with. The server already searched (user id, name, e-mail),
+ * so the picker does not filter them again (`filterable` off): a match on the user id would else disappear.
+ */
 const options = computed(() => {
 	const taken = new Set(recipients.value.map((r) => r.recipient))
 	return found.value.filter((u) => !taken.has(u.id)).map((u) => ({ id: u.id, user: u.id, displayName: u.displayName, subname: u.subname }))

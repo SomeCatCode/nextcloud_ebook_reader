@@ -161,6 +161,16 @@
 				</ul>
 			</div>
 		</NcAppSidebarTab>
+		<NcAppSidebarTab
+			v-if="!book.shared && hasFeature('book-access')"
+			id="sharing"
+			:name="t('ebookreader', 'Sharing')"
+			:order="2">
+			<template #icon>
+				<NcIconSvgWrapper :path="mdiShareVariant" :size="20" />
+			</template>
+			<BookShareAccess ref="access" :fileId="book.fileId" @share="showShare = true" />
+		</NcAppSidebarTab>
 	</NcAppSidebar>
 
 	<AddToShelfDialog
@@ -171,7 +181,7 @@
 	<ShareDialog
 		v-if="showShare"
 		:target="{ type: 'book', id: book.fileId, name: title }"
-		@close="showShare = false" />
+		@close="onShareClosed" />
 
 	<ConvertDialog
 		v-if="showConvert"
@@ -187,7 +197,7 @@ import { mdiBookOpenPageVariant, mdiBookOpenVariant, mdiBookshelf, mdiDeleteOutl
 import { showError, showSuccess } from '@nextcloud/dialogs'
 import { t } from '@nextcloud/l10n'
 import { generateUrl } from '@nextcloud/router'
-import { computed, ref, watch } from 'vue'
+import { computed, ref, useTemplateRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import NcAppSidebar from '@nextcloud/vue/components/NcAppSidebar'
 import NcAppSidebarTab from '@nextcloud/vue/components/NcAppSidebarTab'
@@ -199,6 +209,7 @@ import ConvertDialog from '../convert/ConvertDialog.vue'
 import AddToShelfDialog from './AddToShelfDialog.vue'
 import BookCover from './BookCover.vue'
 import BookLibraryFields from './BookLibraryFields.vue'
+import BookShareAccess from './BookShareAccess.vue'
 import ReadNextSuggestions from './ReadNextSuggestions.vue'
 import ShareDialog from './ShareDialog.vue'
 import TagEditor from './TagEditor.vue'
@@ -228,6 +239,15 @@ const settings = useSettingsStore()
 const showConvert = ref(false)
 const showShelf = ref(false)
 const showShare = ref(false)
+const access = useTemplateRef<InstanceType<typeof BookShareAccess>>('access')
+
+/**
+ * The share dialog may have added or removed shares: the access list loads again.
+ */
+function onShareClosed(): void {
+	showShare.value = false
+	void access.value?.load()
+}
 const warnings = ref<string[]>([])
 const writeQueued = ref(false)
 const embedding = ref(false)

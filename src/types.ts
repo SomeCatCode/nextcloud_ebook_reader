@@ -609,6 +609,32 @@ export interface Share {
 	bookCount: number
 }
 
+/** Why somebody can read an own book: a share of the app or a Nextcloud share of the file or a parent folder (server 1.0+) */
+export type BookAccessVia = 'book' | 'shelf' | 'series' | 'folder' | 'nextcloud'
+
+export interface BookAccess {
+	via: BookAccessVia
+	/** book title, shelf or series name, folder path, or path of the node shared in Nextcloud */
+	viaName: string
+	shelfId: number | null
+	series: string | null
+	/** folder path (via folder) or path of the shared node (via nextcloud) */
+	path: string | null
+	/** Nextcloud share id (via nextcloud only) */
+	shareId: string | null
+	shareType: 'user' | 'group' | 'link' | 'email' | 'remote' | 'team' | 'talk' | 'deck' | 'other'
+	/** user, group, e-mail ...; empty for a public link */
+	recipient: string
+	recipientDisplayName: string
+	/** user who made a Nextcloud share (may be a recipient resharing it); empty for shares of the app */
+	sharedBy: string
+	sharedByDisplayName: string
+	/** the share is on a parent folder: removing it ends the access to the whole folder */
+	folder: boolean
+	createdAt: number
+	expiresAt: number | null
+}
+
 export interface ShareOverview {
 	outgoing: Share[]
 	incoming: Share[]
