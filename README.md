@@ -24,7 +24,7 @@ Try the app without a server: [Nextcloud Playground](playground/README.md) runs 
 <sub>Screenshots show [Pepper&amp;Carrot](https://www.peppercarrot.com) by David Revoy, licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).</sub>
 
 > [!NOTE]
-> **Beta.** The app is in daily production use with a large library (e-books and comics up to 400 MB) and covered by automated tests. Details may still change before 1.0. The editor modifies files; Nextcloud keeps a version of every change, but a backup of your books is still a good idea.
+> **Stable since 1.0.** The app is in daily production use with a large library (e-books and comics up to 400 MB) and covered by automated tests. The API `v1` is stable. The editor modifies files; Nextcloud keeps a version of every change, but a backup of your books is still a good idea.
 
 ## Requirements
 
