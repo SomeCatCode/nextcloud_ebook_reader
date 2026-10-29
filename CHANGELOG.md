@@ -5,6 +5,10 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+### Geändert
+- Die App ist nicht mehr als Beta gekennzeichnet. App-Beschreibung (8 Sprachen) und README nennen keinen Beta-Status mehr.
+- Capability `apiStable` ist jetzt `true`: Die API `v1` ist stabil. Änderungen an `v1` bleiben abwärtskompatibel.
+
 ## 1.0.0 – 2026-10-29
 
 ### Hinzugefügt

@@ -49,7 +49,7 @@
 **Requirements**
 Cron for background jobs is recommended. 7-Zip or bsdtar on the server is optional and enables server-side handling of CBR and CB7.
 
-The app is in beta. The editor modifies files, so keep a backup of your books.]]></description>
+The editor modifies files, so keep a backup of your books.]]></description>
 	<description lang="de"><![CDATA[Bibliothek, Reader und Editor für E-Books und Comics. Die Bücher bleiben normale Dateien in Nextcloud. Die App indiziert sie und synchronisiert die Leseposition zwischen allen Geräten. Kein zusätzlicher Container oder externer Dienst nötig.
 
 **Lesen**
@@ -77,7 +77,7 @@ The app is in beta. The editor modifies files, so keep a backup of your books.]]
 **Voraussetzungen**
 Cron für Hintergrundjobs wird empfohlen. 7-Zip oder bsdtar auf dem Server ist optional und ermöglicht die serverseitige Verarbeitung von CBR und CB7.
 
-Die App ist in der Beta. Der Editor verändert Dateien, daher ist ein Backup der Bücher sinnvoll.]]></description>
+Der Editor verändert Dateien, daher ist ein Backup der Bücher sinnvoll.]]></description>
 	<description lang="es"><![CDATA[Biblioteca, lector y editor de libros electrónicos y cómics. Tus libros siguen siendo archivos normales en Nextcloud. La aplicación los indexa y sincroniza la posición de lectura entre dispositivos. No requiere contenedores ni servicios externos.
 
 **Lectura**
@@ -105,7 +105,7 @@ Die App ist in der Beta. Der Editor verändert Dateien, daher ist ein Backup der
 **Requisitos**
 Se recomienda cron para las tareas en segundo plano. 7-Zip o bsdtar en el servidor es opcional y permite procesar CBR y CB7 en el servidor.
 
-La aplicación está en beta. El editor modifica archivos, conviene tener una copia de seguridad.]]></description>
+El editor modifica archivos, conviene tener una copia de seguridad.]]></description>
 	<description lang="ja"><![CDATA[電子書籍とコミックのためのライブラリ、リーダー、エディターです。本は Nextcloud 上の通常のファイルのままです。アプリがインデックスを作成し、読書位置をすべての端末で同期します。追加のコンテナや外部サービスは不要です。
 
 **読む**
@@ -133,7 +133,7 @@ La aplicación está en beta. El editor modifica archivos, conviene tener una co
 **要件**
 バックグラウンドジョブには cron を推奨します。サーバー上の 7-Zip または bsdtar は任意で、CBR と CB7 のサーバー側処理に使われます。
 
-このアプリはベータ版です。エディターはファイルを変更するため、本のバックアップをおすすめします。]]></description>
+エディターはファイルを変更するため、本のバックアップをおすすめします。]]></description>
 	<description lang="fr"><![CDATA[Bibliothèque, lecteur et éditeur pour livres numériques et bandes dessinées. Vos livres restent de simples fichiers dans Nextcloud. L’application les indexe et synchronise votre position de lecture entre vos appareils. Aucun conteneur supplémentaire ni service externe n’est nécessaire.
 
 **Lecture**
@@ -160,7 +160,7 @@ La aplicación está en beta. El editor modifica archivos, conviene tener una co
 **Prérequis**
 Cron est recommandé pour les tâches d’arrière-plan. 7-Zip ou bsdtar sur le serveur est facultatif et permet de traiter les CBR et CB7 côté serveur.
 
-L’application est en bêta. L’éditeur modifie des fichiers : conservez une sauvegarde de vos livres.]]></description>
+L’éditeur modifie des fichiers : conservez une sauvegarde de vos livres.]]></description>
 	<description lang="ar"><![CDATA[مكتبة وقارئ ومحرّر للكتب الإلكترونية والقصص المصوّرة. تبقى كتبك ملفات عادية في Nextcloud. يفهرسها التطبيق ويزامن موضع القراءة بين أجهزتك. لا حاجة إلى حاوية إضافية أو خدمة خارجية.
 
 **القراءة**
@@ -187,7 +187,7 @@ L’application est en bêta. L’éditeur modifie des fichiers : conservez une 
 **المتطلبات**
 يوصى باستخدام Cron للمهام الخلفية. وجود 7-Zip أو bsdtar على الخادم اختياري ويتيح معالجة CBR وCB7 على الخادم.
 
-التطبيق في مرحلة تجريبية (بيتا). يعدّل المحرّر الملفات، لذا احتفظ بنسخة احتياطية من كتبك.]]></description>
+يعدّل المحرّر الملفات، لذا احتفظ بنسخة احتياطية من كتبك.]]></description>
 	<description lang="tr"><![CDATA[E-kitaplar ve çizgi romanlar için kütüphane, okuyucu ve düzenleyici. Kitaplarınız Nextcloud’da sıradan dosyalar olarak kalır. Uygulama bunları dizinler ve okuma konumunuzu cihazlarınız arasında eşitler. Ek bir kapsayıcı veya harici bir hizmet gerekmez.
 
 **Okuma**
@@ -214,7 +214,7 @@ L’application est en bêta. L’éditeur modifie des fichiers : conservez une 
 **Gereksinimler**
 Arka plan işleri için Cron önerilir. Sunucuda 7-Zip veya bsdtar isteğe bağlıdır ve CBR ile CB7 dosyalarının sunucuda işlenmesini sağlar.
 
-Uygulama beta aşamasındadır. Düzenleyici dosyaları değiştirir, bu yüzden kitaplarınızın yedeğini alın.]]></description>
+Düzenleyici dosyaları değiştirir, bu yüzden kitaplarınızın yedeğini alın.]]></description>
 	<description lang="fa"><![CDATA[کتابخانه، خواننده و ویرایشگر برای کتاب‌های الکترونیکی و کمیک‌ها. کتاب‌های شما همچنان فایل‌های معمولی در Nextcloud می‌مانند. برنامه آن‌ها را نمایه‌سازی می‌کند و موقعیت مطالعهٔ شما را میان دستگاه‌هایتان هم‌گام می‌کند. به هیچ کانتینر اضافی یا سرویس بیرونی نیازی نیست.
 
 **مطالعه**
@@ -241,7 +241,7 @@ Uygulama beta aşamasındadır. Düzenleyici dosyaları değiştirir, bu yüzden
 **الزامات**
 برای کارهای پس‌زمینه استفاده از Cron توصیه می‌شود. وجود 7-Zip یا bsdtar روی سرور اختیاری است و پردازش CBR و CB7 را روی سرور ممکن می‌کند.
 
-برنامه در مرحلهٔ آزمایشی (بتا) است. ویرایشگر فایل‌ها را تغییر می‌دهد، پس از کتاب‌های خود نسخهٔ پشتیبان نگه دارید.]]></description>
+ویرایشگر فایل‌ها را تغییر می‌دهد، پس از کتاب‌های خود نسخهٔ پشتیبان نگه دارید.]]></description>
 	<version>1.0.0</version>
 	<licence>AGPL-3.0-or-later</licence>
 	<author mail="it@wasmitleder.de">Felix Kurth</author>
