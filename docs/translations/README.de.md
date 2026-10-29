@@ -11,6 +11,11 @@ Bibliothek, Reader und Editor für E-Books und Comics direkt in deiner Nextcloud
 [![CI](https://github.com/SomeCatCode/nextcloud_ebook_reader/actions/workflows/ci.yml/badge.svg)](https://github.com/SomeCatCode/nextcloud_ebook_reader/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/SomeCatCode/nextcloud_ebook_reader?include_prereleases)](https://github.com/SomeCatCode/nextcloud_ebook_reader/releases)
 
+
+<a href="https://ateeducacion.github.io/nextcloud-playground/?blueprint-url=https://raw.githubusercontent.com/SomeCatCode/nextcloud_ebook_reader/playground/blueprint.json" target="_blank" rel="noopener noreferrer"><img src="https://raw.githubusercontent.com/ateeducacion/nextcloud-playground/main/assets/playground-preview-button.svg" alt="Im Nextcloud Playground ausprobieren" width="224"></a>
+
+Probiere die App ohne Server aus: Der [Nextcloud Playground](../../playground/README.md) startet Nextcloud mit dem E-Book Reader und sechs freien Beispielbüchern in deinem Browser. Keine Daten verlassen den Browser.
+
 ![Bibliothek mit Serienfilter und Buchdetails](../screenshot-library.png)
 
 ![Comic-Reader](../screenshot-reader.png)
