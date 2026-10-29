@@ -5,6 +5,11 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+### Hinzugefügt
+- **Nextcloud Playground:** Die App lässt sich ohne Server im Browser ausprobieren. Der Blueprint `playground/blueprint.json` startet den [Nextcloud Playground](https://github.com/ateeducacion/nextcloud-playground) mit der App und sechs freien Beispielbüchern: drei gemeinfreie EPUBs von Project Gutenberg und drei Episoden Pepper&Carrot von David Revoy (CC BY 4.0). Die README hat dafür eine Schaltfläche.
+  - Die Dateien liegen auf dem Branch `playground`, denn GitHub-Release-Downloads senden keine CORS-Header.
+  - Nach jedem Release ersetzt der neue Job `playground` in `release.yml` das App-Paket auf dem Branch. Der Workflow `playground.yml` macht das auch auf Anforderung.
+
 ### Geändert
 - Die App ist nicht mehr als Beta gekennzeichnet. App-Beschreibung (8 Sprachen) und README nennen keinen Beta-Status mehr.
 - Capability `apiStable` ist jetzt `true`: Die API `v1` ist stabil. Änderungen an `v1` bleiben abwärtskompatibel.
