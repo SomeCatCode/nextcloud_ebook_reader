@@ -21,6 +21,7 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 - **Freigaben eines Buchs ansehen und entfernen:** Die Buchdetails haben den neuen Reiter „Freigaben“. Der Reiter zeigt alle Personen, die das Buch lesen können, und die Freigabe, die den Zugriff gibt:
   - Freigaben der App: Buch, Regal, Serie oder Ordner.
   - Nextcloud-Freigaben der Datei oder eines übergeordneten Ordners: Benutzer, Gruppen, öffentliche Links, E-Mail, Teams, Talk. Weiterteilungen durch Empfänger erscheinen mit dem Namen der Person.
+  - Der Dialog „Teilen“ eines Buchs zeigt dieselbe Liste. Ein Buch, das über seine Serie geteilt ist, erscheint dort nicht mehr als „Noch mit niemandem geteilt“.
   - Das Kreuz entfernt eine Freigabe. Vorher zeigt der Reiter die Folge, z. B. „Das ganze Regal … wird nicht mehr geteilt“ oder „Die Freigabe endet für alle Dateien im Ordner“.
   - Neue Endpunkte `GET /api/v1/books/{fileId}/access` und `DELETE /api/v1/books/{fileId}/access?shareId=…` (nur Nextcloud-Freigaben; Freigaben der App entfernen ihre eigenen Endpunkte). Capability-Feature `book-access`.
 

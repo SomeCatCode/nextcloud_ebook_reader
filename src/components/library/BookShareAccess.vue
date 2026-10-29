@@ -4,16 +4,18 @@
 -->
 <template>
 	<div class="book-access">
-		<p class="book-access__hint">
-			{{ t('ebookreader', 'Everybody who can read this book, and the share that gives the access.') }}
-		</p>
+		<template v-if="!embedded">
+			<p class="book-access__hint">
+				{{ t('ebookreader', 'Everybody who can read this book, and the share that gives the access.') }}
+			</p>
 
-		<NcButton @click="$emit('share')">
-			<template #icon>
-				<NcIconSvgWrapper :path="mdiShareVariant" />
-			</template>
-			{{ t('ebookreader', 'Share…') }}
-		</NcButton>
+			<NcButton @click="$emit('share')">
+				<template #icon>
+					<NcIconSvgWrapper :path="mdiShareVariant" />
+				</template>
+				{{ t('ebookreader', 'Share…') }}
+			</NcButton>
+		</template>
 
 		<div v-if="loading && !loaded" class="book-access__center">
 			<NcLoadingIcon :size="28" />
@@ -86,7 +88,11 @@ import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import { ApiError, getBookAccess, revokeBookAccess } from '../../services/api.ts'
 import { useSharesStore } from '../../stores/shares.ts'
 
-const props = defineProps<{ fileId: number }>()
+const props = defineProps<{
+	fileId: number
+	/** inside the share dialog: without hint and share button */
+	embedded?: boolean
+}>()
 defineEmits<{ share: [] }>()
 
 const shares = useSharesStore()
@@ -118,8 +124,15 @@ async function load(): Promise<void> {
 			entries.value = res
 			loaded.value = true
 		}
-	} catch {
-		if (fileId === props.fileId) {
+	} catch (e) {
+		if (fileId !== props.fileId) {
+			return
+		}
+		if (e instanceof ApiError && e.status === 404) {
+			// a book of another user (shared with this user): only its owner sees the shares
+			entries.value = []
+			loaded.value = true
+		} else {
 			error.value = t('ebookreader', 'Could not load the shares of this book')
 		}
 	} finally {
