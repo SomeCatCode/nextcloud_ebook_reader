@@ -445,6 +445,18 @@
 			]
 		},
 		{
+			"id": "Brightness",
+			"files": [
+				"src/components/reader/ReaderSettings.vue"
+			]
+		},
+		{
+			"id": "Brightness, contrast and grayscale apply to the page images of all comics.",
+			"files": [
+				"src/components/reader/ReaderSettings.vue"
+			]
+		},
+		{
 			"id": "Browse by author",
 			"files": [
 				"lib/Service/OpdsCatalog.php"
@@ -780,6 +792,12 @@
 			"id": "Continue reading: {title}",
 			"files": [
 				"src/components/library/ReadNextSuggestions.vue"
+			]
+		},
+		{
+			"id": "Contrast",
+			"files": [
+				"src/components/reader/ReaderSettings.vue"
 			]
 		},
 		{
@@ -1617,6 +1635,12 @@
 			"id": "Genres changed",
 			"files": [
 				"src/editor/useEditorState.ts"
+			]
+		},
+		{
+			"id": "Grayscale",
+			"files": [
+				"src/components/reader/ReaderSettings.vue"
 			]
 		},
 		{
@@ -2878,6 +2902,12 @@
 			]
 		},
 		{
+			"id": "Reset image",
+			"files": [
+				"src/components/reader/ReaderSettings.vue"
+			]
+		},
+		{
 			"id": "Restore selected",
 			"files": [
 				"src/components/editor/ContentList.vue",
@@ -3750,6 +3780,12 @@
 			]
 		},
 		{
+			"id": "This book already has {max} highlights, notes and bookmarks. Delete some to add new ones.",
+			"files": [
+				"src/stores/annotations.ts"
+			]
+		},
+		{
 			"id": "This book has no table of contents.",
 			"files": [
 				"src/components/editor/TocTreeEditor.vue",
@@ -3764,6 +3800,12 @@
 		},
 		{
 			"id": "This book was shared with download disabled, so it can not be read in the app.",
+			"files": [
+				"src/views/ReaderView.vue"
+			]
+		},
+		{
+			"id": "This book was shared with download disabled, so it can not be read in the browser.",
 			"files": [
 				"src/views/ReaderView.vue"
 			]

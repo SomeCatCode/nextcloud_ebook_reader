@@ -32,6 +32,12 @@ export interface ReaderLayout {
 	comicZoom?: 'fit-page' | 'fit-width' | number
 	/** comics: long strip (webtoon), all pages in one seamless vertical scroll instead of paging */
 	comicLongstrip?: boolean
+	/** comics: brightness of the page images in percent (50-200, default 100) */
+	comicBrightness?: number
+	/** comics: contrast of the page images in percent (50-200, default 100) */
+	comicContrast?: number
+	/** comics: show the page images in grayscale */
+	comicGrayscale?: boolean
 }
 
 export interface ReaderTypography {

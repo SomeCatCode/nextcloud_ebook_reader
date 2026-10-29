@@ -1627,7 +1627,8 @@ class LibraryService {
 		if ($source !== Tag::SOURCE_FILE && $source !== Tag::SOURCE_APP) {
 			throw new \InvalidArgumentException('Invalid tag source');
 		}
-		$names = $this->uniqueNames($names);
+		// at most BookMetadata::MAX_LIST names per type and source (the same limit as for names read from a file)
+		$names = array_slice($this->uniqueNames($names), 0, BookMetadata::MAX_LIST);
 		$this->tagMapper->deleteByBook($bookId, $type, $source);
 		$other = [];
 		foreach ($this->tagMapper->findByBook($bookId, $type) as $t) {

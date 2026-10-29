@@ -22,6 +22,7 @@ import type {
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 import { collapseCfi, colorValue, locatorOnPage } from './annotations.ts'
+import { comicFilter } from './comic-filter.ts'
 import { planNavigation, toLocator } from './locator.ts'
 import { LongstripView } from './longstrip.ts'
 import { openBook } from './open-book.ts'
@@ -32,6 +33,8 @@ import { buildCss } from './themes.ts'
 type Any = any
 
 const SIDE_ZONE = 0.3
+/** Image filter of comic pages: the iframes of foliate are exported as part "filter" by foliate-view */
+const FILTER_STYLE = 'foliate-view::part(filter){filter:var(--ebookreader-comic-filter,none)}'
 
 /**
  * Creates a reader inside `container`. Framework free.
@@ -115,10 +118,14 @@ export function createReader(container: HTMLElement, options: ReaderOptions = {}
 	 *
 	 */
 	function applyLayout(): void {
+		const filter = opened?.isComic ? comicFilter(layout) : 'none'
 		if (strip) {
 			strip.setZoom(layout.comicZoom)
+			strip.setFilter(filter)
 			return
 		}
+		// foliate exports its page iframes as part "filter" (see FILTER_STYLE)
+		host?.style.setProperty('--ebookreader-comic-filter', filter)
 		const r = view?.renderer
 		if (!r || !opened) {
 			return
@@ -494,6 +501,9 @@ export function createReader(container: HTMLElement, options: ReaderOptions = {}
 				opened = book
 				host = document.createElement('div')
 				host.style.cssText = 'position:absolute;inset:0;'
+				const filterStyle = document.createElement('style')
+				filterStyle.textContent = FILTER_STYLE
+				host.append(filterStyle)
 				container.style.position ||= 'relative'
 				container.append(host)
 				if (book.isComic && layout.comicLongstrip && book.loadPage) {

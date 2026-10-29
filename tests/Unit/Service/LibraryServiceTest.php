@@ -23,6 +23,8 @@ use OCA\EbookReader\Service\LibraryService;
 use OCA\EbookReader\Service\SettingsService;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\BackgroundJob\IJobList;
+use OCP\DB\QueryBuilder\IExpressionBuilder;
+use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\Files\File;
 use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
@@ -312,6 +314,21 @@ class LibraryServiceTest extends TestCase {
 		$this->service->removeFile('u', 5);
 		$this->assertNotNull($existing->getDeletedAt());
 		$this->assertSame($existing->getDeletedAt(), $existing->getUpdatedAt());
+	}
+
+	public function testSetTagsKeepsAtMostTheListLimit(): void {
+		$names = array_map(static fn (int $i): string => 'Tag ' . $i, range(1, BookMetadata::MAX_LIST + 50));
+		$qb = $this->createMock(IQueryBuilder::class);
+		foreach (['update', 'set', 'where'] as $m) {
+			$qb->method($m)->willReturnSelf();
+		}
+		$qb->method('expr')->willReturn($this->createMock(IExpressionBuilder::class));
+		$db = $this->createMock(IDBConnection::class);
+		$db->method('getQueryBuilder')->willReturn($qb);
+		$service = new LibraryService($this->books, $this->tags, $this->metadata, $this->covers, new GenreClassifier($this->settings, $this->tags),
+			$this->settings, $this->root, $this->jobList, $db, $this->createMock(LoggerInterface::class), $this->sidecar);
+		$service->setTags(5, Tag::TYPE_TAG, $names, Tag::SOURCE_APP);
+		$this->assertCount(BookMetadata::MAX_LIST, $this->insertedTags);
 	}
 
 	public function testRemoveFileKeepsCoverWhileOtherUsersHaveTheBook(): void {

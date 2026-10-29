@@ -78,6 +78,17 @@ class AnnotationMapper extends QBMapper {
 		return $out;
 	}
 
+	public function countLiveByUser(string $userId): int {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select($qb->func()->count('*'))->from($this->getTableName())
+			->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
+			->andWhere($qb->expr()->eq('deleted', $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT)));
+		$res = $qb->executeQuery();
+		$n = $res->fetchOne();
+		$res->closeCursor();
+		return is_numeric($n) ? (int)$n : 0;
+	}
+
 	public function countLiveByUserAndFile(string $userId, int $fileId): int {
 		$qb = $this->db->getQueryBuilder();
 		$qb->select($qb->func()->count('*'))->from($this->getTableName())

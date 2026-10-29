@@ -23,6 +23,8 @@ class AnnotationService {
 	public const MAX_TEXT_CHARS = 2000;
 	public const MAX_NOTE_CHARS = 10000;
 	public const MAX_PER_BOOK = 5000;
+	/** Live annotations of one user over all books */
+	public const MAX_PER_USER = 100000;
 	/** Client clocks more than this far ahead are clamped to the server time (ms). */
 	public const MAX_FUTURE_SKEW_MS = 300000;
 	public const UUID_PATTERN = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/';
@@ -72,6 +74,9 @@ class AnnotationService {
 		if ($existing === null) {
 			if ($this->mapper->countLiveByUserAndFile($userId, $fileId) >= self::MAX_PER_BOOK) {
 				throw new \InvalidArgumentException('too many annotations for this book');
+			}
+			if ($this->mapper->countLiveByUser($userId) >= self::MAX_PER_USER) {
+				throw new \InvalidArgumentException('too many annotations for this user');
 			}
 			$row = new Annotation();
 			$row->setUserId($userId);

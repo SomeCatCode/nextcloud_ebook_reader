@@ -122,10 +122,12 @@ sudo -u www-data php occ ebookreader:scan <user> --force --format=cbr
 - Opens from the Files app; paginated or scrolled layout, light/sepia/dark themes, font, size and line height
 - Table of contents, full-text search, keyboard, tap zones and swipe gestures
 - Comics as single or double pages, right-to-left (manga) reading direction
+- Image filters for comic pages: brightness, contrast and grayscale (for bad scans)
 - Long strip comics (webtoons) scroll down seamlessly instead of paging; recognised from ComicInfo.xml (`Format` Webtoon/Long Strip) or set per book
 - Highlights in five colours, notes and bookmarks (also for comics), listed in a side panel and exportable as Markdown
 - Large files open fast: comic pages are streamed one by one and scaled on the server, EPUBs are loaded chapter by chapter
 - Reading position stored on the server; a newer position from another device is offered when you open a book
+- Public link shares: guests read a shared book in the browser without an account. The browser keeps the position. Shares with "hide download" are not opened.
 
 **Library**
 - Cover grid or list with progress and a "Continue reading" row; finished books are hidden by default
@@ -225,7 +227,7 @@ The development setup, checks and local Nextcloud environment are described in [
 ## Security model
 
 - Scripts inside e-books are never executed, remote content (tracking pixels, web fonts) is never loaded, and links open only after confirmation. Details: [docs/SECURITY-READER.md](docs/SECURITY-READER.md).
-- Every query and file access is scoped to the logged-in user; shares with "prevent download" are respected (no page, chapter or file delivery).
+- Every query and file access is scoped to the logged-in user; shares with "prevent download" are respected (no page, chapter or file delivery). Public link shares give only the shared book, and only when the share allows downloads.
 - Archives are read with limits on entry count, size and unsafe paths; external tools are started without a shell, with timeouts and output limits.
 - The OPDS catalog is opt-in per user, uses app passwords, and is rate limited and protected against brute force.
 
@@ -239,7 +241,7 @@ None. The app does not contact any external service, contains no analytics or tr
 
 - DRM-protected books (Kindle, Adobe) cannot be opened.
 - MOBI/AZW3 files are never modified; their metadata goes to the sidecar file.
-- Public share links offer the normal download, not the reader.
+- In public link shares, guests cannot add highlights, notes or bookmarks.
 - PDF is intentionally not included; Nextcloud has its own viewer.
 
 ## Acknowledgements
