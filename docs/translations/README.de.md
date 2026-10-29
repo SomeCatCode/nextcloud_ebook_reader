@@ -21,7 +21,11 @@ Probiere die App ohne Server aus: Der [Nextcloud Playground](../../playground/RE
 
 ![Seiten-Editor eines Comics](../screenshot-editor.png)
 
-<sub>Die Screenshots zeigen [Pepper&amp;Carrot](https://www.peppercarrot.com) von David Revoy, lizenziert unter [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/deed.de).</sub>
+![E-Book-Reader mit Inhaltsverzeichnis](../screenshot-epub.png)
+
+![Serie mit ihren Bänden](../screenshot-series.png)
+
+<sub>Die Screenshots zeigen [Pepper&amp;Carrot](https://www.peppercarrot.com) von David Revoy, lizenziert unter [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/deed.de), und gemeinfreie Bücher von [Project Gutenberg](https://www.gutenberg.org).</sub>
 
 > [!NOTE]
 > **Stabil seit 1.0.** Die App wird produktiv mit einer großen Bibliothek (E-Books und Comics bis 400 MB) eingesetzt und ist durch automatische Tests abgedeckt. Die API `v1` ist stabil. Der Editor verändert Dateien. Nextcloud legt dabei zwar automatisch eine Version an, ein Backup deiner Bücher schadet trotzdem nicht.

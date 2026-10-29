@@ -257,6 +257,8 @@ Düzenleyici dosyaları değiştirir, bu yüzden kitaplarınızın yedeğini al�
 	<repository type="git">https://github.com/SomeCatCode/nextcloud_ebook_reader.git</repository>
 	<screenshot>https://raw.githubusercontent.com/SomeCatCode/nextcloud_ebook_reader/main/docs/screenshot-library.png</screenshot>
 	<screenshot>https://raw.githubusercontent.com/SomeCatCode/nextcloud_ebook_reader/main/docs/screenshot-reader.png</screenshot>
+	<screenshot>https://raw.githubusercontent.com/SomeCatCode/nextcloud_ebook_reader/main/docs/screenshot-epub.png</screenshot>
+	<screenshot>https://raw.githubusercontent.com/SomeCatCode/nextcloud_ebook_reader/main/docs/screenshot-series.png</screenshot>
 	<screenshot>https://raw.githubusercontent.com/SomeCatCode/nextcloud_ebook_reader/main/docs/screenshot-editor.png</screenshot>
 	<dependencies>
 		<php min-version="8.2"/>
