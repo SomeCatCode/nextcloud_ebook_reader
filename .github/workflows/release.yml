@@ -130,3 +130,11 @@ jobs:
           curl --fail-with-body -sS -X POST https://apps.nextcloud.com/api/v1/apps/releases \
             -H "Authorization: Token $APPSTORE_TOKEN" -H "Content-Type: application/json" \
             --data @"$RUNNER_TEMP/release.json"
+
+  # Puts the new package on the branch `playground` (Nextcloud Playground blueprint, see playground/README.md).
+  playground:
+    needs: release
+    if: ${{ !contains(github.ref_name, '-') }}
+    uses: ./.github/workflows/playground.yml
+    with:
+      tag: ${{ github.ref_name }}

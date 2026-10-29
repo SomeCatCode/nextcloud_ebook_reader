@@ -11,6 +11,10 @@ It is a regular Nextcloud app (PHP backend, Vue frontend). It needs no extra con
 ![Nextcloud 33-35](https://img.shields.io/badge/Nextcloud-33--35-0082c9?logo=nextcloud&logoColor=white)
 ![License AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)
 
+<a href="https://ateeducacion.github.io/nextcloud-playground/?blueprint-url=https://raw.githubusercontent.com/SomeCatCode/nextcloud_ebook_reader/playground/blueprint.json" target="_blank" rel="noopener noreferrer"><img src="https://raw.githubusercontent.com/ateeducacion/nextcloud-playground/main/assets/playground-preview-button.svg" alt="Try it in Nextcloud Playground" width="224"></a>
+
+Try the app without a server: [Nextcloud Playground](playground/README.md) runs Nextcloud with the E-Book Reader and six free sample books in your browser. Nothing leaves the browser.
+
 ![Library with series filter and book details](docs/screenshot-library.png)
 
 ![Comic reader](docs/screenshot-reader.png)
@@ -24,7 +28,7 @@ It is a regular Nextcloud app (PHP backend, Vue frontend). It needs no extra con
 <sub>Screenshots show [Pepper&amp;Carrot](https://www.peppercarrot.com) by David Revoy, licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), and public-domain books from [Project Gutenberg](https://www.gutenberg.org).</sub>
 
 > [!NOTE]
-> **Beta.** The app is in daily production use with a large library (e-books and comics up to 400 MB) and covered by automated tests. Details may still change before 1.0. The editor modifies files; Nextcloud keeps a version of every change, but a backup of your books is still a good idea.
+> **Stable since 1.0.** The app is in daily production use with a large library (e-books and comics up to 400 MB) and covered by automated tests. The API `v1` is stable. The editor modifies files; Nextcloud keeps a version of every change, but a backup of your books is still a good idea.
 
 ## Requirements
 
