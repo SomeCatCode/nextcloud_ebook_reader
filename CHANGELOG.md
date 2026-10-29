@@ -5,6 +5,9 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+### Geändert
+- Neue Screenshots für README und App Store, aufgenommen im Nextcloud Playground mit den freien Beispielbüchern: Bibliothek, Comic-Reader, Seiten-Editor und neu E-Book-Reader mit Inhaltsverzeichnis sowie Serie mit ihren Bänden.
+
 ## 1.0.0 – 2026-10-29
 
 ### Hinzugefügt

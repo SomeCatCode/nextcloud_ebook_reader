@@ -17,7 +17,11 @@ It is a regular Nextcloud app (PHP backend, Vue frontend). It needs no extra con
 
 ![Page editor of a comic](docs/screenshot-editor.png)
 
-<sub>Screenshots show [Pepper&amp;Carrot](https://www.peppercarrot.com) by David Revoy, licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).</sub>
+![E-book reader with table of contents](docs/screenshot-epub.png)
+
+![Series with its volumes](docs/screenshot-series.png)
+
+<sub>Screenshots show [Pepper&amp;Carrot](https://www.peppercarrot.com) by David Revoy, licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), and public-domain books from [Project Gutenberg](https://www.gutenberg.org).</sub>
 
 > [!NOTE]
 > **Beta.** The app is in daily production use with a large library (e-books and comics up to 400 MB) and covered by automated tests. Details may still change before 1.0. The editor modifies files; Nextcloud keeps a version of every change, but a backup of your books is still a good idea.

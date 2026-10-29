@@ -17,7 +17,11 @@ Bibliothek, Reader und Editor für E-Books und Comics direkt in deiner Nextcloud
 
 ![Seiten-Editor eines Comics](../screenshot-editor.png)
 
-<sub>Die Screenshots zeigen [Pepper&amp;Carrot](https://www.peppercarrot.com) von David Revoy, lizenziert unter [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/deed.de).</sub>
+![E-Book-Reader mit Inhaltsverzeichnis](../screenshot-epub.png)
+
+![Serie mit ihren Bänden](../screenshot-series.png)
+
+<sub>Die Screenshots zeigen [Pepper&amp;Carrot](https://www.peppercarrot.com) von David Revoy, lizenziert unter [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/deed.de), und gemeinfreie Bücher von [Project Gutenberg](https://www.gutenberg.org).</sub>
 
 > [!NOTE]
 > **Beta.** Die App wird produktiv mit einer großen Bibliothek (E-Books und Comics bis 400 MB) eingesetzt und ist durch automatische Tests abgedeckt. Bis zur Version 1.0 können sich Details noch ändern. Der Editor verändert Dateien. Nextcloud legt dabei zwar automatisch eine Version an, ein Backup deiner Bücher schadet trotzdem nicht.
