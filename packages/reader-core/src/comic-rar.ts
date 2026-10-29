@@ -42,7 +42,8 @@ export async function makeArchiveLoader(file: Blob, opts: ReaderOptions, extensi
 		.replace(/new URL\("libarchive\.wasm",import\.meta\.url\)\.href/g, JSON.stringify(absWasm))
 		.replace(/import\.meta\.url/g, JSON.stringify(absWasm))
 	const workerBlobUrl = URL.createObjectURL(new Blob([patched], { type: 'text/javascript' }))
-	const { Archive } = await import('libarchive.js')
+	// the main module next to our worker build: its default worker URL then points at our worker, not at the npm one
+	const { Archive } = await import('../../libarchive/dist/libarchive.js')
 	Archive.init({ workerUrl: workerBlobUrl })
 	const archive = await Archive.open(file instanceof File ? file : new File([file], `book.${extension}`))
 	const files = await archive.getFilesArray() as unknown as { file: CompressedFile, path: string }[]
