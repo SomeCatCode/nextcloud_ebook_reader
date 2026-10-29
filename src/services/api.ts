@@ -5,6 +5,7 @@ import type {
 	AppDataPatch,
 	ArchiveEntries,
 	Book,
+	BookAccess,
 	BookList,
 	BookQuery,
 	BulkAppDataRequest,
@@ -42,6 +43,7 @@ import type {
 	ShelfType,
 	SmartQuery,
 	Structure,
+	Suggestions,
 	SyncResult,
 	Task,
 	TaskStarted,
@@ -382,6 +384,16 @@ export function recentBooks(limit = 10): Promise<RecentResult> {
  */
 export async function nextVolume(fileId: number): Promise<Book | null> {
 	return (await request<{ book: Book | null }>('get', `/books/${fileId}/next`)).book
+}
+
+/**
+ * Read-next suggestions after a book: the next volume and similar unread titles.
+ *
+ * @param fileId
+ * @param limit maximum number of similar titles (1..10)
+ */
+export function getSuggestions(fileId: number, limit = 4): Promise<Suggestions> {
+	return request<Suggestions>('get', `/books/${fileId}/suggestions`, { params: { limit } })
 }
 
 /**
@@ -761,6 +773,25 @@ export function deleteAnnotation(uuid: string, clientUpdatedAt?: number): Promis
  */
 export function listShares(): Promise<ShareOverview> {
 	return request<ShareOverview>('get', '/shares')
+}
+
+/**
+ * Everybody who can read an own book and why (shares of the app and Nextcloud shares of the file or its folders).
+ *
+ * @param fileId
+ */
+export function getBookAccess(fileId: number): Promise<BookAccess[]> {
+	return request<BookAccess[]>('get', `/books/${fileId}/access`)
+}
+
+/**
+ * Removes a Nextcloud share listed by getBookAccess (via nextcloud).
+ *
+ * @param fileId
+ * @param shareId
+ */
+export async function revokeBookAccess(fileId: number, shareId: string): Promise<void> {
+	await request<unknown>('delete', `/books/${fileId}/access`, { params: { shareId } })
 }
 
 /**

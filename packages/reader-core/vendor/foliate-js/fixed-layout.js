@@ -84,6 +84,8 @@ export class FixedLayout extends HTMLElement {
         // `allow-scripts` is needed for events because of WebKit bug
         // https://bugs.webkit.org/show_bug.cgi?id=218086
         iframe.setAttribute('sandbox', globalThis.__EBOOKREADER_SANDBOX ?? 'allow-same-origin') // EBOOKREADER PATCH: no allow-scripts
+        // EBOOKREADER PATCH: the section CSP also as iframe attribute (CSP Embedded Enforcement, Chromium)
+        if (globalThis.__EBOOKREADER_CSP) iframe.setAttribute('csp', globalThis.__EBOOKREADER_CSP)
         iframe.setAttribute('scrolling', 'no')
         iframe.setAttribute('part', 'filter')
         this.#root.append(element)

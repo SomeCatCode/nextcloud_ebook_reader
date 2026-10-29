@@ -13,14 +13,14 @@ use OCA\EbookReader\Db\AnnotationMapper;
 use OCA\EbookReader\Db\BookMapper;
 use OCA\EbookReader\Db\ShelfBookMapper;
 use OCA\EbookReader\Db\ShelfMapper;
+use OCA\EbookReader\Db\TagMapper;
 use OCA\EbookReader\Service\ArchiveCache;
+use OCA\EbookReader\Service\ComicPageCache;
 use OCA\EbookReader\Service\TaskService;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\IJob;
 use OCP\BackgroundJob\TimedJob;
-use OCP\Files\IAppData;
 use OCP\Files\IRootFolder;
-use OCP\Files\NotFoundException;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -41,7 +41,7 @@ class CleanupTombstonesJob extends TimedJob {
 	public function __construct(
 		private ITimeFactory $timeFactory,
 		private BookMapper $bookMapper,
-		private IAppData $appData,
+		private ComicPageCache $pageCache,
 		private LoggerInterface $logger,
 		private TaskService $tasks,
 		private ArchiveCache $archiveCache,
@@ -49,6 +49,7 @@ class CleanupTombstonesJob extends TimedJob {
 		private ShelfBookMapper $shelfBookMapper,
 		private AnnotationMapper $annotationMapper,
 		private IRootFolder $rootFolder,
+		private TagMapper $tagMapper,
 	) {
 		parent::__construct($timeFactory);
 		$this->setInterval(24 * 60 * 60);
@@ -89,7 +90,7 @@ class CleanupTombstonesJob extends TimedJob {
 	}
 
 	/**
-	 * Drops the shelf assignments and, for deleted files, the annotations of the tombstones that are about to be purged
+	 * Drops the shelf assignments, the tags and, for deleted files, the annotations of the tombstones that are about to be purged
 	 * (tombstones can come back until then, so they are kept as long as the row exists). Annotations of files that still
 	 * exist stay: the user lost access (share revoked, folder unmounted) and gets the highlights back with the share.
 	 */
@@ -98,9 +99,14 @@ class CleanupTombstonesJob extends TimedJob {
 		do {
 			$batch = $this->bookMapper->findTombstonesOlderThan($cutoffMs, $afterId, 1000);
 			$byUser = [];
+			$bookIds = [];
 			foreach ($batch as $row) {
 				$byUser[$row['user_id']][] = $row['file_id'];
+				$bookIds[] = $row['id'];
 				$afterId = max($afterId, $row['id']);
+			}
+			if ($bookIds !== []) {
+				$this->tagMapper->deleteByBooks($bookIds);
 			}
 			foreach ($byUser as $userId => $fileIds) {
 				$gone = array_values(array_filter($fileIds, fn (int $id): bool => !$this->fileExists($id)));
@@ -159,18 +165,10 @@ class CleanupTombstonesJob extends TimedJob {
 
 	private function cleanupComicPages(int $cutoff): void {
 		try {
-			$folder = $this->appData->getFolder('comic-pages');
-		} catch (NotFoundException) {
-			return;
-		}
-		foreach ($folder->getDirectoryListing() as $file) {
-			try {
-				if ($file->getMTime() < $cutoff) {
-					$file->delete();
-				}
-			} catch (\Throwable $e) {
-				$this->logger->debug('Cannot remove cached comic page: ' . $e->getMessage(), ['app' => 'ebookreader']);
-			}
+			$this->pageCache->removeOlderThan($cutoff);
+			$this->pageCache->trim();
+		} catch (\Throwable $e) {
+			$this->logger->warning('Comic page cleanup failed: ' . $e->getMessage(), ['app' => 'ebookreader']);
 		}
 	}
 }

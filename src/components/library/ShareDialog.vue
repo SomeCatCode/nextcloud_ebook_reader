@@ -20,6 +20,7 @@
 			<NcSelectUsers
 				:key="selectKey"
 				:options="options"
+				:filterable="false"
 				:loading="searching"
 				:disabled="busy"
 				:inputLabel="t('ebookreader', 'Share with')"
@@ -34,7 +35,13 @@
 			<h3 class="share-dialog__heading">
 				{{ t('ebookreader', 'Shared with') }}
 			</h3>
-			<div v-if="!shares.loaded && shares.loading" class="share-dialog__center">
+			<!-- a book: everybody with access, also through a shelf, series, folder or a Nextcloud share -->
+			<BookShareAccess
+				v-if="bookAccess"
+				ref="access"
+				:fileId="Number(target.id)"
+				embedded />
+			<div v-else-if="!shares.loaded && shares.loading" class="share-dialog__center">
 				<NcLoadingIcon :size="28" />
 			</div>
 			<p v-else-if="recipients.length === 0" class="share-dialog__hint">
@@ -72,7 +79,7 @@ import type { Sharee } from '../../types.ts'
 import { mdiClose } from '@mdi/js'
 import { showError, showSuccess, showWarning } from '@nextcloud/dialogs'
 import { n, t } from '@nextcloud/l10n'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, useTemplateRef } from 'vue'
 import NcAvatar from '@nextcloud/vue/components/NcAvatar'
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
@@ -80,7 +87,9 @@ import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
 import NcSelectUsers from '@nextcloud/vue/components/NcSelectUsers'
+import BookShareAccess from './BookShareAccess.vue'
 import { ApiError, searchSharees } from '../../services/api.ts'
+import { hasFeature } from '../../services/features.ts'
 import { useSharesStore } from '../../stores/shares.ts'
 
 const props = defineProps<{ target: ShareTarget }>()
@@ -97,6 +106,8 @@ let searchSeq = 0
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 
 const recipients = computed(() => shares.recipientsOf(props.target))
+const bookAccess = computed(() => props.target.type === 'book' && hasFeature('book-access'))
+const access = useTemplateRef<InstanceType<typeof BookShareAccess>>('access')
 
 const dialogTitle = computed(() => {
 	switch (props.target.type) {
@@ -116,7 +127,10 @@ const hint = computed(() => {
 	}
 })
 
-/** search results without the users it is already shared with */
+/**
+ * Search results without the users it is already shared with. The server already searched (user id, name, e-mail),
+ * so the picker does not filter them again (`filterable` off): a match on the user id would else disappear.
+ */
 const options = computed(() => {
 	const taken = new Set(recipients.value.map((r) => r.recipient))
 	return found.value.filter((u) => !taken.has(u.id)).map((u) => ({ id: u.id, user: u.id, displayName: u.displayName, subname: u.subname }))
@@ -184,6 +198,7 @@ async function onPick(picked: unknown): Promise<void> {
 		}
 		found.value = []
 		selectKey.value++
+		void access.value?.load()
 	} catch (e) {
 		error.value = e instanceof ApiError && e.message ? e.message : t('ebookreader', 'Could not share')
 	} finally {

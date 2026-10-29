@@ -45,6 +45,8 @@ class SettingsService {
 		'lineHeight' => [0.5, 5],
 		'margin' => [0, 300],
 		'maxColumns' => [1, 8],
+		'comicBrightness' => [50, 200],
+		'comicContrast' => [50, 200],
 	];
 	private const MAX_FONT_FAMILY = 200;
 
@@ -216,7 +218,7 @@ class SettingsService {
 				if (is_string($value) && strlen($value) <= self::MAX_FONT_FAMILY && preg_match('/^[^<>{};\\\\]*$/', $value) === 1) {
 					$out[$key] = $value;
 				}
-			} elseif ($key === 'comicRtl') {
+			} elseif ($key === 'comicRtl' || $key === 'comicGrayscale') {
 				if (is_bool($value)) {
 					$out[$key] = $value;
 				}

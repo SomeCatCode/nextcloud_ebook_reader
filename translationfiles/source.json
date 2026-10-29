@@ -104,6 +104,12 @@
 			]
 		},
 		{
+			"id": "Access removed",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
+			]
+		},
+		{
 			"id": "Actions for the folder “{name}”",
 			"files": [
 				"src/components/library/FolderBrowser.vue"
@@ -224,7 +230,7 @@
 		{
 			"id": "Age rating",
 			"files": [
-				"src/components/library/BookDetails.vue",
+				"src/components/library/BookLibraryFields.vue",
 				"src/components/library/BulkEditDialog.vue",
 				"src/components/library/FilterBar.vue",
 				"src/views/LibraryView.vue"
@@ -378,6 +384,12 @@
 			]
 		},
 		{
+			"id": "Book shared in the e-book reader",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
+			]
+		},
+		{
 			"id": "Book {id}",
 			"files": [
 				"src/components/library/BulkEditDialog.vue"
@@ -442,6 +454,18 @@
 			"id": "Both of the above.",
 			"files": [
 				"src/components/library/SettingsDialog.vue"
+			]
+		},
+		{
+			"id": "Brightness",
+			"files": [
+				"src/components/reader/ReaderSettings.vue"
+			]
+		},
+		{
+			"id": "Brightness, contrast and grayscale apply to the page images of all comics.",
+			"files": [
+				"src/components/reader/ReaderSettings.vue"
 			]
 		},
 		{
@@ -517,6 +541,7 @@
 				"src/components/convert/OptimizeBooksDialog.vue",
 				"src/components/editor/RenameDialog.vue",
 				"src/components/library/AddToShelfDialog.vue",
+				"src/components/library/BookShareAccess.vue",
 				"src/components/library/BulkEditDialog.vue",
 				"src/components/library/DeleteBooksDialog.vue",
 				"src/components/library/SettingsDialog.vue",
@@ -584,6 +609,12 @@
 		},
 		{
 			"id": "Change language",
+			"files": [
+				"src/components/library/BulkEditDialog.vue"
+			]
+		},
+		{
+			"id": "Change long strip",
 			"files": [
 				"src/components/library/BulkEditDialog.vue"
 			]
@@ -732,7 +763,7 @@
 		{
 			"id": "Completion status",
 			"files": [
-				"src/components/library/BookDetails.vue",
+				"src/components/library/BookLibraryFields.vue",
 				"src/components/library/BulkEditDialog.vue",
 				"src/views/LibraryView.vue"
 			]
@@ -771,9 +802,15 @@
 			]
 		},
 		{
-			"id": "Continue with {title}",
+			"id": "Continue reading: {title}",
 			"files": [
-				"src/views/ReaderView.vue"
+				"src/components/library/ReadNextSuggestions.vue"
+			]
+		},
+		{
+			"id": "Contrast",
+			"files": [
+				"src/components/reader/ReaderSettings.vue"
 			]
 		},
 		{
@@ -923,6 +960,12 @@
 			]
 		},
 		{
+			"id": "Could not load the shares of this book",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
+			]
+		},
+		{
 			"id": "Could not organise the books",
 			"files": [
 				"src/components/organize/OrganizeDialog.vue"
@@ -931,7 +974,14 @@
 		{
 			"id": "Could not read the value from the file",
 			"files": [
-				"src/components/library/BookDetails.vue"
+				"src/components/library/BookDetails.vue",
+				"src/components/library/BookLibraryFields.vue"
+			]
+		},
+		{
+			"id": "Could not remove the access",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
 			]
 		},
 		{
@@ -973,25 +1023,32 @@
 		{
 			"id": "Could not save the age rating",
 			"files": [
-				"src/components/library/BookDetails.vue"
+				"src/components/library/BookLibraryFields.vue"
 			]
 		},
 		{
 			"id": "Could not save the completion status",
 			"files": [
-				"src/components/library/BookDetails.vue"
+				"src/components/library/BookLibraryFields.vue"
 			]
 		},
 		{
 			"id": "Could not save the rating",
 			"files": [
-				"src/components/library/BookDetails.vue"
+				"src/components/library/BookLibraryFields.vue"
 			]
 		},
 		{
 			"id": "Could not save the reading status",
 			"files": [
-				"src/components/library/BookDetails.vue"
+				"src/components/library/BookLibraryFields.vue"
+			]
+		},
+		{
+			"id": "Could not save the setting",
+			"files": [
+				"src/components/library/BookLibraryFields.vue",
+				"src/views/ReaderView.vue"
 			]
 		},
 		{
@@ -1197,7 +1254,15 @@
 		{
 			"id": "Dismiss",
 			"files": [
-				"src/views/ReaderView.vue"
+				"src/components/library/ReadNextSuggestions.vue"
+			]
+		},
+		{
+			"id": "Display",
+			"files": [
+				"src/components/library/FilterBar.vue",
+				"src/components/reader/ReaderSettings.vue",
+				"src/views/LibraryView.vue"
 			]
 		},
 		{
@@ -1371,6 +1436,12 @@
 			]
 		},
 		{
+			"id": "Everybody who can read this book, and the share that gives the access.",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
+			]
+		},
+		{
 			"id": "Exclude",
 			"files": [
 				"src/components/library/TagTreeNav.vue",
@@ -1387,6 +1458,12 @@
 			"id": "Exit fullscreen",
 			"files": [
 				"src/views/ReaderView.vue"
+			]
+		},
+		{
+			"id": "Expires on {date}",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
 			]
 		},
 		{
@@ -1465,9 +1542,15 @@
 		{
 			"id": "Finished",
 			"files": [
-				"src/components/library/BookDetails.vue",
+				"src/components/library/BookLibraryFields.vue",
 				"src/components/library/FilterBar.vue",
 				"src/views/LibraryView.vue"
+			]
+		},
+		{
+			"id": "Finished reading",
+			"files": [
+				"src/components/library/ReadNextSuggestions.vue"
 			]
 		},
 		{
@@ -1541,7 +1624,7 @@
 		{
 			"id": "From the book file",
 			"files": [
-				"src/components/library/BookDetails.vue"
+				"src/components/library/BookLibraryFields.vue"
 			]
 		},
 		{
@@ -1589,6 +1672,12 @@
 			"id": "Genres changed",
 			"files": [
 				"src/editor/useEditorState.ts"
+			]
+		},
+		{
+			"id": "Grayscale",
+			"files": [
+				"src/components/reader/ReaderSettings.vue"
 			]
 		},
 		{
@@ -1876,6 +1965,7 @@
 		{
 			"id": "Library",
 			"files": [
+				"src/views/EditorView.vue",
 				"src/views/LibraryView.vue"
 			]
 		},
@@ -1913,6 +2003,37 @@
 			"id": "Loading the saved version…",
 			"files": [
 				"src/views/EditorView.vue"
+			]
+		},
+		{
+			"id": "Long strip",
+			"files": [
+				"src/components/library/bookFlags.ts",
+				"src/components/reader/ReaderSettings.vue"
+			]
+		},
+		{
+			"id": "Long strip (scroll down instead of turning pages)",
+			"files": [
+				"src/components/library/BookLibraryFields.vue"
+			]
+		},
+		{
+			"id": "Long strip (scroll down)",
+			"files": [
+				"src/components/library/BulkEditDialog.vue"
+			]
+		},
+		{
+			"id": "Long strip comic: read by scrolling down instead of turning pages",
+			"files": [
+				"src/components/library/bookFlags.ts"
+			]
+		},
+		{
+			"id": "Long strip: all pages in one continuous vertical scroll (webtoons). Saved for this book.",
+			"files": [
+				"src/components/reader/ReaderSettings.vue"
 			]
 		},
 		{
@@ -2061,9 +2182,15 @@
 			]
 		},
 		{
-			"id": "Next volume: {title}",
+			"id": "Nextcloud share of the file",
 			"files": [
-				"src/components/library/BookDetails.vue"
+				"src/components/library/BookShareAccess.vue"
+			]
+		},
+		{
+			"id": "Nextcloud share of the folder \"{path}\"",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
 			]
 		},
 		{
@@ -2075,7 +2202,7 @@
 		{
 			"id": "No age rating",
 			"files": [
-				"src/components/library/BookDetails.vue",
+				"src/components/library/BookLibraryFields.vue",
 				"src/components/library/BulkEditDialog.vue",
 				"src/components/library/bookFlags.ts"
 			]
@@ -2174,6 +2301,12 @@
 			"id": "No shelves yet",
 			"files": [
 				"src/components/library/ShelvesNav.vue"
+			]
+		},
+		{
+			"id": "Nobody else can read this book.",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
 			]
 		},
 		{
@@ -2415,6 +2548,12 @@
 			]
 		},
 		{
+			"id": "Original width",
+			"files": [
+				"src/components/reader/ReaderSettings.vue"
+			]
+		},
+		{
 			"id": "Other readers see the changes, but the book file is rewritten.",
 			"files": [
 				"src/components/library/SettingsDialog.vue"
@@ -2461,6 +2600,12 @@
 			"files": [
 				"src/components/reader/ReaderSettings.vue",
 				"src/views/EditorView.vue"
+			]
+		},
+		{
+			"id": "Pages (turn pages)",
+			"files": [
+				"src/components/library/BulkEditDialog.vue"
 			]
 		},
 		{
@@ -2556,6 +2701,18 @@
 			]
 		},
 		{
+			"id": "Public link",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
+			]
+		},
+		{
+			"id": "Public link \"{label}\"",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
+			]
+		},
+		{
 			"id": "Publication date (YYYY-MM-DD)",
 			"files": [
 				"src/components/editor/MetadataForm.vue"
@@ -2608,7 +2765,7 @@
 		{
 			"id": "Rating",
 			"files": [
-				"src/components/library/BookDetails.vue",
+				"src/components/library/BookLibraryFields.vue",
 				"src/components/library/BookList.vue",
 				"src/components/library/StarRating.vue",
 				"src/views/LibraryView.vue"
@@ -2629,7 +2786,7 @@
 		{
 			"id": "Reading",
 			"files": [
-				"src/components/library/BookDetails.vue",
+				"src/components/library/BookLibraryFields.vue",
 				"src/components/library/FilterBar.vue"
 			]
 		},
@@ -2648,7 +2805,7 @@
 		{
 			"id": "Reading status",
 			"files": [
-				"src/components/library/BookDetails.vue"
+				"src/components/library/BookLibraryFields.vue"
 			]
 		},
 		{
@@ -2697,7 +2854,14 @@
 		{
 			"id": "Remove",
 			"files": [
+				"src/components/library/BookShareAccess.vue",
 				"src/components/library/SharingOverview.vue"
+			]
+		},
+		{
+			"id": "Remove access",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
 			]
 		},
 		{
@@ -2812,6 +2976,12 @@
 			]
 		},
 		{
+			"id": "Reset image",
+			"files": [
+				"src/components/reader/ReaderSettings.vue"
+			]
+		},
+		{
 			"id": "Restore selected",
 			"files": [
 				"src/components/editor/ContentList.vue",
@@ -2859,6 +3029,12 @@
 		},
 		{
 			"id": "Save changes",
+			"files": [
+				"src/views/EditorView.vue"
+			]
+		},
+		{
+			"id": "Saved at once in the library, the book file stays unchanged.",
 			"files": [
 				"src/views/EditorView.vue"
 			]
@@ -3029,7 +3205,7 @@
 		{
 			"id": "Set in the app",
 			"files": [
-				"src/components/library/BookDetails.vue"
+				"src/components/library/BookLibraryFields.vue"
 			]
 		},
 		{
@@ -3171,9 +3347,16 @@
 			"id": "Share…",
 			"files": [
 				"src/components/library/BookDetails.vue",
+				"src/components/library/BookShareAccess.vue",
 				"src/components/library/FolderBrowser.vue",
 				"src/components/library/SeriesCard.vue",
 				"src/components/library/ShelvesNav.vue"
+			]
+		},
+		{
+			"id": "Sharing",
+			"files": [
+				"src/components/library/BookDetails.vue"
 			]
 		},
 		{
@@ -3244,6 +3427,12 @@
 			"id": "Sidecar file and inside the book",
 			"files": [
 				"src/components/library/SettingsDialog.vue"
+			]
+		},
+		{
+			"id": "Similar titles",
+			"files": [
+				"src/components/library/ReadNextSuggestions.vue"
 			]
 		},
 		{
@@ -3672,6 +3861,12 @@
 			]
 		},
 		{
+			"id": "This book already has {max} highlights, notes and bookmarks. Delete some to add new ones.",
+			"files": [
+				"src/stores/annotations.ts"
+			]
+		},
+		{
 			"id": "This book has no table of contents.",
 			"files": [
 				"src/components/editor/TocTreeEditor.vue",
@@ -3691,6 +3886,24 @@
 			]
 		},
 		{
+			"id": "This book was shared with download disabled, so it can not be read in the browser.",
+			"files": [
+				"src/views/ReaderView.vue"
+			]
+		},
+		{
+			"id": "This deletes the Nextcloud share of the file.",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
+			]
+		},
+		{
+			"id": "This deletes the Nextcloud share of the folder \"{path}\". The share ends for all files in the folder.",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
+			]
+		},
+		{
 			"id": "This file format can not be opened in the reader.",
 			"files": [
 				"src/views/ReaderView.vue"
@@ -3706,6 +3919,42 @@
 			"id": "This is the current format",
 			"files": [
 				"src/convert/formats.ts"
+			]
+		},
+		{
+			"id": "This stops sharing the folder \"{path}\" with {name}. {name} loses all files in the folder.",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
+			]
+		},
+		{
+			"id": "This stops sharing the whole series \"{series}\" with {name}. {name} loses all books of the series.",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
+			]
+		},
+		{
+			"id": "This stops sharing the whole shelf \"{shelf}\" with {name}. {name} loses all books of the shelf.",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
+			]
+		},
+		{
+			"id": "Through the folder \"{path}\"",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
+			]
+		},
+		{
+			"id": "Through the series \"{name}\"",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
+			]
+		},
+		{
+			"id": "Through the shelf \"{name}\"",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
 			]
 		},
 		{
@@ -3780,7 +4029,7 @@
 		{
 			"id": "Unread",
 			"files": [
-				"src/components/library/BookDetails.vue",
+				"src/components/library/BookLibraryFields.vue",
 				"src/components/library/FilterBar.vue",
 				"src/views/LibraryView.vue"
 			]
@@ -3859,13 +4108,20 @@
 			]
 		},
 		{
-			"id": "Use value from file",
+			"id": "Use the value from the file",
 			"files": [
-				"src/components/library/BookDetails.vue"
+				"src/components/library/BulkEditDialog.vue"
 			]
 		},
 		{
-			"id": "Used when renaming books. Placeholders: {author}, {title}, {series}, {index}, {year}",
+			"id": "Use value from file",
+			"files": [
+				"src/components/library/BookDetails.vue",
+				"src/components/library/BookLibraryFields.vue"
+			]
+		},
+		{
+			"id": "Used when renaming books. Placeholders: {author}, {title}, {series}, {series_index}, {year}. {series_index} gets leading zeros (e.g. 01, 02, 10), {series_index:raw} does not.",
 			"files": [
 				"src/components/library/SettingsDialog.vue"
 			]
@@ -4408,6 +4664,7 @@
 		{
 			"id": "shared by {name}",
 			"files": [
+				"src/components/library/BookShareAccess.vue",
 				"src/components/library/SharingOverview.vue"
 			]
 		},
@@ -4451,6 +4708,30 @@
 			"id": "{moved} moved, {failed} failed",
 			"files": [
 				"src/components/organize/OrganizeDialog.vue"
+			]
+		},
+		{
+			"id": "{name} (Talk conversation)",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
+			]
+		},
+		{
+			"id": "{name} (group)",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
+			]
+		},
+		{
+			"id": "{name} (team)",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
+			]
+		},
+		{
+			"id": "{name} can no longer read this book. A shelf, series or folder share with {name} stays.",
+			"files": [
+				"src/components/library/BookShareAccess.vue"
 			]
 		},
 		{

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 import { describe, expect, it } from 'vitest'
-import { ageBadge, ageEntries, ageTermLabel, completionEntries, completionTermLabel, isAgeRating, normalizeAgeTerm, offersNextVolume, volumeLabel } from './bookFlags.ts'
+import { ageBadge, ageEntries, ageTermLabel, completionEntries, completionTermLabel, formatBadge, isAgeRating, layoutEntries, layoutTermLabel, normalizeAgeTerm, volumeLabel } from './bookFlags.ts'
 
 describe('age terms', () => {
 	it('normalises like the server', () => {
@@ -78,11 +78,19 @@ describe('next volume', () => {
 		expect(volumeLabel({ seriesIndex: 3 }, 'The End')).toBe('Volume 3: The End')
 		expect(volumeLabel({ seriesIndex: null }, 'The End')).toBe('The End')
 	})
+})
 
-	it('is offered at the end of a book in a series', () => {
-		expect(offersNextVolume({ series: 'Saga' }, 0.99)).toBe(true)
-		expect(offersNextVolume({ series: 'Saga' }, 0.5)).toBe(false)
-		expect(offersNextVolume({ series: null }, 1)).toBe(false)
-		expect(offersNextVolume(null, 1)).toBe(false)
+describe('long strip', () => {
+	it('lists the long strip entry only when there are such books', () => {
+		expect(layoutEntries([{ name: 'longstrip', count: 0 }])).toEqual([])
+		expect(layoutEntries(undefined)).toEqual([])
+		expect(layoutEntries([{ name: 'longstrip', count: 4 }])).toEqual([{ name: 'longstrip', label: 'Long strip', count: 4 }])
+		expect(layoutTermLabel('longstrip')).toBe('Long strip')
+	})
+
+	it('marks a long strip comic in the format badge', () => {
+		expect(formatBadge({ format: 'cbz', longstrip: true })).toBe('CBZ-LS')
+		expect(formatBadge({ format: 'cbz', longstrip: false })).toBe('CBZ')
+		expect(formatBadge({ format: 'epub' } as never)).toBe('EPUB')
 	})
 })

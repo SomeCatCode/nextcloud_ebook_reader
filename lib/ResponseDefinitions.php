@@ -80,6 +80,8 @@ namespace OCA\EbookReader;
  *     completion: 'ongoing'|'completed'|null,
  *     ageRating: 0|6|12|16|18|null,
  *     ageRatingManual: bool,
+ *     longstrip: bool,
+ *     longstripManual: bool,
  *     progress: ?EbookReaderProgress,
  * }
  *
@@ -94,6 +96,7 @@ namespace OCA\EbookReader;
  *     missing: array{genre: int, tag: int, author: int, series: int, description: int, cover: int, language: int},
  *     completion: list<EbookReaderFacetEntry>,
  *     ageRatings: list<EbookReaderFacetEntry>,
+ *     layouts: list<EbookReaderFacetEntry>,
  * }
  *
  * @psalm-type EbookReaderSettings = array{
@@ -133,6 +136,11 @@ namespace OCA\EbookReader;
  * @psalm-type EbookReaderBookList = array{
  *     books: list<EbookReaderBook>,
  *     total: int,
+ * }
+ *
+ * @psalm-type EbookReaderSuggestions = array{
+ *     next: ?EbookReaderBook,
+ *     similar: list<EbookReaderBook>,
  * }
  *
  * @psalm-type EbookReaderSmartQuery = array{
@@ -234,6 +242,23 @@ namespace OCA\EbookReader;
  *     recipientDisplayName: string,
  *     createdAt: int,
  *     bookCount: int,
+ * }
+ *
+ * @psalm-type EbookReaderBookAccess = array{
+ *     via: 'book'|'shelf'|'series'|'folder'|'nextcloud',
+ *     viaName: string,
+ *     shelfId: ?int,
+ *     series: ?string,
+ *     path: ?string,
+ *     shareId: ?string,
+ *     shareType: 'user'|'group'|'link'|'email'|'remote'|'team'|'talk'|'deck'|'other',
+ *     recipient: string,
+ *     recipientDisplayName: string,
+ *     sharedBy: string,
+ *     sharedByDisplayName: string,
+ *     folder: bool,
+ *     createdAt: int,
+ *     expiresAt: ?int,
  * }
  *
  * @psalm-type EbookReaderShareOverview = array{

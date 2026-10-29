@@ -14,7 +14,7 @@
 		@keydown.space.prevent="$emit('click', book)">
 		<div class="book-card__cover">
 			<BookCover :book="book" />
-			<span class="book-card__format">{{ book.format.toUpperCase() }}</span>
+			<span class="book-card__format" :title="book.longstrip ? longstripTitle() : undefined">{{ formatBadge(book) }}</span>
 			<span
 				v-if="book.ageRating !== null && book.ageRating !== undefined && !selectMode"
 				class="book-card__age"
@@ -68,7 +68,7 @@ import { computed } from 'vue'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import BookCover from './BookCover.vue'
 import ShareBadge from './ShareBadge.vue'
-import { ageBadge, ageTitle, completionLabel } from './bookFlags.ts'
+import { ageBadge, ageTitle, completionLabel, formatBadge, longstripTitle } from './bookFlags.ts'
 import { bookAuthors, bookTitle, progressPercent } from './utils.ts'
 
 const props = defineProps<{

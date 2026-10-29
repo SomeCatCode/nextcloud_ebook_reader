@@ -8,6 +8,7 @@
  */
 import type { ReaderFormat, ReaderLayout, ReaderOptions, ReaderSource, RemoteComicSource, RemoteZipSource } from './types.ts'
 
+import { checkEntryCount, collectLimited, MAX_ENTRY_SIZE, tooLarge } from './archive-limits.ts'
 import { makeArchiveLoader } from './comic-rar.ts'
 import { makeRemoteZipLoader } from './remote-zip.ts'
 
@@ -26,15 +27,27 @@ interface ZipLoader {
  */
 async function makeZipLoader(file: Blob): Promise<ZipLoader> {
 	const zip = await import('../vendor/foliate-js/vendor/zip.js')
-	const { configure, ZipReader, BlobReader, TextWriter, BlobWriter } = zip
+	const { configure, ZipReader, BlobReader } = zip
 	configure({ useWebWorkers: false })
 	const reader = new ZipReader(new BlobReader(file))
 	const entries = await reader.getEntries() as { filename: string, uncompressedSize?: number, getData: (w: unknown) => Promise<unknown> }[]
+	checkEntryCount(entries.length)
 	const map = new Map(entries.map((e) => [e.filename, e]))
+	// zip.js writes into any object with a `writable` stream; the output is counted, so a deflate bomb stops early
+	const load = (name: string, type?: string): Promise<Blob> | null => {
+		const entry = map.get(name)
+		if (!entry) {
+			return null
+		}
+		if ((entry.uncompressedSize ?? 0) > MAX_ENTRY_SIZE) {
+			return Promise.reject(tooLarge(name))
+		}
+		return collectLimited((writable) => entry.getData({ writable }), name, type)
+	}
 	return {
 		entries,
-		loadText: (name) => map.has(name) ? map.get(name)!.getData(new TextWriter()) as Promise<string> : null,
-		loadBlob: (name, type) => map.has(name) ? map.get(name)!.getData(new BlobWriter(type)) as Promise<Blob> : null,
+		loadText: (name) => load(name)?.then((b) => b.text()) ?? null,
+		loadBlob: load,
 		getSize: (name) => map.get(name)?.uncompressedSize ?? 0,
 	}
 }
@@ -135,9 +148,24 @@ async function mobiHasDrm(file: Blob): Promise<boolean> {
 	return rec.byteLength >= 14 && rec.getUint16(12) !== 0
 }
 
+/**
+ * Page images of a comic in foliate's (sorted) section order.
+ *
+ * @param book
+ * @param loader
+ */
+function pageLoader(book: FoliateBook, loader: Pick<ZipLoader, 'loadBlob'>): (index: number) => Promise<Blob> | null {
+	return (index) => {
+		const id = book.sections[index]?.id
+		return typeof id === 'string' ? loader.loadBlob(id) : null
+	}
+}
+
 export interface OpenedBook {
 	book: FoliateBook
 	isComic: boolean
+	/** comics: image of a page by its section index (used by the long strip view, which does not use foliate) */
+	loadPage?: (index: number) => Promise<Blob> | null
 	close: () => void
 }
 
@@ -168,12 +196,13 @@ export async function openBook(file: ReaderSource, format: ReaderFormat, opts: R
 async function openBookUnchecked(source: ReaderSource, format: ReaderFormat, opts: ReaderOptions, layout: ReaderLayout): Promise<OpenedBook> {
 	if (isRemoteComic(source)) {
 		const { makeComicBook } = await import('../vendor/foliate-js/comic-book.js')
-		const book = makeComicBook(makeRemoteComicLoader(source), { name: source.name })
+		const loader = makeRemoteComicLoader(source)
+		const book = makeComicBook(loader, { name: source.name })
 		if (layout.comicSpread !== 'double') {
 			book.rendition.spread = 'none'
 		}
 		book.dir = layout.comicRtl ? 'rtl' : 'ltr'
-		return { book, isComic: true, close: () => book.destroy?.() }
+		return { book, isComic: true, loadPage: pageLoader(book, loader), close: () => book.destroy?.() }
 	}
 	if (isRemoteZip(source)) {
 		const loader = makeRemoteZipLoader(source)
@@ -217,6 +246,7 @@ async function openBookUnchecked(source: ReaderSource, format: ReaderFormat, opt
 			return {
 				book,
 				isComic: true,
+				loadPage: pageLoader(book, loader),
 				close: () => {
 					book.destroy?.()
 					;(loader as { close?: () => void }).close?.()

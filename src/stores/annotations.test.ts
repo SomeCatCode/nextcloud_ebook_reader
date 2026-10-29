@@ -8,7 +8,7 @@ import { showError } from '@nextcloud/dialogs'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import * as api from '../services/api.ts'
-import { kindOf, newUuid, useAnnotationsStore } from './annotations.ts'
+import { kindOf, MAX_PER_BOOK, newUuid, useAnnotationsStore } from './annotations.ts'
 
 vi.mock('@nextcloud/dialogs', () => ({ showError: vi.fn() }))
 vi.mock('../services/api.ts', async () => {
@@ -92,6 +92,15 @@ describe('annotations store', () => {
 		expect(s.bookmarks.map((a) => a.uuid)).toEqual(['m'])
 		expect(s.drawable.map((d) => d.id)).toEqual(['a', 'n', 'b'].sort((x, y) => ['b', 'a', 'n'].indexOf(x) - ['b', 'a', 'n'].indexOf(y)))
 		expect(s.drawable.find((d) => d.id === 'n')?.hasNote).toBe(true)
+	})
+
+	it('refuses a new annotation when the book has reached the limit', async () => {
+		mocked.listAnnotations.mockResolvedValue(Array.from({ length: MAX_PER_BOOK }, (_, i) => ann(`u${i}`, 0.1)))
+		const s = useAnnotationsStore()
+		await s.load(7)
+		await expect(s.create({ type: 'highlight', locator: ann('x', 0.2).locator as Locator, text: 'x' })).rejects.toThrow('limit')
+		expect(mocked.createAnnotation).not.toHaveBeenCalled()
+		expect(showError).toHaveBeenCalled()
 	})
 
 	it('shows an error toast when loading fails', async () => {

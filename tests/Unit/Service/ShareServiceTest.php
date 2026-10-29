@@ -55,6 +55,10 @@ class ShareServiceTest extends TestCase {
 	/** @var array<string, array{with: string, by: string, fileId: int}> Nextcloud shares by full id */
 	private array $ncShares = [];
 	private int $nextNcId = 100;
+	/** getSharesBy lists the shares of $ncShares and $nativeExtra (off: the app never finds a share the user made) */
+	private bool $nativeListing = false;
+	/** @var list<array{type: int, nodeId: int, id: string, with: string, by?: string, label?: string, name?: string}> shares the user made in Files */
+	private array $nativeExtra = [];
 	/** @var array<int, FileShare> */
 	private array $rows = [];
 	/** @var array<int, ShelfShare> */
@@ -110,7 +114,7 @@ class ShareServiceTest extends TestCase {
 		$this->manager->method('deleteShare')->willReturnCallback(function (IShare $share): void {
 			unset($this->ncShares[$share->getFullId()]);
 		});
-		$this->manager->method('getSharesBy')->willReturn([]);
+		$this->manager->method('getSharesBy')->willReturnCallback(fn (string $u, int $type, ?Node $node = null): array => $this->nativeListing && $node !== null ? $this->nativeSharesOf($u, $type, $node->getId()) : []);
 
 		$users = $this->createMock(IUserManager::class);
 		$users->method('userExists')->willReturnCallback(static fn (string $u): bool => in_array($u, ['alice', 'bob', 'carol'], true));
@@ -123,6 +127,19 @@ class ShareServiceTest extends TestCase {
 			}
 			$file = $this->createMock(File::class);
 			$file->method('getId')->willReturn($id);
+			$file->method('getPath')->willReturn('/' . $u . '/files/Books/' . $id . '.epub');
+			$file->method('getParent')->willReturnCallback(function () use ($u): Folder {
+				$books = $this->createMock(Folder::class);
+				$books->method('getId')->willReturn(501);
+				$books->method('getPath')->willReturn('/' . $u . '/files/Books');
+				$books->method('getParent')->willReturnCallback(function () use ($u): Folder {
+					$home = $this->createMock(Folder::class);
+					$home->method('getId')->willReturn(1);
+					$home->method('getPath')->willReturn('/' . $u . '/files');
+					return $home;
+				});
+				return $books;
+			});
 			$perm = $this->perms[$id] ?? Constants::PERMISSION_ALL;
 			$file->method('getPermissions')->willReturn($perm);
 			$file->method('isShareable')->willReturn(($perm & Constants::PERMISSION_SHARE) !== 0);
@@ -215,6 +232,36 @@ class ShareServiceTest extends TestCase {
 		);
 	}
 
+	/** @return list<IShare> */
+	private function nativeSharesOf(string $owner, int $type, int $nodeId): array {
+		$out = [];
+		foreach ($this->ncShares as $id => $nc) {
+			if ($type === IShare::TYPE_USER && $nc['by'] === $owner && $nc['fileId'] === $nodeId) {
+				$out[] = $this->nativeShare(['type' => $type, 'nodeId' => $nodeId, 'id' => (string)$id, 'with' => $nc['with'], 'by' => $owner]);
+			}
+		}
+		foreach ($this->nativeExtra as $extra) {
+			if ($extra['type'] === $type && $extra['nodeId'] === $nodeId) {
+				$out[] = $this->nativeShare($extra + ['by' => $owner]);
+			}
+		}
+		return $out;
+	}
+
+	/** @param array{type: int, nodeId: int, id: string, with: string, by: string, label?: string, name?: string} $d */
+	private function nativeShare(array $d): IShare {
+		$share = $this->createMock(IShare::class);
+		$share->method('getFullId')->willReturn($d['id']);
+		$share->method('getShareType')->willReturn($d['type']);
+		$share->method('getSharedWith')->willReturn($d['with']);
+		$share->method('getSharedWithDisplayName')->willReturn($d['name'] ?? null);
+		$share->method('getSharedBy')->willReturn($d['by']);
+		$share->method('getLabel')->willReturn($d['label'] ?? '');
+		$share->method('getShareTime')->willReturn(new \DateTime('@1700000000'));
+		$share->method('getExpirationDate')->willReturn(null);
+		return $share;
+	}
+
 	private function book(int $id): Book {
 		$b = new Book();
 		$b->setFileId($id);
@@ -281,6 +328,7 @@ class ShareServiceTest extends TestCase {
 		});
 		$filter = fn (callable $fn): array => array_values(array_filter($this->rows, $fn));
 		$m->method('findByTriple')->willReturnCallback(fn (string $o, string $r, int $f): array => $filter(static fn (FileShare $x): bool => $x->getOwnerId() === $o && $x->getRecipientId() === $r && $x->getFileId() === $f));
+		$m->method('findByOwnerAndFile')->willReturnCallback(fn (string $o, int $f): array => $filter(static fn (FileShare $x): bool => $x->getOwnerId() === $o && $x->getFileId() === $f));
 		$m->method('findByShelfShare')->willReturnCallback(fn (int $id): array => $filter(static fn (FileShare $x): bool => $x->getShelfShareId() === $id));
 		$m->method('findByShareId')->willReturnCallback(fn (string $id): array => $filter(static fn (FileShare $x): bool => $x->getShareId() === $id));
 		$m->method('findDirectByOwner')->willReturnCallback(fn (string $o): array => $filter(static fn (FileShare $x): bool => $x->getOwnerId() === $o && $x->isDirect()));
@@ -1087,5 +1135,74 @@ class ShareServiceTest extends TestCase {
 		$this->library->expects($this->once())->method('indexIncomingFolders')->willReturn(['indexed' => 0, 'pending' => 0]);
 		$service->ensureIncomingIndexed('bob');
 		$service->ensureIncomingIndexed('bob');
+	}
+
+	public function testBookAccessListsTheSharesOfTheAppWithTheirReason(): void {
+		$this->shelf(10, 'alice', Shelf::TYPE_MANUAL, [1]);
+		$this->service->shareShelf('alice', 10, 'bob');
+		$this->service->shareBook('alice', 1, 'carol');
+		$this->service->shareSeries('alice', 'Saga', 'carol');
+		$this->service->shareFolder('alice', '/Books', 'bob');
+		$access = $this->service->bookAccess('alice', 1);
+		$this->assertSame(['shelf', 'book', 'series', 'folder'], array_column($access, 'via'));
+		$this->assertSame(['bob', 'carol', 'carol', 'bob'], array_column($access, 'recipient'));
+		$this->assertSame('Shelf 10', $access[0]['viaName']);
+		$this->assertSame(10, $access[0]['shelfId']);
+		$this->assertSame('Saga', $access[2]['series']);
+		$this->assertSame('/Books', $access[3]['path']);
+		$this->assertTrue($access[3]['folder']);
+		$this->assertSame('Bob', $access[0]['recipientDisplayName']);
+	}
+
+	public function testBookAccessListsNextcloudSharesOfTheFileAndItsFoldersButNotTheAppsOwnShares(): void {
+		$this->nativeListing = true;
+		$this->service->shareBook('alice', 1, 'bob');
+		$this->nativeExtra = [
+			['type' => IShare::TYPE_LINK, 'nodeId' => 501, 'id' => 'ocinternal:7', 'with' => '', 'label' => 'Family'],
+			['type' => IShare::TYPE_GROUP, 'nodeId' => 1, 'id' => 'ocinternal:8', 'with' => 'friends', 'name' => 'Friends'],
+			['type' => IShare::TYPE_USER, 'nodeId' => 1, 'id' => 'ocinternal:9', 'with' => 'carol', 'by' => 'carol'],
+		];
+		$access = $this->service->bookAccess('alice', 1);
+		// the app's share with bob is listed once (as the book share); the user and group shares of the file follow, then the link of /Books
+		$this->assertSame(['book', 'nextcloud', 'nextcloud', 'nextcloud'], array_column($access, 'via'));
+		$this->assertSame([null, 'ocinternal:9', 'ocinternal:8', 'ocinternal:7'], array_column($access, 'shareId'));
+		$this->assertSame(['user', 'user', 'group', 'link'], array_column($access, 'shareType'));
+		$this->assertSame('carol', $access[1]['sharedBy']);
+		$this->assertSame('Friends', $access[2]['recipientDisplayName']);
+		$this->assertSame('', $access[3]['recipient']);
+		$this->assertSame('Family', $access[3]['recipientDisplayName']);
+		$this->assertSame('/Books', $access[3]['path']);
+		$this->assertTrue($access[3]['folder']);
+		$this->assertFalse($access[2]['folder']);
+		$this->assertSame(1700000000000, $access[2]['createdAt']);
+	}
+
+	public function testRevokeNextcloudShareOnlyDeletesSharesOfTheBook(): void {
+		$this->nativeListing = true;
+		$this->ncShares['ocinternal:7'] = ['with' => '', 'by' => 'nobody', 'fileId' => 501];
+		$this->nativeExtra = [['type' => IShare::TYPE_LINK, 'nodeId' => 501, 'id' => 'ocinternal:7', 'with' => '']];
+		$this->ncShares['ocinternal:50'] = ['with' => 'bob', 'by' => 'alice', 'fileId' => 999];
+		try {
+			$this->service->revokeNextcloudShare('alice', 1, 'ocinternal:50');
+			$this->fail('a share of another file must not be deleted');
+		} catch (ShareException $e) {
+			$this->assertSame(ShareException::NOT_FOUND, $e->reason);
+		}
+		$this->service->revokeNextcloudShare('alice', 1, 'ocinternal:7');
+		$this->assertArrayNotHasKey('ocinternal:7', $this->ncShares);
+		$this->assertArrayHasKey('ocinternal:50', $this->ncShares);
+	}
+
+	public function testRevokeNextcloudShareRefusesSharesOfTheApp(): void {
+		$this->nativeListing = true;
+		$this->service->shareBook('alice', 1, 'bob');
+		$id = (string)array_key_first($this->ncShares);
+		$this->expectException(ShareException::class);
+		$this->service->revokeNextcloudShare('alice', 1, $id);
+	}
+
+	public function testBookAccessIsOnlyForOwnBooks(): void {
+		$this->expectException(ShareException::class);
+		$this->service->bookAccess('bob', 1);
 	}
 }

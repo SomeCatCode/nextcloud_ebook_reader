@@ -14,6 +14,7 @@ use OCA\EbookReader\Editor\EditorUtil;
 use OCA\EbookReader\Metadata\ComicArchive;
 use OCA\EbookReader\Service\ArchiveCache;
 use OCA\EbookReader\Service\ArchiveTools;
+use OCA\EbookReader\Service\ComicPageCache;
 use OCA\EbookReader\Service\LibraryService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
@@ -25,9 +26,9 @@ use OCP\AppFramework\Http\DataDisplayResponse;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\AppFramework\Http\Response;
 use OCP\Files\File;
-use OCP\Files\IAppData;
 use OCP\Files\NotFoundException;
 use OCP\Files\SimpleFS\ISimpleFolder;
+use OCP\ICache;
 use OCP\ICacheFactory;
 use OCP\IRequest;
 use OCP\IUserSession;
@@ -45,14 +46,15 @@ class ComicController extends Controller {
 	private const MAX_PAGE = 60 * 1024 * 1024;
 	/** Pages with more pixels than this are never decoded (decompression bomb), they are served unscaled */
 	private const MAX_PIXELS = 40_000_000;
-	private const CACHE_FOLDER = 'comic-pages';
+	/** A page list that could not be read is not tried again for this long (seconds); each try may start 7z or unrar */
+	private const FAILED_LIST_TTL = 600;
 
 	public function __construct(
 		IRequest $request,
 		private IUserSession $userSession,
 		private LibraryService $library,
 		private ArchiveCache $archiveCache,
-		private IAppData $appData,
+		private ComicPageCache $pageCache,
 		private ICacheFactory $cacheFactory,
 		private LoggerInterface $logger,
 		private ArchiveTools $archiveTools,
@@ -67,6 +69,7 @@ class ComicController extends Controller {
 	 */
 	#[NoAdminRequired]
 	#[NoCSRFRequired]
+	#[UserRateLimit(limit: 120, period: 60)]
 	#[FrontpageRoute(verb: 'GET', url: '/comic/{fileId}/pages', requirements: ['fileId' => '\d+'])]
 	public function pages(int $fileId): JSONResponse {
 		$file = $this->comicFile($fileId);
@@ -120,12 +123,14 @@ class ComicController extends Controller {
 				return new JSONResponse([], Http::STATUS_NOT_FOUND);
 			}
 			$name = $pages[$index]['name'];
-			$base = $fileId . '-' . substr(md5((string)$file->getEtag()), 0, 12) . '-' . $index . '-' . $width;
-			$folder = $this->cacheFolder();
-			// The cache entry carries the extension of what it contains: .jpg when scaled, else the extension of the original page.
+			$prefix = $fileId . '-' . substr(md5((string)$file->getEtag()), 0, 12) . '-' . $index . '-';
+			$folder = $this->pageCache->folder();
+			// The cache entry carries the extension of what it contains: .jpg when scaled, else the extension of the original
+			// page. A page that is not scaled is stored once as width 0, not once per width bucket.
 			$origExt = strtolower(pathinfo($name, PATHINFO_EXTENSION));
-			$candidates = array_values(array_unique($width > 0 ? [$base . '.jpg', $base . '.' . $origExt] : [$base . '.' . $origExt]));
-			[$data, $mime] = $this->cached($folder, $candidates) ?? $this->render($file, $name, $width, $folder, $base);
+			$original = $prefix . '0.' . $origExt;
+			$candidates = $width > 0 ? [$prefix . $width . '.jpg', $original] : [$original];
+			[$data, $mime] = $this->cached($folder, $candidates) ?? $this->render($file, $name, $width, $folder, $prefix);
 		} catch (\Throwable $e) {
 			$this->logger->info('Cannot serve comic page ' . $index . ' of ' . $fileId . ': ' . $e->getMessage(), ['app' => Application::APP_ID]);
 			return new JSONResponse([], Http::STATUS_NOT_FOUND);
@@ -199,6 +204,19 @@ class ComicController extends Controller {
 			/** @var list<array{name: string, size: int}> $hit */
 			return $hit;
 		}
+		if ($hit === 'failed') {
+			throw new \RuntimeException('Page list could not be read shortly before');
+		}
+		try {
+			return $this->readPageList($file, $probe, $cache, $key);
+		} catch (\Throwable $e) {
+			$cache->set($key, 'failed', self::FAILED_LIST_TTL);
+			throw $e;
+		}
+	}
+
+	/** @return list<array{name: string, size: int}> */
+	private function readPageList(File $file, bool $probe, ICache $cache, string $key): array {
 		$path = $this->archiveCache->localPath($file);
 		try {
 			$format = $this->formatOf($file) ?? 'cbz';
@@ -256,7 +274,7 @@ class ComicController extends Controller {
 	}
 
 	/** @return array{0: string, 1: string} */
-	private function render(File $file, string $name, int $width, ISimpleFolder $folder, string $cacheBase): array {
+	private function render(File $file, string $name, int $width, ISimpleFolder $folder, string $cachePrefix): array {
 		$path = $this->archiveCache->localPath($file);
 		try {
 			$format = $this->formatOf($file) ?? 'cbz';
@@ -283,17 +301,12 @@ class ComicController extends Controller {
 		}
 		$ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
 		$mime = self::IMAGE_EXT[$ext] ?? 'image/jpeg';
-		if ($width > 0) {
-			$scaled = $this->scale($data, $width);
-			if ($scaled !== null) {
-				[$data, $mime, $ext] = [$scaled, 'image/jpeg', 'jpg'];
-			}
+		$scaled = $width > 0 ? $this->scale($data, $width) : null;
+		if ($scaled !== null) {
+			$this->pageCache->put($folder, $cachePrefix . $width . '.jpg', $scaled);
+			return [$scaled, 'image/jpeg'];
 		}
-		try {
-			$folder->newFile($cacheBase . '.' . $ext, $data);
-		} catch (\Throwable $e) {
-			$this->logger->debug('Cannot cache comic page: ' . $e->getMessage(), ['app' => Application::APP_ID]);
-		}
+		$this->pageCache->put($folder, $cachePrefix . '0.' . $ext, $data);
 		return [$data, $mime];
 	}
 
@@ -323,13 +336,5 @@ class ComicController extends Controller {
 
 	protected function decode(string $data): \GdImage|false {
 		return @imagecreatefromstring($data);
-	}
-
-	private function cacheFolder(): ISimpleFolder {
-		try {
-			return $this->appData->getFolder(self::CACHE_FOLDER);
-		} catch (NotFoundException) {
-			return $this->appData->newFolder(self::CACHE_FOLDER);
-		}
 	}
 }

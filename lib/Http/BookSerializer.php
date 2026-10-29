@@ -91,6 +91,8 @@ class BookSerializer {
 			'completion' => self::completionOf($book),
 			'ageRating' => self::ageRatingOf($book),
 			'ageRatingManual' => $book->getAgeRatingManual(),
+			'longstrip' => $book->getLongstrip(),
+			'longstripManual' => $book->getLongstripManual(),
 			'progress' => $progress?->toApi(),
 		];
 	}

@@ -241,6 +241,7 @@ class LibraryFilterSqlTest extends TestCase {
 			'age exact' => ['age:16', "eq(b.age_rating,'16')", "(isNull(b.age_rating) OR NOT (eq(b.age_rating,'16')))"],
 			'age up to' => ['age:<=12', "lte(b.age_rating,'12')", "(isNull(b.age_rating) OR NOT (lte(b.age_rating,'12')))"],
 			'age none' => ['age:none', 'isNull(b.age_rating)', 'isNotNull(b.age_rating)'],
+			'long strip' => ['layout:longstrip', "eq(b.longstrip,'1')", "(isNull(b.longstrip) OR NOT (eq(b.longstrip,'1')))"],
 		];
 	}
 

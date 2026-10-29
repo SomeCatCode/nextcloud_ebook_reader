@@ -49,4 +49,16 @@ class HtmlSanitizerTest extends TestCase {
 	public function testToText(): void {
 		$this->assertSame("a\nb", HtmlSanitizer::toText('<p>a</p><p>b</p>'));
 	}
+
+	public function testHugeDescriptionIsBounded(): void {
+		$huge = str_repeat('<p>' . str_repeat('word ', 200) . '</p>', 2000);
+		$out = HtmlSanitizer::sanitize($huge);
+		$this->assertLessThanOrEqual(HtmlSanitizer::MAX_OUTPUT, strlen($out));
+		$this->assertStringStartsWith('<p>word word', $out);
+	}
+
+	public function testHugePlainTextIsBounded(): void {
+		$out = HtmlSanitizer::sanitize(str_repeat('a', 5 * 1024 * 1024));
+		$this->assertLessThanOrEqual(HtmlSanitizer::MAX_OUTPUT, strlen($out));
+	}
 }

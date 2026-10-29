@@ -28,8 +28,16 @@ export interface ReaderLayout {
 	comicSpread?: 'single' | 'double'
 	/** comics: right-to-left reading direction (manga) */
 	comicRtl?: boolean
-	/** comics: zoom */
+	/** comics: zoom. Long strips: fit-page = natural page width (capped by the screen), fit-width = screen width */
 	comicZoom?: 'fit-page' | 'fit-width' | number
+	/** comics: long strip (webtoon), all pages in one seamless vertical scroll instead of paging */
+	comicLongstrip?: boolean
+	/** comics: brightness of the page images in percent (50-200, default 100) */
+	comicBrightness?: number
+	/** comics: contrast of the page images in percent (50-200, default 100) */
+	comicContrast?: number
+	/** comics: show the page images in grayscale */
+	comicGrayscale?: boolean
 }
 
 export interface ReaderTypography {
@@ -82,6 +90,8 @@ export interface BookInfo {
 	fixedLayout: boolean
 	rtl: boolean
 	pageCount: number
+	/** comic shown as seamless vertical scroll (layout.comicLongstrip) */
+	longstrip: boolean
 }
 
 export type AnnotationColor = 'yellow' | 'green' | 'blue' | 'pink' | 'purple'
@@ -107,7 +117,11 @@ export interface ReaderSelection {
 }
 
 export interface ReaderEvents {
-	relocate: { locator: ReaderLocator, percentage: number, label?: string, page?: { current: number, total: number } }
+	/**
+	 * `atEnd`: the end of the book is on screen (last page or spread, bottom of a long strip or of a scrolled text).
+	 * `percentage` alone is no end signal: a comic counts its last page as 100 % from the moment it is shown.
+	 */
+	relocate: { locator: ReaderLocator, percentage: number, atEnd: boolean, label?: string, page?: { current: number, total: number } }
 	ready: BookInfo
 	error: Error
 	/** Emitted for a tap/click on the page */
@@ -154,6 +168,8 @@ export interface ReaderHandle {
 	goTo(target: ReaderLocator | string): Promise<boolean>
 	next(): Promise<void>
 	prev(): Promise<void>
+	/** Long strips: scroll a small step (arrow keys). No-op otherwise. */
+	step(direction: 1 | -1): void
 	setTheme(theme: ReaderThemeName): void
 	setTypography(typography: ReaderTypography): void
 	setLayout(layout: ReaderLayout): Promise<void>

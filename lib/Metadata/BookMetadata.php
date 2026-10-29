@@ -20,6 +20,7 @@ final class BookMetadata {
 	 * @param list<string> $subjects unclassified dc:subject values
 	 * @param ?string $coverData raw image bytes
 	 * @param ?int $ageRating age rating found in the file (0, 6, 12, 16, 18), see AgeRating
+	 * @param bool $longstrip the file marks the comic as long strip (webtoon), see Longstrip
 	 */
 	public function __construct(
 		public readonly ?string $title = null,
@@ -37,7 +38,30 @@ final class BookMetadata {
 		public readonly ?string $coverData = null,
 		public readonly ?string $coverMime = null,
 		public readonly ?int $ageRating = null,
+		public readonly bool $longstrip = false,
 	) {
+	}
+
+	/** At most this many authors, genres, tags and subjects are kept (a crafted book could list thousands) */
+	public const MAX_LIST = 100;
+	/** Longer author names and subjects are cut */
+	public const MAX_NAME = 255;
+
+	/**
+	 * Copy within the limits of the database: lists and names shortened, description at most HtmlSanitizer::MAX_OUTPUT.
+	 */
+	public function limited(): self {
+		$list = static fn (array $names): array => array_values(array_map(
+			static fn (string $n): string => mb_substr($n, 0, self::MAX_NAME),
+			array_slice($names, 0, self::MAX_LIST),
+		));
+		return $this->with([
+			'authors' => $list($this->authors),
+			'genres' => $list($this->genres),
+			'tags' => $list($this->tags),
+			'subjects' => $list($this->subjects),
+			'description' => $this->description !== null ? HtmlSanitizer::limit($this->description) : null,
+		]);
 	}
 
 	/**

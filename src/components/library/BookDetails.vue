@@ -69,70 +69,22 @@
 					</NcButton>
 				</div>
 
-				<div class="book-details__row">
-					<label>{{ t('ebookreader', 'Rating') }}</label>
-					<StarRating :value="book.rating" @update="setRating" />
-				</div>
+				<BookLibraryFields :book="book">
+					<template #afterStatus>
+						<div v-if="percent > 0" class="book-details__row">
+							<label>{{ t('ebookreader', 'Progress') }}: {{ percent }}%</label>
+							<NcProgressBar :value="percent" />
+						</div>
 
-				<div class="book-details__row">
-					<NcSelect
-						:modelValue="currentStatus"
-						:options="statusOptions"
-						:inputLabel="t('ebookreader', 'Reading status')"
-						:clearable="false"
-						:searchable="false"
-						label="label"
-						@update:modelValue="setStatus" />
-				</div>
-
-				<div v-if="percent > 0" class="book-details__row">
-					<label>{{ t('ebookreader', 'Progress') }}: {{ percent }}%</label>
-					<NcProgressBar :value="percent" />
-				</div>
-
-				<div v-if="nextBook" class="book-details__next">
-					<NcButton variant="secondary" wide @click="readNext">
-						<template #icon>
-							<NcIconSvgWrapper :path="mdiBookArrowRightOutline" />
-						</template>
-						{{ t('ebookreader', 'Next volume: {title}', { title: nextLabel }) }}
-					</NcButton>
-				</div>
-
-				<div class="book-details__row">
-					<NcSelect
-						:modelValue="currentCompletion"
-						:options="completionOptions"
-						:inputLabel="t('ebookreader', 'Completion status')"
-						:clearable="false"
-						:searchable="false"
-						label="label"
-						@update:modelValue="setCompletion" />
-				</div>
-
-				<div class="book-details__row">
-					<NcSelect
-						:modelValue="currentAge"
-						:options="ageOptions"
-						:inputLabel="t('ebookreader', 'Age rating')"
-						:clearable="false"
-						:searchable="false"
-						label="label"
-						@update:modelValue="setAge" />
-					<p v-if="book.ageRatingManual" class="book-details__hint book-details__inline">
-						<span>{{ t('ebookreader', 'Set in the app') }}</span>
-						<NcButton
-							variant="tertiary"
-							size="small"
-							:disabled="savingAge"
-							@click="resetAge">
-							{{ t('ebookreader', 'Use value from file') }}
-						</NcButton>
-					</p>
-					<p v-else-if="book.ageRating !== null" class="book-details__hint">
-						{{ t('ebookreader', 'From the book file') }}
-					</p>
-				</div>
+						<ReadNextSuggestions
+							v-if="suggestions"
+							class="book-details__suggestions"
+							:suggestions="suggestions"
+							@read="readBook"
+							@open="(b: Book) => store.openBook(b)"
+							@dismiss="suggestions = null" />
+					</template>
+				</BookLibraryFields>
 
 				<TagEditor
 					:key="`genres-${book.fileId}`"
@@ -209,6 +161,16 @@
 				</ul>
 			</div>
 		</NcAppSidebarTab>
+		<NcAppSidebarTab
+			v-if="!book.shared && hasFeature('book-access')"
+			id="sharing"
+			:name="t('ebookreader', 'Sharing')"
+			:order="2">
+			<template #icon>
+				<NcIconSvgWrapper :path="mdiShareVariant" :size="20" />
+			</template>
+			<BookShareAccess ref="access" :fileId="book.fileId" @share="showShare = true" />
+		</NcAppSidebarTab>
 	</NcAppSidebar>
 
 	<AddToShelfDialog
@@ -219,7 +181,7 @@
 	<ShareDialog
 		v-if="showShare"
 		:target="{ type: 'book', id: book.fileId, name: title }"
-		@close="showShare = false" />
+		@close="onShareClosed" />
 
 	<ConvertDialog
 		v-if="showConvert"
@@ -229,13 +191,13 @@
 </template>
 
 <script setup lang="ts">
-import type { AgeRating, Book, Completion, FilterTerm, MetadataOverrideField, ReadStatus } from '../../types.ts'
+import type { Book, FilterTerm, MetadataOverrideField, Suggestions } from '../../types.ts'
 
-import { mdiBookArrowRightOutline, mdiBookOpenPageVariant, mdiBookOpenVariant, mdiBookshelf, mdiDeleteOutline, mdiFileReplaceOutline, mdiFolderMoveOutline, mdiFolderOutline, mdiPencil, mdiShareVariant, mdiSwapHorizontal } from '@mdi/js'
+import { mdiBookOpenPageVariant, mdiBookOpenVariant, mdiBookshelf, mdiDeleteOutline, mdiFileReplaceOutline, mdiFolderMoveOutline, mdiFolderOutline, mdiPencil, mdiShareVariant, mdiSwapHorizontal } from '@mdi/js'
 import { showError, showSuccess } from '@nextcloud/dialogs'
 import { t } from '@nextcloud/l10n'
 import { generateUrl } from '@nextcloud/router'
-import { computed, ref, watch } from 'vue'
+import { computed, ref, useTemplateRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import NcAppSidebar from '@nextcloud/vue/components/NcAppSidebar'
 import NcAppSidebarTab from '@nextcloud/vue/components/NcAppSidebarTab'
@@ -243,18 +205,20 @@ import NcButton from '@nextcloud/vue/components/NcButton'
 import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcProgressBar from '@nextcloud/vue/components/NcProgressBar'
-import NcSelect from '@nextcloud/vue/components/NcSelect'
 import ConvertDialog from '../convert/ConvertDialog.vue'
 import AddToShelfDialog from './AddToShelfDialog.vue'
 import BookCover from './BookCover.vue'
+import BookLibraryFields from './BookLibraryFields.vue'
+import BookShareAccess from './BookShareAccess.vue'
+import ReadNextSuggestions from './ReadNextSuggestions.vue'
 import ShareDialog from './ShareDialog.vue'
-import StarRating from './StarRating.vue'
 import TagEditor from './TagEditor.vue'
 import { sanitizeDescription } from '../../editor/sanitize.ts'
-import { nextVolume } from '../../services/api.ts'
+import { getSuggestions } from '../../services/api.ts'
+import { hasFeature } from '../../services/features.ts'
+import { hasSuggestions, normalizeSuggestions } from '../../services/suggestions.ts'
 import { useLibraryStore } from '../../stores/library.ts'
 import { useSettingsStore } from '../../stores/settings.ts'
-import { AGE_RATINGS, ageBadge, completionLabel, volumeLabel } from './bookFlags.ts'
 import { canEmbed } from './metadataStorage.ts'
 import { bookAuthors, bookTitle, dirName, formatDate, progressPercent } from './utils.ts'
 
@@ -275,6 +239,15 @@ const settings = useSettingsStore()
 const showConvert = ref(false)
 const showShelf = ref(false)
 const showShare = ref(false)
+const access = useTemplateRef<InstanceType<typeof BookShareAccess>>('access')
+
+/**
+ * The share dialog may have added or removed shares: the access list loads again.
+ */
+function onShareClosed(): void {
+	showShare.value = false
+	void access.value?.load()
+}
 const warnings = ref<string[]>([])
 const writeQueued = ref(false)
 const embedding = ref(false)
@@ -293,62 +266,38 @@ const description = computed(() => (props.book.description
 	? sanitizeDescription(props.book.description)
 	: ''))
 
-const statusOptions = computed<{ id: ReadStatus, label: string }[]>(() => [
-	{ id: 'unread', label: t('ebookreader', 'Unread') },
-	{ id: 'reading', label: t('ebookreader', 'Reading') },
-	{ id: 'finished', label: t('ebookreader', 'Finished') },
-])
-const currentStatus = computed(() => statusOptions.value.find((o) => o.id === props.book.readStatus) ?? statusOptions.value[0])
-
-const completionOptions = computed<{ id: Completion | null, label: string }[]>(() => [
-	{ id: null, label: completionLabel(null) },
-	{ id: 'ongoing', label: completionLabel('ongoing') },
-	{ id: 'completed', label: completionLabel('completed') },
-])
-const currentCompletion = computed(() => completionOptions.value.find((o) => o.id === (props.book.completion ?? null)) ?? completionOptions.value[0])
-
-const ageOptions = computed<{ id: AgeRating | null, label: string }[]>(() => [
-	{ id: null, label: t('ebookreader', 'No age rating') },
-	...AGE_RATINGS.map((a) => ({ id: a, label: ageBadge(a) })),
-])
-const currentAge = computed(() => ageOptions.value.find((o) => o.id === (props.book.ageRating ?? null)) ?? ageOptions.value[0])
-const savingAge = ref(false)
-
-/** next volume of a finished book in a series ("continue the series") */
-const nextBook = ref<Book | null>(null)
-const nextLabel = computed(() => (nextBook.value ? volumeLabel(nextBook.value, bookTitle(nextBook.value)) : ''))
-let nextRequest = 0
+/** "Finished reading": next volume and similar titles of a finished book */
+const suggestions = ref<Suggestions | null>(null)
+let suggestionsRequest = 0
 
 /**
- * Looks up the next volume once the book is finished.
+ * Looks up the suggestions once the book is finished.
  */
-async function loadNext(): Promise<void> {
-	const id = ++nextRequest
-	nextBook.value = null
-	if (!props.book.series || props.book.readStatus !== 'finished') {
+async function loadSuggestions(): Promise<void> {
+	const id = ++suggestionsRequest
+	suggestions.value = null
+	if (props.book.readStatus !== 'finished' || !hasFeature('suggestions')) {
 		return
 	}
 	try {
-		const next = await nextVolume(props.book.fileId)
-		if (id === nextRequest) {
-			nextBook.value = next
+		const found = normalizeSuggestions(await getSuggestions(props.book.fileId), props.book.fileId)
+		if (id === suggestionsRequest && hasSuggestions(found)) {
+			suggestions.value = found
 		}
 	} catch {
-		// no link then
+		// no suggestions then
 	}
 }
 
-watch(() => [props.book.fileId, props.book.readStatus, props.book.series], () => {
-	void loadNext()
+watch(() => [props.book.fileId, props.book.readStatus], () => {
+	void loadSuggestions()
 }, { immediate: true })
 
 /**
- *
+ * @param other
  */
-function readNext(): void {
-	if (nextBook.value) {
-		void router.push(`/read/${nextBook.value.fileId}`)
-	}
+function readBook(other: Book): void {
+	void router.push(`/read/${other.fileId}`)
 }
 
 const filesUrl = computed(() => generateUrl('/apps/files/files/{fileId}', { fileId: props.book.fileId })
@@ -503,79 +452,6 @@ function read(): void {
  */
 function edit(): void {
 	void router.push(`/edit/${props.book.fileId}`)
-}
-
-/**
- * @param rating
- */
-async function setRating(rating: number | null): Promise<void> {
-	try {
-		await store.setRating(props.book.fileId, rating)
-	} catch {
-		showError(t('ebookreader', 'Could not save the rating'))
-	}
-}
-
-/**
- * @param option
- * @param option.id
- */
-async function setCompletion(option: { id: Completion | null } | null): Promise<void> {
-	if (!option || option.id === (props.book.completion ?? null)) {
-		return
-	}
-	try {
-		await store.setCompletion(props.book.fileId, option.id)
-	} catch {
-		showError(t('ebookreader', 'Could not save the completion status'))
-	}
-}
-
-/**
- * @param option
- * @param option.id
- */
-async function setAge(option: { id: AgeRating | null } | null): Promise<void> {
-	if (!option || (option.id === (props.book.ageRating ?? null) && props.book.ageRatingManual)) {
-		return
-	}
-	savingAge.value = true
-	try {
-		await store.setAgeRating(props.book.fileId, option.id)
-	} catch {
-		showError(t('ebookreader', 'Could not save the age rating'))
-	} finally {
-		savingAge.value = false
-	}
-}
-
-/**
- * Drops the age rating set in the app: the value from the file applies again.
- */
-async function resetAge(): Promise<void> {
-	savingAge.value = true
-	try {
-		await store.resetAgeRating(props.book.fileId)
-	} catch {
-		showError(t('ebookreader', 'Could not read the value from the file'))
-	} finally {
-		savingAge.value = false
-	}
-}
-
-/**
- * @param option
- * @param option.id
- */
-async function setStatus(option: { id: ReadStatus } | null): Promise<void> {
-	if (!option) {
-		return
-	}
-	try {
-		await store.setReadStatus(props.book.fileId, option.id)
-	} catch {
-		showError(t('ebookreader', 'Could not save the reading status'))
-	}
 }
 </script>
 

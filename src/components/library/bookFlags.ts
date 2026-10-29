@@ -72,6 +72,52 @@ export function completionLabel(completion: Completion | 'unknown' | null): stri
 	}
 }
 
+/** Formats that can be shown as long strip (comics) */
+export const LONGSTRIP_FORMATS = ['cbz', 'cbr', 'cb7', 'cbt']
+
+/**
+ * Format badge of a book: the format, with "-LS" for a long strip comic ("CBZ-LS").
+ *
+ * @param book
+ */
+export function formatBadge(book: Pick<Book, 'format' | 'longstrip'>): string {
+	return book.format.toUpperCase() + (book.longstrip ? '-LS' : '')
+}
+
+/**
+ * Text of a long strip comic (filter, navigation).
+ */
+export function longstripLabel(): string {
+	return t('ebookreader', 'Long strip')
+}
+
+/**
+ * Tooltip of the long strip badge.
+ */
+export function longstripTitle(): string {
+	return t('ebookreader', 'Long strip comic: read by scrolling down instead of turning pages')
+}
+
+/**
+ * Label of a `layout:` term name.
+ *
+ * @param name
+ */
+export function layoutTermLabel(name: string): string {
+	return name === 'longstrip' ? longstripLabel() : name
+}
+
+/**
+ * Navigation entries of the "Display" group (only long strip for now); nothing when no book is a long strip.
+ *
+ * @param facets
+ */
+export function layoutEntries(facets: FacetEntry[] | undefined): FlagNavEntry[] {
+	return (facets ?? [])
+		.filter((f) => f.name === 'longstrip' && f.count > 0)
+		.map((f) => ({ name: f.name, label: layoutTermLabel(f.name), count: f.count }))
+}
+
 /**
  * Label of an `age:` term name ("16+", "Up to 12", "No age rating").
  *
@@ -156,17 +202,4 @@ export function volumeLabel(book: Pick<Book, 'seriesIndex'>, title: string): str
 	return book.seriesIndex !== null && book.seriesIndex !== undefined
 		? t('ebookreader', 'Volume {index}: {title}', { index: String(book.seriesIndex), title })
 		: title
-}
-
-/** Progress from which the reader offers the next volume (same threshold as the server's "finished"). */
-export const NEXT_VOLUME_THRESHOLD = 0.98
-
-/**
- * Whether the reader should offer the next volume: at the end of a book that belongs to a series.
- *
- * @param book
- * @param percentage current reading position 0..1
- */
-export function offersNextVolume(book: Pick<Book, 'series'> | null, percentage: number): boolean {
-	return !!book?.series && percentage >= NEXT_VOLUME_THRESHOLD
 }

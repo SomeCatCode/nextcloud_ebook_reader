@@ -972,7 +972,13 @@ class EditorService {
 
 		if ($usePattern) {
 			$pattern = (string)($this->settings->get($userId)['filenamePattern'] ?? '{author} - {title}');
-			$base = $this->renamer->buildFilename($book, $pattern === '' ? '{author} - {title}' : $pattern);
+			$width = 2;
+			$key = SeriesOrder::key($book->getSeries());
+			if ($key !== '' && $book->getSeriesIndex() !== null) {
+				$volumes = $this->library->volumesOfSeries($userId, [(string)$book->getSeries()])[$key] ?? [];
+				$width = SeriesOrder::indexWidth(array_map(static fn (Book $b): ?float => $b->getSeriesIndex(), $volumes));
+			}
+			$base = $this->renamer->buildFilename($book, $pattern === '' ? '{author} - {title}' : $pattern, $width);
 		} else {
 			$base = trim((string)$name);
 			if ($ext !== '' && str_ends_with(mb_strtolower($base), mb_strtolower($ext))) {
@@ -984,7 +990,7 @@ class EditorService {
 			throw new InvalidEditRequestException('The file name must not be empty.');
 		}
 		try {
-			$base = Compat::sanitizeFilename($this->filenameValidator, $base);
+			$base = $this->filenameValidator->sanitizeFilename($base);
 		} catch (\InvalidArgumentException $e) {
 			throw new InvalidEditRequestException('The file name is not valid.', $e);
 		}

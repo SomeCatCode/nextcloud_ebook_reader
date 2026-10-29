@@ -56,20 +56,5 @@ const editAction: IFileAction = {
 	order: 51,
 }
 
-/**
- * The files library (v4) registers actions in a scope that only the Files app of Nextcloud 33+ reads. Nextcloud 31 and 32
- * still read the legacy `window._nc_fileactions` array, so the actions are added there as well on those versions.
- */
-function serverMajor(): number {
-	const version = (window as unknown as { _oc_config?: { version?: string } })._oc_config?.version
-	return parseInt(String(version ?? ''), 10) || 0
-}
-
-for (const action of [openAction, editAction]) {
-	registerFileAction(action)
-	const major = serverMajor()
-	const legacy = (window as unknown as { _nc_fileactions?: IFileAction[] })._nc_fileactions
-	if (major > 0 && major < 33 && Array.isArray(legacy) && !legacy.some((a) => a.id === action.id)) {
-		legacy.push(action)
-	}
-}
+registerFileAction(openAction)
+registerFileAction(editAction)

@@ -60,6 +60,17 @@ class SettingsServiceReaderTest extends TestCase {
 		$this->assertSame('Georgia, serif', $s['reader']['fontFamily']);
 	}
 
+	public function testComicImageFilterIsAcceptedWithinRange(): void {
+		$s = $this->service()->set('u', ['reader' => ['comicBrightness' => 120, 'comicContrast' => 90.5, 'comicGrayscale' => true]]);
+		$this->assertSame(120, $s['reader']['comicBrightness']);
+		$this->assertSame(90.5, $s['reader']['comicContrast']);
+		$this->assertTrue($s['reader']['comicGrayscale']);
+		$s = $this->service()->set('u', ['reader' => ['comicBrightness' => 400, 'comicContrast' => 10, 'comicGrayscale' => 'yes']]);
+		$this->assertArrayNotHasKey('comicBrightness', $s['reader']);
+		$this->assertArrayNotHasKey('comicContrast', $s['reader']);
+		$this->assertArrayNotHasKey('comicGrayscale', $s['reader']);
+	}
+
 	public function testStoredUnknownKeysAreIgnoredOnRead(): void {
 		$stored = json_encode(['reader' => ['theme' => 'sepia', 'junk' => 1]]);
 		$s = $this->service($stored)->get('u');

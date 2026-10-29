@@ -24,6 +24,47 @@ final class SeriesOrder {
 	}
 
 	/**
+	 * Sort key of a title for SQL ORDER BY (column title_sort): lower case, every run of digits zero-padded to 12 places,
+	 * so a plain string comparison orders "Vol 2" before "Vol 10". Cut to 600 characters.
+	 */
+	public static function sortKey(string $text): string {
+		$text = mb_strtolower(trim($text));
+		$text = (string)preg_replace_callback('/\d+/u', static function (array $m): string {
+			$digits = ltrim($m[0], '0');
+			return str_pad($digits === '' ? '0' : $digits, 12, '0', STR_PAD_LEFT);
+		}, $text);
+		return mb_substr($text, 0, 600);
+	}
+
+	/**
+	 * Digits a volume number gets in file names: the width of the highest number in the series, at least 2
+	 * (01 .. 10; 001 .. 120 when the series has 100 or more volumes). Only the integer part counts.
+	 *
+	 * @param iterable<?float> $indices series indices of all volumes of the series
+	 */
+	public static function indexWidth(iterable $indices): int {
+		$max = 0.0;
+		foreach ($indices as $index) {
+			if ($index !== null && $index > $max) {
+				$max = $index;
+			}
+		}
+		return max(2, strlen((string)(int)floor($max)));
+	}
+
+	/**
+	 * "5" or "5.5" as text, zero-padded to $width digits before the decimal point ("05", "05.5"); $width 0 = unpadded.
+	 */
+	public static function formatIndex(float $index, int $width = 0): string {
+		$text = rtrim(rtrim(sprintf('%.4F', $index), '0'), '.');
+		$parts = explode('.', $text, 2);
+		$negative = str_starts_with($parts[0], '-');
+		$int = ltrim($parts[0], '-');
+		$int = str_pad($int, max(0, min(10, $width)), '0', STR_PAD_LEFT);
+		return ($negative ? '-' : '') . $int . (isset($parts[1]) ? '.' . $parts[1] : '');
+	}
+
+	/**
 	 * @param list<Book> $volumes
 	 * @return list<Book>
 	 */

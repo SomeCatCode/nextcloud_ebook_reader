@@ -125,6 +125,8 @@
                     "completion",
                     "ageRating",
                     "ageRatingManual",
+                    "longstrip",
+                    "longstripManual",
                     "progress"
                 ],
                 "properties": {
@@ -271,6 +273,12 @@
                     "ageRatingManual": {
                         "type": "boolean"
                     },
+                    "longstrip": {
+                        "type": "boolean"
+                    },
+                    "longstripManual": {
+                        "type": "boolean"
+                    },
                     "progress": {
                         "nullable": true,
                         "allOf": [
@@ -278,6 +286,95 @@
                                 "$ref": "#/components/schemas/Progress"
                             }
                         ]
+                    }
+                }
+            },
+            "BookAccess": {
+                "type": "object",
+                "required": [
+                    "via",
+                    "viaName",
+                    "shelfId",
+                    "series",
+                    "path",
+                    "shareId",
+                    "shareType",
+                    "recipient",
+                    "recipientDisplayName",
+                    "sharedBy",
+                    "sharedByDisplayName",
+                    "folder",
+                    "createdAt",
+                    "expiresAt"
+                ],
+                "properties": {
+                    "via": {
+                        "type": "string",
+                        "enum": [
+                            "book",
+                            "shelf",
+                            "series",
+                            "folder",
+                            "nextcloud"
+                        ]
+                    },
+                    "viaName": {
+                        "type": "string"
+                    },
+                    "shelfId": {
+                        "type": "integer",
+                        "format": "int64",
+                        "nullable": true
+                    },
+                    "series": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "path": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "shareId": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "shareType": {
+                        "type": "string",
+                        "enum": [
+                            "user",
+                            "group",
+                            "link",
+                            "email",
+                            "remote",
+                            "team",
+                            "talk",
+                            "deck",
+                            "other"
+                        ]
+                    },
+                    "recipient": {
+                        "type": "string"
+                    },
+                    "recipientDisplayName": {
+                        "type": "string"
+                    },
+                    "sharedBy": {
+                        "type": "string"
+                    },
+                    "sharedByDisplayName": {
+                        "type": "string"
+                    },
+                    "folder": {
+                        "type": "boolean"
+                    },
+                    "createdAt": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "expiresAt": {
+                        "type": "integer",
+                        "format": "int64",
+                        "nullable": true
                     }
                 }
             },
@@ -380,7 +477,8 @@
                     "formats",
                     "missing",
                     "completion",
-                    "ageRatings"
+                    "ageRatings",
+                    "layouts"
                 ],
                 "properties": {
                     "genres": {
@@ -462,6 +560,12 @@
                         }
                     },
                     "ageRatings": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/FacetEntry"
+                        }
+                    },
+                    "layouts": {
                         "type": "array",
                         "items": {
                             "$ref": "#/components/schemas/FacetEntry"
@@ -1128,6 +1232,29 @@
                             "asc",
                             "desc"
                         ]
+                    }
+                }
+            },
+            "Suggestions": {
+                "type": "object",
+                "required": [
+                    "next",
+                    "similar"
+                ],
+                "properties": {
+                    "next": {
+                        "nullable": true,
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/Book"
+                            }
+                        ]
+                    },
+                    "similar": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/Book"
+                        }
                     }
                 }
             },
@@ -2975,8 +3102,8 @@
         "/ocs/v2.php/apps/ebookreader/api/v1/books/{fileId}/app-data": {
             "patch": {
                 "operationId": "books-patch-app-data",
-                "summary": "Change app-only fields (rating, read status, completion, age rating) without touching the file",
-                "description": "Absent fields stay unchanged, an explicit null rating clears the rating. The read status also sets the reading progress: finished = 100 % (locator href \"\" with totalProgression 1), unread = 0 % (href \"\", position 1, totalProgression 0; nothing is created without stored progress), reading keeps it. The progress row gets clientUpdatedAt = server time, so it wins over older positions of other devices; the returned book carries the new progress. completion: \"ongoing\", \"completed\" or null (unknown). ageRating: 0, 6, 12, 16, 18 or null; any value given here (also null = \"no rating\") is a manual value that survives re-indexing (ageRatingManual = true). resetAgeRating = true drops the manual value: the rating from the file (ComicInfo.xml AgeRating, EPUB schema:typicalAgeRange) applies again. A change bumps updatedAt, so GET /sync delivers it.",
+                "summary": "Change app-only fields (rating, read status, completion, age rating, long strip) without touching the file",
+                "description": "Absent fields stay unchanged, an explicit null rating clears the rating. The read status also sets the reading progress: finished = 100 % (locator href \"\" with totalProgression 1), unread = 0 % (href \"\", position 1, totalProgression 0; nothing is created without stored progress), reading keeps it. The progress row gets clientUpdatedAt = server time, so it wins over older positions of other devices; the returned book carries the new progress. completion: \"ongoing\", \"completed\" or null (unknown). ageRating: 0, 6, 12, 16, 18 or null; any value given here (also null = \"no rating\") is a manual value that survives re-indexing (ageRatingManual = true). resetAgeRating = true drops the manual value: the rating from the file (ComicInfo.xml AgeRating, EPUB schema:typicalAgeRange) applies again. longstrip: the comic is read as one seamless vertical scroll (webtoon); a value given here is manual (longstripManual = true), resetLongstrip = true uses the value recognised in the file again (ComicInfo.xml Format/Tags). A change bumps updatedAt, so GET /sync delivers it.",
                 "tags": [
                     "books"
                 ],
@@ -3025,6 +3152,17 @@
                                         "type": "boolean",
                                         "default": false,
                                         "description": "true = use the age rating from the file again (not together with ageRating)"
+                                    },
+                                    "longstrip": {
+                                        "type": "boolean",
+                                        "nullable": true,
+                                        "default": null,
+                                        "description": "true = long strip comic (vertical scroll), false = paged (both manual)"
+                                    },
+                                    "resetLongstrip": {
+                                        "type": "boolean",
+                                        "default": false,
+                                        "description": "true = use the long strip flag from the file again (not together with longstrip)"
                                     }
                                 }
                             }
@@ -3202,8 +3340,8 @@
         "/ocs/v2.php/apps/ebookreader/api/v1/books/app-data": {
             "patch": {
                 "operationId": "books-patch-app-data-many",
-                "summary": "Set completion status and/or age rating of several books (max. 500)",
-                "description": "Same semantics as the fields of PATCH /books/{fileId}/app-data: absent fields stay unchanged, completion null clears it, ageRating null sets \"no rating\" by hand, resetAgeRating uses the value from the file again. Changed books get a new updatedAt (delivered by GET /sync).",
+                "summary": "Set completion status, age rating and/or long strip flag of several books (max. 500)",
+                "description": "Same semantics as the fields of PATCH /books/{fileId}/app-data: absent fields stay unchanged, completion null clears it, ageRating null sets \"no rating\" by hand, resetAgeRating uses the value from the file again, longstrip true/false sets the flag by hand, resetLongstrip uses the value from the file again. Changed books get a new updatedAt (delivered by GET /sync).",
                 "tags": [
                     "books"
                 ],
@@ -3248,6 +3386,17 @@
                                         "type": "boolean",
                                         "default": false,
                                         "description": "true = use the age rating from the file again"
+                                    },
+                                    "longstrip": {
+                                        "type": "boolean",
+                                        "nullable": true,
+                                        "default": null,
+                                        "description": "true = long strip comic, false = paged"
+                                    },
+                                    "resetLongstrip": {
+                                        "type": "boolean",
+                                        "default": false,
+                                        "description": "true = use the long strip flag from the file again"
                                     }
                                 }
                             }
@@ -3492,6 +3641,174 @@
                                                             ]
                                                         }
                                                     }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Book not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not logged in",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Current user is not logged in",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/ocs/v2.php/apps/ebookreader/api/v1/books/{fileId}/suggestions": {
+            "get": {
+                "operationId": "books-suggestions",
+                "summary": "Read-next suggestions after a book",
+                "description": "next: the next volume in reading order (see GET /books/{fileId}/next), null for the last volume, books without a series and when that volume is already finished. similar: up to limit unread books, never the book itself or a book of its series, at most one per other series (its first unread volume). Score: +3 per shared author, +2 per shared genre, +1 per shared tag, +1 same primary language, +1 same format family (comic formats cbz/cbr/cb7/cbt vs. ebook formats); only books with a score above 0, ties: more recently added first, then title.",
+                "tags": [
+                    "books"
+                ],
+                "security": [
+                    {
+                        "bearer_auth": []
+                    },
+                    {
+                        "basic_auth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "fileId",
+                        "in": "path",
+                        "description": "Nextcloud file id",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int64"
+                        }
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "description": "Maximum number of similar titles",
+                        "schema": {
+                            "type": "integer",
+                            "format": "int64",
+                            "default": 4,
+                            "minimum": 1,
+                            "maximum": 10
+                        }
+                    },
+                    {
+                        "name": "OCS-APIRequest",
+                        "in": "header",
+                        "description": "Required to be true for the API request to pass",
+                        "required": true,
+                        "schema": {
+                            "type": "boolean",
+                            "default": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Suggestions returned",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "$ref": "#/components/schemas/Suggestions"
                                                 }
                                             }
                                         }
@@ -8562,7 +8879,7 @@
         "/ocs/v2.php/apps/ebookreader/api/v1/facets": {
             "get": {
                 "operationId": "facets-index",
-                "summary": "Genres, tags, authors, series, formats, completion status and age ratings with their counts",
+                "summary": "Genres, tags, authors, series, formats, completion status, age ratings and long strip comics with their counts",
                 "tags": [
                     "facets"
                 ],
@@ -9135,7 +9452,7 @@
                                     "pattern": {
                                         "type": "string",
                                         "default": "",
-                                        "description": "Path pattern, e.g. \"{author}/{series}/{series_index:2} - {title}\""
+                                        "description": "Path pattern, e.g. \"{author}/{series}/{series_index} - {title}\""
                                     },
                                     "targetFolder": {
                                         "type": "string",
@@ -9312,7 +9629,7 @@
                                     "pattern": {
                                         "type": "string",
                                         "default": "",
-                                        "description": "Path pattern, e.g. \"{author}/{series}/{series_index:2} - {title}\""
+                                        "description": "Path pattern, e.g. \"{author}/{series}/{series_index} - {title}\""
                                     },
                                     "targetFolder": {
                                         "type": "string",
@@ -9458,7 +9775,7 @@
         "/ocs/v2.php/apps/ebookreader/api/v1/progress/recent": {
             "get": {
                 "operationId": "progress-recent",
-                "summary": "Most recently read books that are started and not finished (\"continue reading\"), plus the next volumes to start",
+                "summary": "Books with the read status \"reading\" (the same books as the \"Continue reading\" view), most recently read first, plus the next volumes to start",
                 "description": "upNext: for each series whose most recently read volume is finished, the next volume in reading order (see GET /books/{fileId}/next) that is not finished yet, if it has not been started (status unread). previousFileId is the finished volume. At most limit entries, most recently finished series first.",
                 "tags": [
                     "progress"
@@ -12582,6 +12899,337 @@
                 }
             }
         },
+        "/ocs/v2.php/apps/ebookreader/api/v1/books/{fileId}/access": {
+            "get": {
+                "operationId": "share-book-access",
+                "summary": "List everybody who can read an own book and why",
+                "description": "Lists the shares of the app that include the book (`via` book, shelf, series or folder) and the Nextcloud shares of the book file or of one of its parent folders (`via` nextcloud: users, groups, public links, e-mail, ...). A Nextcloud share the app created for one of its own shares is listed only once, as the share of the app.",
+                "tags": [
+                    "share"
+                ],
+                "security": [
+                    {
+                        "bearer_auth": []
+                    },
+                    {
+                        "basic_auth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "fileId",
+                        "in": "path",
+                        "description": "File id of the book",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int64"
+                        }
+                    },
+                    {
+                        "name": "OCS-APIRequest",
+                        "in": "header",
+                        "description": "Required to be true for the API request to pass",
+                        "required": true,
+                        "schema": {
+                            "type": "boolean",
+                            "default": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Access list returned",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "$ref": "#/components/schemas/BookAccess"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not logged in",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Book not in the user's library or shared with the user by another user",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Current user is not logged in",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "operationId": "share-revoke-access",
+                "summary": "Remove a Nextcloud share that gives access to an own book",
+                "description": "Deletes a share listed by the access list with `via` nextcloud. A share of a parent folder ends for all files in that folder. Shares of the app are removed with their own endpoints.",
+                "tags": [
+                    "share"
+                ],
+                "security": [
+                    {
+                        "bearer_auth": []
+                    },
+                    {
+                        "basic_auth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "fileId",
+                        "in": "path",
+                        "description": "File id of the book",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int64"
+                        }
+                    },
+                    {
+                        "name": "shareId",
+                        "in": "query",
+                        "description": "`shareId` of the entry in the access list",
+                        "schema": {
+                            "type": "string",
+                            "default": ""
+                        }
+                    },
+                    {
+                        "name": "OCS-APIRequest",
+                        "in": "header",
+                        "description": "Required to be true for the API request to pass",
+                        "required": true,
+                        "schema": {
+                            "type": "boolean",
+                            "default": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Share removed",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "required": [
+                                                        "removed"
+                                                    ],
+                                                    "properties": {
+                                                        "removed": {
+                                                            "type": "integer",
+                                                            "format": "int64"
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not logged in, or Nextcloud refused to delete the share",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such share for this book",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Current user is not logged in",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/ocs/v2.php/apps/ebookreader/api/v1/shelves": {
             "get": {
                 "operationId": "shelf-index",
@@ -14350,6 +14998,10 @@
         {
             "name": "opds",
             "description": "OPDS 1.2 catalog (Atom) for e-reader apps. Authentication is HTTP Basic with an app password: Nextcloud core logs the request in before the controller runs. The routes are #[PublicPage] only so that core does not redirect to the login form; every action refuses requests without a logged-in user itself (401 + WWW-Authenticate) and requests of users who did not switch the catalog on (or if the administrator disallowed it)."
+        },
+        {
+            "name": "public_reader",
+            "description": "Reader for books in a public link share (/s/<token>), without login. Read only: no library, no progress, no annotations on the server (the browser keeps the position). The file is only handed out when the share allows downloads; a password protected share needs the password entered on the share page first (same session as Nextcloud's public WebDAV)."
         }
     ]
 }

@@ -23,6 +23,8 @@ use OCA\EbookReader\Service\LibraryService;
 use OCA\EbookReader\Service\SettingsService;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\BackgroundJob\IJobList;
+use OCP\DB\QueryBuilder\IExpressionBuilder;
+use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\Files\File;
 use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
@@ -300,17 +302,33 @@ class LibraryServiceTest extends TestCase {
 		$this->service->resetOverrides('u', 5, 'rating');
 	}
 
-	public function testRemoveFileCreatesTombstoneAndDropsTags(): void {
+	public function testRemoveFileCreatesTombstoneAndKeepsTags(): void {
 		$existing = new Book();
 		$existing->setId(9);
 		$this->books->method('findByUserAndFile')->willReturn($existing);
 		$this->books->method('countActiveByFileId')->willReturn(0);
-		$this->tags->expects($this->once())->method('deleteByBook')->with(9);
+		// manual tags must survive a trash restore or a move out and back; the purge job deletes them with the row
+		$this->tags->expects($this->never())->method('deleteByBook');
 		$this->covers->expects($this->once())->method('deleteCover')->with(5);
 		$this->books->expects($this->once())->method('update')->willReturnArgument(0);
 		$this->service->removeFile('u', 5);
 		$this->assertNotNull($existing->getDeletedAt());
 		$this->assertSame($existing->getDeletedAt(), $existing->getUpdatedAt());
+	}
+
+	public function testSetTagsKeepsAtMostTheListLimit(): void {
+		$names = array_map(static fn (int $i): string => 'Tag ' . $i, range(1, BookMetadata::MAX_LIST + 50));
+		$qb = $this->createMock(IQueryBuilder::class);
+		foreach (['update', 'set', 'where'] as $m) {
+			$qb->method($m)->willReturnSelf();
+		}
+		$qb->method('expr')->willReturn($this->createMock(IExpressionBuilder::class));
+		$db = $this->createMock(IDBConnection::class);
+		$db->method('getQueryBuilder')->willReturn($qb);
+		$service = new LibraryService($this->books, $this->tags, $this->metadata, $this->covers, new GenreClassifier($this->settings, $this->tags),
+			$this->settings, $this->root, $this->jobList, $db, $this->createMock(LoggerInterface::class), $this->sidecar);
+		$service->setTags(5, Tag::TYPE_TAG, $names, Tag::SOURCE_APP);
+		$this->assertCount(BookMetadata::MAX_LIST, $this->insertedTags);
 	}
 
 	public function testRemoveFileKeepsCoverWhileOtherUsersHaveTheBook(): void {

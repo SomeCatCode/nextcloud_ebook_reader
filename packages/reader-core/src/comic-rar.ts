@@ -9,6 +9,8 @@
  */
 import type { ReaderOptions } from './types.ts'
 
+import { checkEntryCount, MAX_ENTRY_SIZE, tooLarge } from './archive-limits.ts'
+
 interface CompressedFile {
 	name: string
 	size: number
@@ -40,18 +42,43 @@ export async function makeArchiveLoader(file: Blob, opts: ReaderOptions, extensi
 		.replace(/new URL\("libarchive\.wasm",import\.meta\.url\)\.href/g, JSON.stringify(absWasm))
 		.replace(/import\.meta\.url/g, JSON.stringify(absWasm))
 	const workerBlobUrl = URL.createObjectURL(new Blob([patched], { type: 'text/javascript' }))
-	const { Archive } = await import('libarchive.js')
+	// the main module next to our worker build: its default worker URL then points at our worker, not at the npm one
+	const { Archive } = await import('../../libarchive/dist/libarchive.js')
 	Archive.init({ workerUrl: workerBlobUrl })
 	const archive = await Archive.open(file instanceof File ? file : new File([file], `book.${extension}`))
 	const files = await archive.getFilesArray() as unknown as { file: CompressedFile, path: string }[]
+	try {
+		checkEntryCount(files.length)
+	} catch (e) {
+		void archive.close()
+		URL.revokeObjectURL(workerBlobUrl)
+		throw e
+	}
 	const map = new Map<string, CompressedFile>()
 	for (const { file: f, path } of files) {
 		map.set(path + f.name, f)
 	}
+	// libarchive unpacks an entry as a whole inside the worker: refuse entries whose declared size is too large
+	// (RAR and 7z stop at the declared size) and check the result as well
+	const extract = (name: string): Promise<File> | null => {
+		const entry = map.get(name)
+		if (!entry) {
+			return null
+		}
+		if (entry.size > MAX_ENTRY_SIZE) {
+			return Promise.reject(tooLarge(name))
+		}
+		return entry.extract().then((f) => {
+			if (f.size > MAX_ENTRY_SIZE) {
+				throw tooLarge(name)
+			}
+			return f
+		})
+	}
 	return {
 		entries: [...map.keys()].map((filename) => ({ filename })),
-		loadBlob: (name) => map.get(name)?.extract() ?? null,
-		loadText: (name) => map.get(name)?.extract().then((x) => x.text()) ?? null,
+		loadBlob: extract,
+		loadText: (name) => extract(name)?.then((x) => x.text()) ?? null,
 		getSize: (name) => map.get(name)?.size ?? 0,
 		close: () => {
 			void archive.close()

@@ -18,9 +18,11 @@ class RenameService {
 	/**
 	 * Expands a filename pattern such as "{author} - {title}".
 	 * Placeholders: {author} (first author), {authors}, {title}, {series}, {series_index}.
+	 * {series_index} is zero-padded to $indexWidth digits (see SeriesOrder::indexWidth, default 2: 01, 02, ... 10),
+	 * {series_index:N} to exactly N digits, {series_index:raw} is not padded.
 	 * The result has no extension and contains no characters that are invalid in file names.
 	 */
-	public function buildFilename(Book $book, string $pattern): string {
+	public function buildFilename(Book $book, string $pattern, int $indexWidth = 2): string {
 		$authors = $book->getAuthorsArray();
 		$index = $book->getSeriesIndex();
 		$replace = [
@@ -28,8 +30,14 @@ class RenameService {
 			'{authors}' => implode(', ', $authors),
 			'{title}' => trim((string)$book->getTitle()),
 			'{series}' => trim((string)$book->getSeries()),
-			'{series_index}' => $index === null ? '' : rtrim(rtrim(sprintf('%.4F', $index), '0'), '.'),
 		];
+		$pattern = (string)preg_replace_callback('/\{series_index(?::(raw|\d+))?\}/u', static function (array $m) use ($index, $indexWidth): string {
+			if ($index === null) {
+				return '';
+			}
+			$mode = $m[1] ?? '';
+			return SeriesOrder::formatIndex($index, $mode === 'raw' ? 0 : ($mode === '' ? $indexWidth : (int)$mode));
+		}, $pattern);
 		$name = strtr($pattern, $replace);
 
 		// drop separators/brackets left over by empty placeholders

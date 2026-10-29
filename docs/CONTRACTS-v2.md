@@ -29,7 +29,7 @@ The old single params `genre`, `tag`, `author`, `series`, `format` keep working:
 - `POST /organize/apply` with the same body → `{items: [...same, status 'moved'|'unchanged'|'failed'], moved: int, failed: int}`
 
 Pattern rules:
-- Placeholders: `{author}` (first author), `{authors}` (all, `, `), `{title}`, `{series}`, `{series_index}`, `{series_index:2}` (zero-padded to 2 digits), `{year}`, `{publisher}`, `{language}`, `{genre}` (first genre), `{format}`.
+- Placeholders: `{author}` (first author), `{authors}` (all, `, `), `{title}`, `{series}`, `{series_index}` (zero-padded to the width of the highest volume number of the series, min. 2: 01..10, 001..120; since 0.12), `{series_index:raw}` (not padded), `{series_index:2}` (zero-padded to exactly 2 digits), `{year}`, `{publisher}`, `{language}`, `{genre}` (first genre), `{format}`.
 - `/` creates subfolders. The file extension is always appended automatically.
 - Empty placeholders are removed together with a neighbouring separator. Recognised separators: ` - `, ` – `, `, `, `_`, and empty folder levels.
 - Path components are sanitised per NC34 rules (IFilenameValidator or the same rules as RenameService) and capped at 255 bytes.

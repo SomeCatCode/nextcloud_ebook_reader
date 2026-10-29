@@ -26,7 +26,16 @@ class RenameServiceTest extends TestCase {
 
 	public function testPatternWithSeries(): void {
 		$name = (new RenameService())->buildFilename($this->book(), '{author} - {series} {series_index} - {title}');
-		$this->assertSame('Erika Muster - Saga 2 - Der Titel_ Teil_1', $name);
+		$this->assertSame('Erika Muster - Saga 02 - Der Titel_ Teil_1', $name);
+	}
+
+	public function testSeriesIndexPaddingModes(): void {
+		$renamer = new RenameService();
+		$p = '{series} {series_index} - {title}';
+		$this->assertSame('Saga 02 - Der Titel_ Teil_1', $renamer->buildFilename($this->book(), $p));
+		$this->assertSame('Saga 002 - Der Titel_ Teil_1', $renamer->buildFilename($this->book(), $p, 3));
+		$this->assertSame('Saga 2 - Der Titel_ Teil_1', $renamer->buildFilename($this->book(), '{series} {series_index:raw} - {title}', 3));
+		$this->assertSame('Saga 0002 - Der Titel_ Teil_1', $renamer->buildFilename($this->book(), '{series} {series_index:4} - {title}'));
 	}
 
 	public function testEmptyPlaceholdersLeaveNoDanglingSeparators(): void {

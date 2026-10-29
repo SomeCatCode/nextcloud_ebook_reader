@@ -6,10 +6,13 @@
 /**
  * Hardening of section documents (see docs/SECURITY-READER.md).
  *
- * 1. Every HTML section document gets a CSP <meta> as first child of <head>: no script execution
- *    and no remote loads (privacy). The blob: documents also inherit the page CSP of Nextcloud,
- *    which allows neither inline scripts nor blob: scripts.
- * 2. SVG sections (no CSP meta possible) are sanitized: scripts, handlers, javascript: links removed.
+ * 1. Every HTML section document gets a CSP <meta> in an XHTML <head> that is the first element of the
+ *    document, so nothing of the book is parsed before the policy applies: no script execution and no
+ *    remote loads (privacy). The iframes carry the same policy in their `csp` attribute (Chromium), and
+ *    the blob: documents inherit the page CSP of Nextcloud (no inline and no blob: scripts).
+ * 2. Everything executable is also removed from the section: scripts, event handler attributes,
+ *    javascript: links, meta refresh, <base>, plugins, processing instructions (xml-stylesheet) and SVG
+ *    animations that change links. SVG sections (no CSP meta possible) get the same cleaning.
  * 3. Script resources of EPUBs are never loaded (transformTarget isScript -> allow = false).
  * The iframes get sandbox="allow-same-origin allow-scripts" because foliate's own listeners run
  * inside the section documents; see docs/SECURITY-READER.md.
@@ -46,8 +49,13 @@ export function injectCsp(text: string, type: string): { text: string, type: str
 		}
 		return { text: ERROR_PAGE, type: 'text/html' }
 	}
-	const create = (name: string): Element => ns ? doc.createElementNS(ns, name) : doc.createElement(name)
-	let head = Array.from(root.children).find((c) => c.localName === 'head') ?? null
+	cleanDocument(doc, false)
+	// The policy only applies from the <meta> on, and only inside the real <head>. Take the existing head only when it
+	// is the first element and an XHTML head; otherwise (head after the body, a head of another namespace, content
+	// before the head) put a new head in front of everything.
+	const create = (name: string): Element => doc.createElementNS(XHTML_NS, name)
+	const first = root.firstElementChild
+	let head = first && first.localName === 'head' && first.namespaceURI === XHTML_NS ? first : null
 	if (!head) {
 		head = create('head')
 		root.insertBefore(head, root.firstChild)
@@ -89,21 +97,49 @@ export function sanitizeSvg(text: string): string {
  * @param doc
  */
 function cleanSvgDocument(doc: Document): string {
-	for (const el of Array.from(doc.querySelectorAll('*'))) {
+	cleanDocument(doc, true)
+	return new XMLSerializer().serializeToString(doc)
+}
+
+/** Elements that are removed with their content */
+const DROP = new Set(['script', 'iframe', 'frame', 'frameset', 'embed', 'object', 'applet', 'portal', 'base'])
+/** Attributes that hold a URL */
+const URL_ATTRS = new Set(['href', 'src', 'action', 'formaction', 'data', 'srcdoc'])
+
+/**
+ * Removes everything executable from a section document. Works on the parsed DOM, so comments, CDATA or
+ * namespaces can not hide anything.
+ *
+ * @param doc
+ * @param svg also remove foreignObject (an SVG document has no CSP to fall back on)
+ */
+function cleanDocument(doc: Document, svg: boolean): void {
+	for (const node of Array.from(doc.childNodes)) {
+		// <?xml-stylesheet?> could load an XSLT that rewrites the document without the policy
+		if (node.nodeType === Node.PROCESSING_INSTRUCTION_NODE) {
+			node.remove()
+		}
+	}
+	for (const el of Array.from(doc.getElementsByTagName('*'))) {
+		if (!el.isConnected) {
+			continue
+		}
 		const name = el.localName.toLowerCase()
-		if (name === 'script' || name === 'foreignobject' || name === 'iframe' || name === 'embed' || name === 'object') {
+		if (DROP.has(name) || (svg && name === 'foreignobject')
+			|| (name === 'meta' && el.hasAttribute('http-equiv'))
+			|| ((name === 'set' || name.startsWith('animate')) && /href|^on/i.test(el.getAttribute('attributeName') ?? ''))) {
 			el.remove()
 			continue
 		}
 		for (const attr of Array.from(el.attributes)) {
-			const attrName = attr.name.toLowerCase()
+			const attrName = attr.localName.toLowerCase()
 			const value = attr.value.replace(/[\s\u0000-\u001f]/g, '').toLowerCase()
-			if (attrName.startsWith('on') || ((attrName === 'href' || attrName.endsWith(':href') || attrName === 'src') && (value.startsWith('javascript:') || value.startsWith('data:text/html')))) {
+			if (attrName.startsWith('on') || (URL_ATTRS.has(attrName)
+				&& /^(javascript|vbscript):|^data:(text\/html|application\/xhtml)/.test(value))) {
 				el.removeAttributeNode(attr)
 			}
 		}
 	}
-	return new XMLSerializer().serializeToString(doc)
 }
 
 /**

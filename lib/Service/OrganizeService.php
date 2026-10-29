@@ -52,7 +52,10 @@ class OrganizeService {
 	 * Renders a pattern to a user-relative path without leading slash, e.g. "Autor/Reihe/01 - Titel.epub".
 	 * Slashes in the pattern create folders, slashes inside placeholder values never do.
 	 *
-	 * @param array<string, string> $vars placeholder values by name (author, authors, title, series, series_index, year, publisher, language, genre, format)
+	 * `{series_index}` is zero-padded to the width in $vars['series_index_width'] (default 2), `{series_index:N}` to N digits,
+	 * `{series_index:raw}` stays unpadded.
+	 *
+	 * @param array<string, string> $vars placeholder values by name (author, authors, title, series, series_index, series_index_width, year, publisher, language, genre, format)
 	 * @param string $extension extension including the dot (lower-cased here), may be empty
 	 * @param string $fallbackName base name used when the file name part renders empty
 	 */
@@ -87,13 +90,18 @@ class OrganizeService {
 	/** @param array<string, string> $vars */
 	private function renderSegment(string $segment, array $vars): string {
 		$segment = str_replace(self::EMPTY, '', $segment);
-		$out = (string)preg_replace_callback('/\{(\w+)(?::(\d+))?\}/u', function (array $m) use ($vars): string {
+		$out = (string)preg_replace_callback('/\{(\w+)(?::(\d+|raw))?\}/u', function (array $m) use ($vars): string {
 			$value = trim((string)preg_replace('/[\x00-\x1F\x7F]/u', '', $vars[$m[1]] ?? ''));
 			if ($value === '') {
 				return self::EMPTY;
 			}
-			if ($m[1] === 'series_index' && isset($m[2]) && $m[2] !== '') {
-				$value = $this->padNumber($value, (int)$m[2]);
+			if ($m[1] === 'series_index') {
+				$mode = $m[2] ?? '';
+				if ($mode === '') {
+					$value = $this->padNumber($value, (int)($vars['series_index_width'] ?? 2));
+				} elseif ($mode !== 'raw') {
+					$value = $this->padNumber($value, (int)$mode);
+				}
 			}
 			return $value;
 		}, $segment);
@@ -129,7 +137,7 @@ class OrganizeService {
 			return '';
 		}
 		try {
-			$name = Compat::sanitizeFilename($this->filenameValidator, $name);
+			$name = $this->filenameValidator->sanitizeFilename($name);
 		} catch (\InvalidArgumentException) {
 			return '';
 		}
@@ -140,7 +148,7 @@ class OrganizeService {
 	}
 
 	/** @return array<string, string> */
-	public function variablesFor(Book $book): array {
+	public function variablesFor(Book $book, int $indexWidth = 2): array {
 		$authors = $book->getAuthorsArray();
 		$index = $book->getSeriesIndex();
 		$year = '';
@@ -157,7 +165,8 @@ class OrganizeService {
 			'authors' => implode(', ', $authors),
 			'title' => trim((string)$book->getTitle()),
 			'series' => trim((string)$book->getSeries()),
-			'series_index' => $index === null ? '' : rtrim(rtrim(sprintf('%.4F', $index), '0'), '.'),
+			'series_index' => $index === null ? '' : SeriesOrder::formatIndex($index),
+			'series_index_width' => (string)$indexWidth,
 			'year' => $year,
 			'publisher' => trim((string)$book->getPublisher()),
 			'language' => trim((string)$book->getLanguage()),
@@ -167,6 +176,24 @@ class OrganizeService {
 	}
 
 	// ------------------------------------------------------------------ plan / apply
+
+	/**
+	 * Digits of {series_index} for the series of the book: the highest number of the whole series (not only of the
+	 * selected books), at least 2. Cached by series key in $cache.
+	 *
+	 * @param array<string, int> $cache
+	 */
+	private function indexWidth(string $userId, Book $book, array &$cache): int {
+		$key = SeriesOrder::key($book->getSeries());
+		if ($key === '' || $book->getSeriesIndex() === null) {
+			return 2;
+		}
+		if (!isset($cache[$key])) {
+			$volumes = $this->library->volumesOfSeries($userId, [(string)$book->getSeries()])[$key] ?? [];
+			$cache[$key] = SeriesOrder::indexWidth(array_map(static fn (Book $b): ?float => $b->getSeriesIndex(), $volumes));
+		}
+		return $cache[$key];
+	}
 
 	/**
 	 * @param list<int> $fileIds
@@ -216,6 +243,8 @@ class OrganizeService {
 		$base = $this->resolveTargetFolder($userId, $targetFolder);
 		$userFolder = $this->rootFolder->getUserFolder($userId);
 
+		/** @var array<string, int> $widths digits of the volume numbers by series key (cache) */
+		$widths = [];
 		/** @var array<string, true> $taken lower-cased target paths already planned in this request */
 		$taken = [];
 		$items = [];
@@ -240,7 +269,7 @@ class OrganizeService {
 			}
 			$ext = $this->extensionOf($node->getName());
 			$fallback = $ext !== '' ? substr($node->getName(), 0, -strlen($ext)) : $node->getName();
-			$rendered = $this->renderPath($pattern, $this->variablesFor($book), $ext, $fallback);
+			$rendered = $this->renderPath($pattern, $this->variablesFor($book, $this->indexWidth($userId, $book, $widths)), $ext, $fallback);
 			$to = ($base === '/' ? '' : $base) . '/' . $rendered;
 
 			if ($to === $from) {

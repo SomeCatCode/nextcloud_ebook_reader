@@ -8,7 +8,7 @@ It is a regular Nextcloud app (PHP backend, Vue frontend). It needs no extra con
 
 [![CI](https://github.com/SomeCatCode/nextcloud_ebook_reader/actions/workflows/ci.yml/badge.svg)](https://github.com/SomeCatCode/nextcloud_ebook_reader/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/SomeCatCode/nextcloud_ebook_reader?include_prereleases)](https://github.com/SomeCatCode/nextcloud_ebook_reader/releases)
-![Nextcloud 34](https://img.shields.io/badge/Nextcloud-34-0082c9?logo=nextcloud&logoColor=white)
+![Nextcloud 33-35](https://img.shields.io/badge/Nextcloud-33--35-0082c9?logo=nextcloud&logoColor=white)
 ![License AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)
 
 ![Library with series filter and book details](docs/screenshot-library.png)
@@ -24,7 +24,7 @@ It is a regular Nextcloud app (PHP backend, Vue frontend). It needs no extra con
 
 ## Requirements
 
-- Nextcloud 34
+- Nextcloud 33 to 35
 - PHP 8.2 or later with `zip`, `gd`, `dom`, `libxml`, `mbstring` (included in common installations and the official Docker image)
 - Background jobs via **cron** (recommended; with AJAX, large libraries are indexed slowly)
 - Optional: **7-Zip** and/or **bsdtar** for CBR and CB7 comics on the server, see [Archive tools](#archive-tools-optional)
@@ -122,9 +122,12 @@ sudo -u www-data php occ ebookreader:scan <user> --force --format=cbr
 - Opens from the Files app; paginated or scrolled layout, light/sepia/dark themes, font, size and line height
 - Table of contents, full-text search, keyboard, tap zones and swipe gestures
 - Comics as single or double pages, right-to-left (manga) reading direction
+- Image filters for comic pages: brightness, contrast and grayscale (for bad scans)
+- Long strip comics (webtoons) scroll down seamlessly instead of paging; recognised from ComicInfo.xml (`Format` Webtoon/Long Strip) or set per book
 - Highlights in five colours, notes and bookmarks (also for comics), listed in a side panel and exportable as Markdown
 - Large files open fast: comic pages are streamed one by one and scaled on the server, EPUBs are loaded chapter by chapter
 - Reading position stored on the server; a newer position from another device is offered when you open a book
+- Public link shares: guests read a shared book in the browser without an account. The browser keeps the position. Shares with "hide download" are not opened.
 
 **Library**
 - Cover grid or list with progress and a "Continue reading" row; finished books are hidden by default
@@ -144,7 +147,7 @@ sudo -u www-data php occ ebookreader:scan <user> --force --format=cbr
 - Metadata: title, authors, series and index, description, genres, tags, language, publisher, date, ISBN
 - Replace the cover (upload, or use a page)
 - Remove and reorder chapters or pages, edit the table of contents
-- Rename and sort into folders by pattern, e.g. `{author}/{series}/{series_index:2} - {title}`, with a preview
+- Rename and sort into folders by pattern, e.g. `{author}/{series}/{series_index} - {title}`, with a preview. `{series_index}` is zero-padded to the width of the highest volume number of the series (01 … 10, 001 … 120), `{series_index:raw}` is not
 - Convert between CBZ, CB7, CBT and fixed-layout EPUB, with the pros and cons of each format explained (CBR cannot be a target: writing RAR requires proprietary software)
 - Optional, lossy image optimization for comics (downscale pages to 2560 or 1920 px, PNG to JPEG), with a size estimate and bulk mode
 - Save or save as copy; long operations continue on the server with a progress indicator
@@ -198,6 +201,7 @@ The feeds are validated against the OPDS specification; they should work with KO
 |---|---|---|
 | `max_edit_size_mb` | `500` | maximum file size for the editor |
 | `archive_cache_mb` | `2048` | local cache for books on WebDAV, SMB or S3 storage and with server-side encryption |
+| `comic_cache_mb` | `2048` | cache of scaled comic pages in app data; the oldest pages are removed above this size |
 | `opds_enabled` | `true` | OPDS catalog allowed on this server (each user still enables it) |
 | `async_inline` | `true` | run saves and conversions right after the response in the same PHP process (PHP-FPM); `false` leaves them to the background job |
 
@@ -211,7 +215,7 @@ sudo -u www-data php occ config:app:set ebookreader archive_cache_mb --value=409
 
 - **Your books** stay where they are; the app never moves or copies them on its own. Sidecar files (`.<book file>.opf`) are created next to books when metadata is edited.
 - **Database tables** (prefix `ebookreader_`): `books`, `tags`, `progress`, `annotations`, `shelves`, `shelf_books`, `tasks`. Everything is per user and removed when a user is deleted.
-- **App data:** cached scaled comic pages (`comic-pages`), regenerated on demand.
+- **App data:** cached scaled comic pages (`comic-pages`, bounded by `comic_cache_mb`), regenerated on demand.
 - **Temporary directory:** a bounded archive cache (`archive_cache_mb`) for books on external or encrypted storage.
 
 Back up your books and the Nextcloud database as usual; caches can be deleted at any time.
@@ -223,7 +227,7 @@ The development setup, checks and local Nextcloud environment are described in [
 ## Security model
 
 - Scripts inside e-books are never executed, remote content (tracking pixels, web fonts) is never loaded, and links open only after confirmation. Details: [docs/SECURITY-READER.md](docs/SECURITY-READER.md).
-- Every query and file access is scoped to the logged-in user; shares with "prevent download" are respected (no page, chapter or file delivery).
+- Every query and file access is scoped to the logged-in user; shares with "prevent download" are respected (no page, chapter or file delivery). Public link shares give only the shared book, and only when the share allows downloads.
 - Archives are read with limits on entry count, size and unsafe paths; external tools are started without a shell, with timeouts and output limits.
 - The OPDS catalog is opt-in per user, uses app passwords, and is rate limited and protected against brute force.
 
@@ -237,7 +241,7 @@ None. The app does not contact any external service, contains no analytics or tr
 
 - DRM-protected books (Kindle, Adobe) cannot be opened.
 - MOBI/AZW3 files are never modified; their metadata goes to the sidecar file.
-- Public share links offer the normal download, not the reader.
+- In public link shares, guests cannot add highlights, notes or bookmarks.
 - PDF is intentionally not included; Nextcloud has its own viewer.
 
 ## Acknowledgements

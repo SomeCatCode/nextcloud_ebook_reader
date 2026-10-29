@@ -73,6 +73,13 @@
 					:capabilities="structure.capabilities"
 					:isComic="isComic"
 					:disabled="!structure.capabilities.metadata" />
+				<section v-if="activeTab === 'metadata' && libraryBook" class="editor-view__library">
+					<h3>{{ t('ebookreader', 'Library') }}</h3>
+					<p class="editor-view__library-hint">
+						{{ t('ebookreader', 'Saved at once in the library, the book file stays unchanged.') }}
+					</p>
+					<BookLibraryFields :book="libraryBook" />
+				</section>
 				<template v-if="activeTab === 'content'">
 					<p v-if="!structure.capabilities.content" class="editor-view__na">
 						{{ t('ebookreader', 'Reordering and removing content is not supported for this format.') }}
@@ -225,12 +232,14 @@ import MetadataForm from '../components/editor/MetadataForm.vue'
 import PageGrid from '../components/editor/PageGrid.vue'
 import RenameDialog from '../components/editor/RenameDialog.vue'
 import TocTreeEditor from '../components/editor/TocTreeEditor.vue'
+import BookLibraryFields from '../components/library/BookLibraryFields.vue'
 import { convertCbrToCbz, deleteOriginal, TargetExistsError, uploadCbz } from '../editor/cbrToCbz.ts'
 import { EDITOR_STATE_KEY, isMetadataOnlyRequest, useEditorState } from '../editor/useEditorState.ts'
 import { ConflictError, getBook, getStructure, patchMetadata, putStructureAsync, scan } from '../services/api.ts'
 import { DownloadDeclinedError, ensureDownloadConfirmed } from '../services/largeDownload.ts'
 import { pollTask, TaskFailedError } from '../services/tasks.ts'
 import { useLargeDownloadConfirm } from '../services/useLargeDownloadConfirm.ts'
+import { useLibraryStore } from '../stores/library.ts'
 
 const props = defineProps<{ fileId?: string }>()
 
@@ -241,6 +250,9 @@ provide(EDITOR_STATE_KEY, state)
 const fileIdNum = computed(() => Number(props.fileId))
 const structure = state.structure
 const book = shallowRef<Book | null>(null)
+const library = useLibraryStore()
+/** the store's copy of the book: rating, status etc. change it, the details sidebar shows the same values */
+const libraryBook = computed(() => (book.value ? library.findLoaded(book.value.fileId) ?? book.value : null))
 const loading = ref(true)
 const loadError = ref('')
 const busy = ref(false)
@@ -278,6 +290,9 @@ async function load(fileId = fileIdNum.value, withContent = false): Promise<void
 		const [s, b] = await Promise.all([getStructure(fileId, withContent ? 'all' : 'metadata'), getBook(fileId).catch(() => null)])
 		state.load(s as Structure)
 		book.value = b
+		if (b) {
+			library.adoptBook(b)
+		}
 	} catch (e) {
 		loadError.value = (e as Error).message || t('ebookreader', 'Could not load the book structure.')
 	} finally {
@@ -565,6 +580,9 @@ async function saveMetadataOnly(patch: MetadataPatch): Promise<void> {
 		const [s, b] = await Promise.all([getStructure(fileIdNum.value, 'metadata'), getBook(fileIdNum.value).catch(() => null)])
 		state.reloadMetadata(s)
 		book.value = b
+		if (b) {
+			library.adoptBook(b)
+		}
 		finishSaved(result)
 	} catch (e) {
 		showError(t('ebookreader', 'Saving failed: {message}', { message: (e as Error).message }))
@@ -724,6 +742,23 @@ async function convertCbr(): Promise<void> {
 
 	&__na {
 		color: var(--color-text-maxcontrast);
+	}
+
+	&__library {
+		max-width: 780px;
+		margin-top: 24px;
+		padding-top: 16px;
+		border-top: 1px solid var(--color-border);
+
+		h3 {
+			margin: 0 0 4px;
+		}
+	}
+
+	&__library-hint {
+		margin: 0 0 12px;
+		color: var(--color-text-maxcontrast);
+		font-size: 0.85em;
 	}
 
 	&__summary {
