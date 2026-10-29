@@ -8,11 +8,12 @@ readers that were fixed later. This folder holds the same worker, rebuilt with c
 |---|---|
 | `dist/libarchive.wasm` | libarchive 3.8.10, zlib 1.3.1, xz/liblzma 5.8.1, bzip2 1.0.8 (Emscripten port); **without OpenSSL** (only needed for AES encrypted ZIP) |
 | `dist/worker-bundle.js` | the worker of libarchive.js 2.0.2 (`rollup`, production build) with the Emscripten glue of this build |
+| `dist/libarchive.js` | the main thread module of libarchive.js 2.0.2, unchanged (byte for byte the npm file). It lies here, so that its default worker URL `./worker-bundle.js` points at the worker above. The types come from the npm package (`libarchive.d.ts`). |
 | `build/` | `Dockerfile` and `build.sh` used for the build |
 
-The main thread API (`import { Archive } from 'libarchive.js'`) stays the npm package: its build from tag v2.0.2 is byte for byte
-the same as the published file. `src/components/reader/libarchive.ts` and `src/editor/cbrToCbz.ts` import the worker and the wasm
-from here.
+The main thread module is the npm file, unchanged: its build from tag v2.0.2 is byte for byte the same. `src/editor/cbrToCbz.ts`,
+`src/components/reader/libarchive.ts` and `packages/reader-core/src/comic-rar.ts` import all three files from here. Without the
+copy of the main module, Vite would also put the old npm worker (libarchive 3.7.2) into the build.
 
 Checked: all 14 test archives of libarchive.js (RAR v4/v5, 7z with LZMA/LZMA2/BZip2, tar with gz/bz2/xz, ZIP with
 deflate/bzip2/lzma) unpack to the same bytes as with the npm build.
