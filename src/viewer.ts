@@ -10,9 +10,12 @@
  * plain Vue 2 compatible options object (render function, no Vue import) that embeds the reader
  * SPA route `/apps/ebookreader/read/{fileid}?embedded=1` in a same-origin iframe. This keeps the
  * reader on one code path and works with whatever Vue version the Viewer uses.
+ * On a public link share (no login) the iframe shows the public reader `/apps/ebookreader/s/{token}?path=...`
+ * instead (PublicReaderController).
  * See docs/SECURITY-READER.md, "Viewer integration".
  */
 import { generateUrl } from '@nextcloud/router'
+import { getSharingToken, isPublicShare } from '@nextcloud/sharing/public'
 
 export const EBOOK_MIMES = [
 	'application/epub+zip',
@@ -33,15 +36,41 @@ interface ViewerGlobal {
 	_oca_viewer_handlers?: unknown[]
 }
 
+/**
+ * Path of a file inside a public share, taken from its WebDAV URL (`.../public.php/dav/files/<token>/<path>`).
+ *
+ * @param url WebDAV URL of the file
+ * @param token share token
+ */
+export function publicSharePath(url: string, token: string): string | null {
+	const marker = '/public.php/dav/files/' + token
+	const i = url.indexOf(marker)
+	if (i < 0) {
+		return null
+	}
+	try {
+		return decodeURIComponent(url.slice(i + marker.length).split(/[?#]/)[0]) || '/'
+	} catch {
+		return null
+	}
+}
+
 const EbookReaderViewer = {
 	name: 'EbookReaderViewer',
 	props: {
 		fileid: { type: [Number, String], default: null },
 		filename: { type: String, default: '' },
+		source: { type: String, default: '' },
+		davPath: { type: String, default: '' },
 		active: { type: Boolean, default: false },
 	},
 	computed: {
-		src(this: { fileid: number | string | null }): string {
+		src(this: { fileid: number | string | null, filename: string, source: string, davPath: string }): string {
+			const token = isPublicShare() ? getSharingToken() : null
+			if (token) {
+				const path = publicSharePath(this.source || this.davPath, token) ?? this.filename
+				return generateUrl('/apps/ebookreader/s/{token}', { token }) + '?embedded=1&path=' + encodeURIComponent(path)
+			}
 			return generateUrl('/apps/ebookreader/read/{fileid}', { fileid: String(this.fileid) }) + '?embedded=1'
 		},
 	},

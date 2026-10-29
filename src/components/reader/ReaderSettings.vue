@@ -124,6 +124,41 @@
 					</NcButton>
 				</div>
 			</div>
+			<label class="reader-settings__row">
+				<span>{{ t('ebookreader', 'Brightness') }}: {{ model.comicBrightness }}%</span>
+				<input
+					type="range"
+					min="50"
+					max="200"
+					step="5"
+					:value="model.comicBrightness"
+					@input="set('comicBrightness', Number(($event.target as HTMLInputElement).value))">
+			</label>
+			<label class="reader-settings__row">
+				<span>{{ t('ebookreader', 'Contrast') }}: {{ model.comicContrast }}%</span>
+				<input
+					type="range"
+					min="50"
+					max="200"
+					step="5"
+					:value="model.comicContrast"
+					@input="set('comicContrast', Number(($event.target as HTMLInputElement).value))">
+			</label>
+			<div class="reader-settings__row">
+				<NcCheckboxRadioSwitch
+					type="switch"
+					:modelValue="model.comicGrayscale"
+					@update:modelValue="set('comicGrayscale', $event)">
+					{{ t('ebookreader', 'Grayscale') }}
+				</NcCheckboxRadioSwitch>
+				<NcButton
+					v-if="model.comicBrightness !== 100 || model.comicContrast !== 100 || model.comicGrayscale"
+					variant="tertiary"
+					@click="resetImage">
+					{{ t('ebookreader', 'Reset image') }}
+				</NcButton>
+				<span class="reader-settings__hint">{{ t('ebookreader', 'Brightness, contrast and grayscale apply to the page images of all comics.') }}</span>
+			</div>
 		</template>
 	</div>
 </template>
@@ -131,6 +166,7 @@
 <script setup lang="ts">
 import { translate as t } from '@nextcloud/l10n'
 import NcButton from '@nextcloud/vue/components/NcButton'
+import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
 
 export interface ViewSettings {
 	theme: 'auto' | 'light' | 'dark' | 'sepia'
@@ -143,6 +179,11 @@ export interface ViewSettings {
 	comicSpread: 'single' | 'double'
 	comicRtl: boolean
 	comicZoom: 'fit-page' | 'fit-width'
+	/** brightness of comic pages in percent (50-200) */
+	comicBrightness: number
+	/** contrast of comic pages in percent (50-200) */
+	comicContrast: number
+	comicGrayscale: boolean
 }
 
 const props = defineProps<{ model: ViewSettings, isComic: boolean, longstrip?: boolean }>()
@@ -171,6 +212,13 @@ function set<K extends keyof ViewSettings>(key: K, value: ViewSettings[K]): void
 	if (props.model[key] !== value) {
 		emit('change', { [key]: value } as Partial<ViewSettings>)
 	}
+}
+
+/**
+ * Sets brightness, contrast and grayscale back to the original image.
+ */
+function resetImage(): void {
+	emit('change', { comicBrightness: 100, comicContrast: 100, comicGrayscale: false })
 }
 
 /**

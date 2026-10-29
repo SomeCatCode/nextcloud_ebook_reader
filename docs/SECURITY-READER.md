@@ -68,6 +68,20 @@ Vue-2-compatible plain options component that renders a same-origin `<iframe src
 The reader SPA hides its close button when `embedded=1`. Benefits: single reader code path, Vue-version independent, reader CSP/sandbox rules identical.
 The fallback "open the full-screen route instead" is not needed. Nextcloud's default `X-Frame-Options: SAMEORIGIN` and frame-ancestors allow this.
 
+## Public link shares
+
+On a public share page (`/s/<token>`, no login) the Viewer handler opens `/apps/ebookreader/s/<token>?path=<path in share>&embedded=1`
+instead. `PublicReaderController` (a `PublicShareController`) serves this page and the book file.
+
+- The share must have the read permission. A password protected share needs the session of the share page
+  (the same session check as Nextcloud's public WebDAV).
+- The path is resolved inside the shared folder. A path with `..`, a backslash or NUL is refused. The resolved file must lie below the share root.
+- Only e-book formats are served. Other files give 404.
+- "Hide download", downloads disabled or no content permission: the file endpoint gives 403. The page shows "View-only share".
+- `GET /s/<token>/file` has an anonymous rate limit (60 requests per minute) and supports single HTTP ranges.
+- The reader shows the book with the same CSP, sandbox and DOM cleaning as for users. Nothing is written on the server:
+  position and view settings stay in the browser (`localStorage`).
+
 ## CBR / libarchive.js
 
 `libarchive.js` (MIT) worker bundle is imported with Vite `?raw` and the wasm with `?url` (`src/components/reader/libarchive.ts`, lazy chunk).

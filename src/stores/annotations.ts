@@ -18,6 +18,8 @@ export { kindOf, newUuid }
 
 export const MAX_TEXT = 2000
 export const MAX_NOTE = 10000
+/** Highlights, notes and bookmarks per book (server limit AnnotationService::MAX_PER_BOOK) */
+export const MAX_PER_BOOK = 5000
 
 export const useAnnotationsStore = defineStore('annotations', () => {
 	const fileId = ref(0)
@@ -79,6 +81,10 @@ export const useAnnotationsStore = defineStore('annotations', () => {
 	 * @param input.color
 	 */
 	async function create(input: { type: Annotation['type'], locator: Locator, text?: string | null, note?: string | null, color?: AnnotationColor | null }): Promise<Annotation> {
+		if (items.value.filter((a) => !a.deleted).length >= MAX_PER_BOOK) {
+			showError(t('ebookreader', 'This book already has {max} highlights, notes and bookmarks. Delete some to add new ones.', { max: MAX_PER_BOOK }))
+			throw new Error('annotation limit reached')
+		}
 		const now = Date.now()
 		const draft: Annotation = {
 			uuid: newUuid(),

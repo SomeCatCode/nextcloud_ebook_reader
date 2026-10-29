@@ -131,6 +131,15 @@ class AnnotationServiceTest extends TestCase {
 		$this->service->upsert('u', 7, self::UUID, 'highlight', $this->locator(), null, null, null, null);
 	}
 
+	public function testPerUserLimit(): void {
+		$this->mapper->method('findByUuid')->willThrowException(new DoesNotExistException(''));
+		$this->mapper->method('countLiveByUserAndFile')->willReturn(0);
+		$this->mapper->method('countLiveByUser')->willReturn(AnnotationService::MAX_PER_USER);
+		$this->mapper->expects($this->never())->method('insert');
+		$this->expectExceptionMessage('too many annotations for this user');
+		$this->service->upsert('u', 7, self::UUID, 'highlight', $this->locator(), null, null, null, null);
+	}
+
 	/** @param array<string, mixed> $args */
 	#[DataProvider('invalidProvider')]
 	public function testInvalidInputIsRejected(array $args): void {

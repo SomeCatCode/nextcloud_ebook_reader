@@ -3,10 +3,10 @@
   - SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 <template>
-	<div class="ebr" :class="{ 'ebr--embedded': embedded, 'ebr--fullscreen': fullscreen.active.value }" :data-theme="effectiveTheme">
+	<div class="ebr" :class="{ 'ebr--embedded': embedded || isPublic, 'ebr--fullscreen': fullscreen.active.value }" :data-theme="effectiveTheme">
 		<header v-show="chrome" class="ebr__bar ebr__bar--top">
 			<NcButton
-				v-if="!embedded"
+				v-if="!embedded && !isPublic"
 				:aria-label="t('ebookreader', 'Close')"
 				variant="tertiary"
 				@click="close">
@@ -26,7 +26,7 @@
 				{{ title }}
 			</h1>
 			<NcButton
-				v-if="state === 'ready'"
+				v-if="state === 'ready' && !isPublic"
 				:aria-label="bookmarkOnPage ? t('ebookreader', 'Remove bookmark') : t('ebookreader', 'Add bookmark')"
 				:title="bookmarkOnPage ? t('ebookreader', 'Remove bookmark') : t('ebookreader', 'Add bookmark')"
 				:pressed="bookmarkOnPage"
@@ -37,6 +37,7 @@
 				</template>
 			</NcButton>
 			<NcButton
+				v-if="!isPublic"
 				:aria-label="t('ebookreader', 'Highlights & bookmarks')"
 				:title="t('ebookreader', 'Highlights & bookmarks')"
 				variant="tertiary"
@@ -99,7 +100,7 @@
 		<div v-else-if="state === 'error'" class="ebr__overlay">
 			<NcEmptyContent :name="errorTitle" :description="errorText">
 				<template #action>
-					<NcButton v-if="!embedded" @click="close">
+					<NcButton v-if="!embedded && !isPublic" @click="close">
 						{{ t('ebookreader', 'Back') }}
 					</NcButton>
 				</template>
@@ -108,7 +109,7 @@
 
 		<aside v-if="panel" class="ebr__panel" @keydown.esc.stop="panel = null">
 			<div class="ebr__panel-head">
-				<div v-if="panel === 'toc' || panel === 'annotations'" class="ebr__tabs" role="tablist">
+				<div v-if="(panel === 'toc' || panel === 'annotations') && !isPublic" class="ebr__tabs" role="tablist">
 					<button
 						type="button"
 						role="tab"
@@ -128,7 +129,7 @@
 						{{ t('ebookreader', 'Highlights & bookmarks') }}
 					</button>
 				</div>
-				<strong v-else>{{ t('ebookreader', 'Search') }}</strong>
+				<strong v-else>{{ panel === 'toc' ? t('ebookreader', 'Table of contents') : t('ebookreader', 'Search') }}</strong>
 				<NcButton :aria-label="t('ebookreader', 'Close')" variant="tertiary" @click="panel = null">
 					<template #icon>
 						<ReaderIcon name="close" />
@@ -262,7 +263,7 @@
 </template>
 
 <script setup lang="ts">
-import type { ReaderHandle, ReaderLocator, ReaderSelection, SearchGroup, TocItem } from '../../packages/reader-core/index.ts'
+import type { ReaderHandle, ReaderLocator, ReaderSelection, ReaderSource, SearchGroup, TocItem } from '../../packages/reader-core/index.ts'
 import type { ViewSettings } from '../components/reader/ReaderSettings.vue'
 import type { ProgressSync } from '../services/progressSync.ts'
 import type { Annotation, AnnotationColor, Book, Locator, Progress, ReaderSettings as ServerReaderSettings, Suggestions } from '../types.ts'
@@ -292,12 +293,28 @@ import { loadBookSource, needsClientCover, uploadClientCover } from '../services
 import { hasFeature } from '../services/features.ts'
 import { DownloadDeclinedError } from '../services/largeDownload.ts'
 import { createProgressSync } from '../services/progressSync.ts'
+import {
+	loadPublicBook,
+	loadPublicPosition,
+	loadPublicSettings,
+	loadPublicSource,
+	publicBookAsBook,
+	savePublicPosition,
+	savePublicSettings,
+} from '../services/publicBook.ts'
 import { createSuggestionsLookup, reachedEnd, setPendingDetails } from '../services/suggestions.ts'
 import { isTypingTarget, useFullscreen } from '../services/useFullscreen.ts'
 import { useLargeDownloadConfirm } from '../services/useLargeDownloadConfirm.ts'
 import { useAnnotationsStore } from '../stores/annotations.ts'
 
 const props = defineProps<{ fileId: string }>()
+
+/**
+ * Book of a public link share (reader without login): no library, progress, annotations or suggestions on the server;
+ * position and view settings stay in the browser.
+ */
+const publicBook = loadPublicBook()
+const isPublic = publicBook !== null
 
 const logger = {
 	// eslint-disable-next-line no-console
@@ -346,7 +363,7 @@ const suggestionsLookup = createSuggestionsLookup(getSuggestions, (s) => {
  * @param atEnd the reader shows the end of the book
  */
 function checkEnd(atEnd: boolean): void {
-	if (book.value && reachedEnd(atEnd, null) && hasFeature('suggestions')) {
+	if (!isPublic && book.value && reachedEnd(atEnd, null) && hasFeature('suggestions')) {
 		suggestionsLookup.request(book.value.fileId)
 	}
 }
@@ -391,6 +408,9 @@ const viewSettings = reactive<ViewSettings>({
 	comicSpread: 'single',
 	comicRtl: false,
 	comicZoom: 'fit-page',
+	comicBrightness: 100,
+	comicContrast: 100,
+	comicGrayscale: false,
 })
 
 let reader: ReaderHandle | null = null
@@ -455,6 +475,10 @@ const noteDialog = ref<{ uuid: string | null, selection?: ReaderSelection, quote
  * @param sel
  */
 function onSelection(sel: ReaderSelection): void {
+	if (isPublic) {
+		// no highlights or notes without an account
+		return
+	}
 	measureStage()
 	popup.value = { mode: 'selection', selection: sel, rect: sel.rect }
 }
@@ -664,6 +688,15 @@ function applyServerSettings(raw: ServerReaderSettings | undefined): void {
 	if (r.comicZoom === 'fit-width' || r.comicZoom === 'fit-page') {
 		viewSettings.comicZoom = r.comicZoom
 	}
+	for (const key of ['comicBrightness', 'comicContrast'] as const) {
+		const v = r[key]
+		if (typeof v === 'number' && v >= 50 && v <= 200) {
+			viewSettings[key] = v
+		}
+	}
+	if (typeof r.comicGrayscale === 'boolean') {
+		viewSettings.comicGrayscale = r.comicGrayscale
+	}
 }
 
 /**
@@ -680,7 +713,7 @@ function onSettingsChange(patch: Partial<ViewSettings>): void {
 	if ('fontSize' in patch || 'fontFamily' in patch || 'lineHeight' in patch) {
 		reader.setTypography({ fontSize: viewSettings.fontSize, fontFamily: viewSettings.fontFamily, lineHeight: viewSettings.lineHeight })
 	}
-	if (['flow', 'maxColumns', 'margin', 'comicSpread', 'comicRtl', 'comicZoom'].some((k) => k in patch)) {
+	if (['flow', 'maxColumns', 'margin', 'comicSpread', 'comicRtl', 'comicZoom', 'comicBrightness', 'comicContrast', 'comicGrayscale'].some((k) => k in patch)) {
 		void reader.setLayout({
 			flow: viewSettings.flow,
 			maxColumns: viewSettings.maxColumns,
@@ -688,11 +721,18 @@ function onSettingsChange(patch: Partial<ViewSettings>): void {
 			comicSpread: viewSettings.comicSpread,
 			comicRtl: viewSettings.comicRtl,
 			comicZoom: viewSettings.comicZoom,
+			comicBrightness: viewSettings.comicBrightness,
+			comicContrast: viewSettings.comicContrast,
+			comicGrayscale: viewSettings.comicGrayscale,
 		})
 		isRtl.value = isComic.value && !longstrip.value ? viewSettings.comicRtl : isRtl.value
 	}
 	if (saveTimer) {
 		clearTimeout(saveTimer)
+	}
+	if (isPublic) {
+		savePublicSettings(viewSettings)
+		return
 	}
 	saveTimer = setTimeout(() => {
 		putSettings({ reader: { ...(serverSettings ?? {}), ...viewSettings } as ServerReaderSettings })
@@ -717,6 +757,9 @@ async function onLongstripChange(value: boolean): Promise<void> {
 	longstrip.value = value
 	isRtl.value = !value && viewSettings.comicRtl
 	await reader?.setLayout({ comicLongstrip: value })
+	if (isPublic) {
+		return
+	}
 	try {
 		book.value = { ...b, ...await patchAppData(b.fileId, { longstrip: value }) }
 	} catch (e) {
@@ -892,7 +935,7 @@ function handleKey(key: string, e?: KeyboardEvent, modified = false): void {
 				settingsOpen.value = false
 			} else if (panel.value) {
 				panel.value = null
-			} else if (!embedded.value) {
+			} else if (!embedded.value && !isPublic) {
 				void close()
 			}
 			break
@@ -981,9 +1024,95 @@ function fail(e: unknown): void {
 	}
 }
 
+/**
+ * Creates the reader in the stage, wires its events and opens the book.
+ *
+ * @param source
+ * @param format
+ * @param initial position to open at
+ * @param onPosition called on every position change
+ */
+async function startReader(source: ReaderSource, format: Book['format'], initial: ReaderLocator | null, onPosition: (locator: ReaderLocator, percentage: number) => void): Promise<void> {
+	if (!stage.value) {
+		return
+	}
+	reader = createReader(stage.value, {
+		theme: viewSettings.theme,
+		typography: { fontSize: viewSettings.fontSize, fontFamily: viewSettings.fontFamily, lineHeight: viewSettings.lineHeight },
+		layout: {
+			flow: viewSettings.flow,
+			maxColumns: viewSettings.maxColumns,
+			margin: viewSettings.margin,
+			comicSpread: viewSettings.comicSpread,
+			comicRtl: viewSettings.comicRtl,
+			comicZoom: viewSettings.comicZoom,
+			comicLongstrip: longstrip.value,
+			comicBrightness: viewSettings.comicBrightness,
+			comicContrast: viewSettings.comicContrast,
+			comicGrayscale: viewSettings.comicGrayscale,
+		},
+		loadLibarchive,
+	})
+	unsubs.push(
+		reader.on('relocate', ({ locator, percentage: p, atEnd, page }) => {
+			percentage.value = p
+			checkEnd(atEnd)
+			pageInfo.value = page ?? null
+			currentHref.value = locator.href
+			pageTick.value++
+			popup.value = null
+			onPosition(locator, p)
+		}),
+		reader.on('selection', onSelection),
+		reader.on('selection-clear', () => {
+			if (popup.value?.mode === 'selection') {
+				popup.value = null
+			}
+		}),
+		reader.on('annotation-click', ({ id, rect }) => onAnnotationClick(id, rect)),
+		reader.on('tap', ({ zone }) => onTap(zone)),
+		reader.on('key', ({ key, modified }) => handleKey(key, undefined, modified)),
+		reader.on('external-link', ({ url }) => askExternalLink(url)),
+	)
+	reader.setAnnotations(annotations.drawable)
+	await reader.open(source, format, initial)
+}
+
+/**
+ * Opens the book of a public link share: whole file from the share, position and settings from this browser.
+ */
+async function openPublic(): Promise<void> {
+	const pb = publicBook!
+	const b = publicBookAsBook(pb)
+	book.value = b
+	if (!pb.downloadable) {
+		state.value = 'error'
+		errorTitle.value = t('ebookreader', 'View-only share')
+		errorText.value = t('ebookreader', 'This book was shared with download disabled, so it can not be read in the browser.')
+		return
+	}
+	applyServerSettings(loadPublicSettings() as ServerReaderSettings | null ?? undefined)
+	isComic.value = ['cbz', 'cbr', 'cb7', 'cbt'].includes(b.format)
+	isRtl.value = isComic.value && viewSettings.comicRtl
+	const source = await loadPublicSource(pb, abort.signal, largeDownload.ask)
+	await startReader(source, b.format, loadPublicPosition(pb), (locator) => savePublicPosition(pb, locator))
+	if (!reader) {
+		return
+	}
+	const info = reader.getInfo()
+	isComic.value = info?.isComic ?? isComic.value
+	isRtl.value = info?.rtl ?? isRtl.value
+	toc.value = reader.getToc()
+	state.value = 'ready'
+}
+
 onMounted(async () => {
 	window.addEventListener('keydown', onWindowKey)
 	try {
+		if (publicBook) {
+			await openPublic()
+			return
+		}
 		const fileId = Number(props.fileId)
 		const [b, settings] = await Promise.all([getBook(fileId), getSettings().catch(() => null)])
 		book.value = b
@@ -1008,46 +1137,10 @@ onMounted(async () => {
 			loadBookSource(b, abort.signal, largeDownload.ask, () => longstrip.value),
 			sync.loadRemote().catch(() => b.progress),
 		])
-		if (!stage.value) {
+		await startReader(source, b.format, (remote?.locator ?? null) as ReaderLocator | null, (locator, p) => sync?.update(locator as Locator, p))
+		if (!reader) {
 			return
 		}
-		reader = createReader(stage.value, {
-			theme: viewSettings.theme,
-			typography: { fontSize: viewSettings.fontSize, fontFamily: viewSettings.fontFamily, lineHeight: viewSettings.lineHeight },
-			layout: {
-				flow: viewSettings.flow,
-				maxColumns: viewSettings.maxColumns,
-				margin: viewSettings.margin,
-				comicSpread: viewSettings.comicSpread,
-				comicRtl: viewSettings.comicRtl,
-				comicZoom: viewSettings.comicZoom,
-				comicLongstrip: longstrip.value,
-			},
-			loadLibarchive,
-		})
-		unsubs.push(
-			reader.on('relocate', ({ locator, percentage: p, atEnd, page }) => {
-				percentage.value = p
-				checkEnd(atEnd)
-				pageInfo.value = page ?? null
-				currentHref.value = locator.href
-				pageTick.value++
-				popup.value = null
-				sync?.update(locator as Locator, p)
-			}),
-			reader.on('selection', onSelection),
-			reader.on('selection-clear', () => {
-				if (popup.value?.mode === 'selection') {
-					popup.value = null
-				}
-			}),
-			reader.on('annotation-click', ({ id, rect }) => onAnnotationClick(id, rect)),
-			reader.on('tap', ({ zone }) => onTap(zone)),
-			reader.on('key', ({ key, modified }) => handleKey(key, undefined, modified)),
-			reader.on('external-link', ({ url }) => askExternalLink(url)),
-		)
-		reader.setAnnotations(annotations.drawable)
-		await reader.open(source, b.format, (remote?.locator ?? null) as ReaderLocator | null)
 		const info = reader.getInfo()
 		isComic.value = info?.isComic ?? isComic.value
 		isRtl.value = info?.rtl ?? isRtl.value

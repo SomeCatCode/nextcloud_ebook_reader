@@ -52,6 +52,15 @@ export class LongstripView {
 	private naturalWidth = 0
 	private fallbackRatio = DEFAULT_RATIO
 
+	/**
+	 * CSS filter for the page images (see comic-filter.ts); 'none' removes it.
+	 *
+	 * @param filter
+	 */
+	setFilter(filter: string): void {
+		this.column.style.filter = filter === 'none' ? '' : filter
+	}
+
 	constructor(host: HTMLElement, opts: LongstripOptions) {
 		this.opts = opts
 		this.root = document.createElement('div')
