@@ -11,6 +11,7 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
   - Nach jedem Release ersetzt der neue Job `playground` in `release.yml` das App-Paket auf dem Branch. Der Workflow `playground.yml` macht das auch auf Anforderung.
 
 ### Geändert
+- CI und Release-Workflow: Die Workflows nutzen jetzt Node.js 24 statt Node.js 22. Die Action `softprops/action-gh-release` ist auf v3.0.3 aktualisiert und läuft damit auf Node.js 24. GitHub zeigt keine Warnung zu Node.js 20 mehr.
 - Neue Screenshots für README und App Store, aufgenommen im Nextcloud Playground mit den freien Beispielbüchern: Bibliothek, Comic-Reader, Seiten-Editor und neu E-Book-Reader mit Inhaltsverzeichnis sowie Serie mit ihren Bänden.
 - Die App ist nicht mehr als Beta gekennzeichnet. App-Beschreibung (8 Sprachen) und README nennen keinen Beta-Status mehr.
 - Capability `apiStable` ist jetzt `true`: Die API `v1` ist stabil. Änderungen an `v1` bleiben abwärtskompatibel.
