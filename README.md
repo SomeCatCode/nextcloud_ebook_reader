@@ -150,6 +150,9 @@ sudo -u www-data php occ ebookreader:scan <user> --force --format=cbr
 - Completion status per book (ongoing or completed) and an optional age rating (0, 6, 12, 16, 18; read from ComicInfo.xml `AgeRating` or EPUB `schema:typicalAgeRange`, or set by hand), both shown on the cards and filterable
 - "Continue the series": the next volume appears in "Continue reading" once a volume is finished, and the reader offers it at the end of a book
 - "Continue reading" dashboard widget and an [OPDS catalog](#opds-catalog) for e-reader apps
+- Reading suggestions at the end of a book: the next volume and similar unread titles (same author, genre or tag)
+- Sharing with Nextcloud users and groups: single books, shelves, series (later volumes follow) and folders, read-only. The "Sharing" tab of a book lists everyone who has access, also through folders and Nextcloud shares, and removes an access with one click
+- User interface in 12 languages: English, German, Spanish, French, Italian, Portuguese (Brazil), Japanese, Korean, Chinese (Simplified), Arabic, Turkish and Dari
 
 **Editing**
 - Metadata: title, authors, series and index, description, genres, tags, language, publisher, date, ISBN
