@@ -1,6 +1,6 @@
 {
 	"name": "ebookreader",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"description": "E-book library, reader and editor for Nextcloud",
 	"private": true,
 	"type": "module",

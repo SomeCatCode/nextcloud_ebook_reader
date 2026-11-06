@@ -362,7 +362,7 @@ O editor modifica arquivos, então mantenha um backup dos seus livros.]]></descr
 建议为后台任务使用 cron。服务器上的 7-Zip 或 bsdtar 为可选项，可在服务器端处理 CBR 和 CB7。
 
 编辑器会修改文件，请备份你的书籍。]]></description>
-	<version>1.0.0</version>
+	<version>1.0.1</version>
 	<licence>AGPL-3.0-or-later</licence>
 	<author mail="it@wasmitleder.de">Felix Kurth</author>
 	<namespace>EbookReader</namespace>
