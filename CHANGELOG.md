@@ -5,6 +5,8 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+## 1.0.1 – 2026-11-06
+
 ### Hinzugefügt
 - **Vier neue Sprachen:** Italienisch (`it`), Portugiesisch (Brasilien, `pt_BR`), Koreanisch (`ko`) und Chinesisch (vereinfacht, `zh_CN`). Alle 765 Texte sind übersetzt. Der Eintrag im App Store (`appinfo/info.xml`) hat Name, Kurzbeschreibung und Beschreibung auch in diesen Sprachen. `scripts/l10n.mjs` kennt die Pluralregeln der neuen Sprachen.
 - **Nextcloud Playground:** Die App lässt sich ohne Server im Browser ausprobieren. Der Blueprint `playground/blueprint.json` startet den [Nextcloud Playground](https://github.com/ateeducacion/nextcloud-playground) mit der App und sechs freien Beispielbüchern: drei gemeinfreie EPUBs von Project Gutenberg und drei Episoden Pepper&Carrot von David Revoy (CC BY 4.0). Die README hat dafür eine Schaltfläche.
