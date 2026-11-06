@@ -44,6 +44,8 @@ Probiere die App ohne Server aus: Der [Nextcloud Playground](../../playground/RE
 - **Markierungen, Notizen und Lesezeichen:** Text markieren (fünf Farben), Notiz dazu schreiben, Seiten mit einem Lesezeichen versehen (auch Comics). Alles steht im Panel „Markierungen & Lesezeichen“, wird auf dem Server gespeichert und lässt sich als Markdown exportieren.
 - **Große Dateien laden schnell.** Comics kommen seitenweise vom Server, auf Bildschirmgröße verkleinert, und EPUBs werden kapitelweise geladen. Die erste Seite erscheint sofort.
 - **Der Lesefortschritt wird auf dem Server gespeichert** und ist auf jedem Gerät an derselben Stelle. Gibt es eine neuere Position von einem anderen Gerät, fragt die App, ob sie dorthin springen soll.
+- **Öffentliche Freigabe-Links:** Gäste lesen ein geteiltes Buch im Browser ohne Konto. Der Browser merkt sich die Position. Freigaben mit „Download verbergen“ öffnet der Reader nicht.
+- **Bildfilter für Comics:** Helligkeit, Kontrast und Graustufen (für schlechte Scans).
 
 ### Bibliothek
 - Cover-Raster oder Liste mit Lesefortschritt, dazu eine „Weiterlesen“-Leiste.
@@ -59,6 +61,9 @@ Probiere die App ohne Server aus: Der [Nextcloud Playground](../../playground/RE
 - Bewertung (Sterne) und Lesestatus (ungelesen, lese gerade, gelesen).
 - Status pro Buch (laufend oder abgeschlossen) und optionale Altersfreigabe (0, 6, 12, 16, 18; aus ComicInfo.xml `AgeRating` bzw. EPUB `schema:typicalAgeRange` oder von Hand gesetzt), beides auf den Karten sichtbar und filterbar.
 - **Serie fortsetzen:** Ist ein Band gelesen, erscheint der nächste Band unter „Weiterlesen“, und der Reader bietet ihn am Ende des Buchs an.
+- **Lesevorschläge:** Am Ende eines Buchs zeigt der Reader den nächsten Band und ähnliche ungelesene Titel (gleicher Autor, gleiches Genre oder gleicher Tag).
+- **Teilen** mit Nextcloud-Benutzern und -Gruppen: einzelne Bücher, Regale, Serien (spätere Bände kommen automatisch dazu) und Ordner, nur lesend. Der Tab „Freigaben“ eines Buchs zeigt alle, die Zugriff haben, auch über Ordner und Nextcloud-Freigaben. Ein Klick entfernt einen Zugriff.
+- **Oberfläche in 12 Sprachen:** Deutsch, Englisch, Spanisch, Französisch, Italienisch, Portugiesisch (Brasilien), Japanisch, Koreanisch, Chinesisch (vereinfacht), Arabisch, Türkisch und Dari.
 - Metadaten und Cover liest die App automatisch aus den Dateien. Neue, geänderte und gelöschte Bücher erkennt sie selbst.
 
 ### Bearbeiten
@@ -331,7 +336,7 @@ Hinweis: Fortschritt synchronisieren diese Apps nicht über OPDS. Der Lesefortsc
 
 - **DRM-geschützte Bücher** (Kindle, Adobe) lassen sich nicht öffnen.
 - **MOBI/AZW3** werden nicht verändert. Metadaten landen in der Begleitdatei.
-- **Öffentliche Freigabe-Links** öffnen Bücher nicht im Reader, dort gibt es den normalen Download.
+- In **öffentlichen Freigabe-Links** können Gäste keine Markierungen, Notizen oder Lesezeichen anlegen.
 - **PDF** ist bewusst nicht dabei, dafür hat Nextcloud einen eigenen Viewer.
 
 ---
