@@ -4,12 +4,16 @@
 
 Bibliothek, Reader und Editor für E-Books und Comics direkt in deiner Nextcloud. Deine Bücher bleiben normale Dateien in deinem Speicher. Die App liest sie ein, zeigt sie als Bibliothek an und synchronisiert den Lesefortschritt zwischen all deinen Geräten.
 
-![Nextcloud 34](https://img.shields.io/badge/Nextcloud-34-0082c9?logo=nextcloud&logoColor=white)
+![Nextcloud 33-35](https://img.shields.io/badge/Nextcloud-33--35-0082c9?logo=nextcloud&logoColor=white)
 ![PHP 8.2+](https://img.shields.io/badge/PHP-8.2%2B-777bb4?logo=php&logoColor=white)
 ![Lizenz AGPL-3.0](https://img.shields.io/badge/Lizenz-AGPL--3.0--or--later-blue)
-![Status Beta](https://img.shields.io/badge/Status-Beta-yellow)
 [![CI](https://github.com/SomeCatCode/nextcloud_ebook_reader/actions/workflows/ci.yml/badge.svg)](https://github.com/SomeCatCode/nextcloud_ebook_reader/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/SomeCatCode/nextcloud_ebook_reader?include_prereleases)](https://github.com/SomeCatCode/nextcloud_ebook_reader/releases)
+
+
+<a href="https://ateeducacion.github.io/nextcloud-playground/?blueprint-url=https://raw.githubusercontent.com/SomeCatCode/nextcloud_ebook_reader/playground/blueprint.json" target="_blank" rel="noopener noreferrer"><img src="https://raw.githubusercontent.com/ateeducacion/nextcloud-playground/main/assets/playground-preview-button.svg" alt="Im Nextcloud Playground ausprobieren" width="224"></a>
+
+Probiere die App ohne Server aus: Der [Nextcloud Playground](../../playground/README.md) startet Nextcloud mit dem E-Book Reader und sechs freien Beispielbüchern in deinem Browser. Keine Daten verlassen den Browser.
 
 ![Bibliothek mit Serienfilter und Buchdetails](../screenshot-library.png)
 
@@ -17,10 +21,14 @@ Bibliothek, Reader und Editor für E-Books und Comics direkt in deiner Nextcloud
 
 ![Seiten-Editor eines Comics](../screenshot-editor.png)
 
-<sub>Die Screenshots zeigen [Pepper&amp;Carrot](https://www.peppercarrot.com) von David Revoy, lizenziert unter [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/deed.de).</sub>
+![E-Book-Reader mit Inhaltsverzeichnis](../screenshot-epub.png)
+
+![Serie mit ihren Bänden](../screenshot-series.png)
+
+<sub>Die Screenshots zeigen [Pepper&amp;Carrot](https://www.peppercarrot.com) von David Revoy, lizenziert unter [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/deed.de), und gemeinfreie Bücher von [Project Gutenberg](https://www.gutenberg.org).</sub>
 
 > [!NOTE]
-> **Beta.** Die App wird produktiv mit einer großen Bibliothek (E-Books und Comics bis 400 MB) eingesetzt und ist durch automatische Tests abgedeckt. Bis zur Version 1.0 können sich Details noch ändern. Der Editor verändert Dateien. Nextcloud legt dabei zwar automatisch eine Version an, ein Backup deiner Bücher schadet trotzdem nicht.
+> **Stabil seit 1.0.** Die App wird produktiv mit einer großen Bibliothek (E-Books und Comics bis 400 MB) eingesetzt und ist durch automatische Tests abgedeckt. Die API `v1` ist stabil. Der Editor verändert Dateien. Nextcloud legt dabei zwar automatisch eine Version an, ein Backup deiner Bücher schadet trotzdem nicht.
 
 ---
 
@@ -36,6 +44,8 @@ Bibliothek, Reader und Editor für E-Books und Comics direkt in deiner Nextcloud
 - **Markierungen, Notizen und Lesezeichen:** Text markieren (fünf Farben), Notiz dazu schreiben, Seiten mit einem Lesezeichen versehen (auch Comics). Alles steht im Panel „Markierungen & Lesezeichen“, wird auf dem Server gespeichert und lässt sich als Markdown exportieren.
 - **Große Dateien laden schnell.** Comics kommen seitenweise vom Server, auf Bildschirmgröße verkleinert, und EPUBs werden kapitelweise geladen. Die erste Seite erscheint sofort.
 - **Der Lesefortschritt wird auf dem Server gespeichert** und ist auf jedem Gerät an derselben Stelle. Gibt es eine neuere Position von einem anderen Gerät, fragt die App, ob sie dorthin springen soll.
+- **Öffentliche Freigabe-Links:** Gäste lesen ein geteiltes Buch im Browser ohne Konto. Der Browser merkt sich die Position. Freigaben mit „Download verbergen“ öffnet der Reader nicht.
+- **Bildfilter für Comics:** Helligkeit, Kontrast und Graustufen (für schlechte Scans).
 
 ### Bibliothek
 - Cover-Raster oder Liste mit Lesefortschritt, dazu eine „Weiterlesen“-Leiste.
@@ -51,6 +61,9 @@ Bibliothek, Reader und Editor für E-Books und Comics direkt in deiner Nextcloud
 - Bewertung (Sterne) und Lesestatus (ungelesen, lese gerade, gelesen).
 - Status pro Buch (laufend oder abgeschlossen) und optionale Altersfreigabe (0, 6, 12, 16, 18; aus ComicInfo.xml `AgeRating` bzw. EPUB `schema:typicalAgeRange` oder von Hand gesetzt), beides auf den Karten sichtbar und filterbar.
 - **Serie fortsetzen:** Ist ein Band gelesen, erscheint der nächste Band unter „Weiterlesen“, und der Reader bietet ihn am Ende des Buchs an.
+- **Lesevorschläge:** Am Ende eines Buchs zeigt der Reader den nächsten Band und ähnliche ungelesene Titel (gleicher Autor, gleiches Genre oder gleicher Tag).
+- **Teilen** mit Nextcloud-Benutzern und -Gruppen: einzelne Bücher, Regale, Serien (spätere Bände kommen automatisch dazu) und Ordner, nur lesend. Der Tab „Freigaben“ eines Buchs zeigt alle, die Zugriff haben, auch über Ordner und Nextcloud-Freigaben. Ein Klick entfernt einen Zugriff.
+- **Oberfläche in 12 Sprachen:** Deutsch, Englisch, Spanisch, Französisch, Italienisch, Portugiesisch (Brasilien), Japanisch, Koreanisch, Chinesisch (vereinfacht), Arabisch, Türkisch und Dari.
 - Metadaten und Cover liest die App automatisch aus den Dateien. Neue, geänderte und gelöschte Bücher erkennt sie selbst.
 
 ### Bearbeiten
@@ -323,7 +336,7 @@ Hinweis: Fortschritt synchronisieren diese Apps nicht über OPDS. Der Lesefortsc
 
 - **DRM-geschützte Bücher** (Kindle, Adobe) lassen sich nicht öffnen.
 - **MOBI/AZW3** werden nicht verändert. Metadaten landen in der Begleitdatei.
-- **Öffentliche Freigabe-Links** öffnen Bücher nicht im Reader, dort gibt es den normalen Download.
+- In **öffentlichen Freigabe-Links** können Gäste keine Markierungen, Notizen oder Lesezeichen anlegen.
 - **PDF** ist bewusst nicht dabei, dafür hat Nextcloud einen eigenen Viewer.
 
 ---

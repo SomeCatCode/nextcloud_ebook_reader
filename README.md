@@ -11,16 +11,24 @@ It is a regular Nextcloud app (PHP backend, Vue frontend). It needs no extra con
 ![Nextcloud 33-35](https://img.shields.io/badge/Nextcloud-33--35-0082c9?logo=nextcloud&logoColor=white)
 ![License AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)
 
+<a href="https://ateeducacion.github.io/nextcloud-playground/?blueprint-url=https://raw.githubusercontent.com/SomeCatCode/nextcloud_ebook_reader/playground/blueprint.json" target="_blank" rel="noopener noreferrer"><img src="https://raw.githubusercontent.com/ateeducacion/nextcloud-playground/main/assets/playground-preview-button.svg" alt="Try it in Nextcloud Playground" width="224"></a>
+
+Try the app without a server: [Nextcloud Playground](playground/README.md) runs Nextcloud with the E-Book Reader and six free sample books in your browser. Nothing leaves the browser.
+
 ![Library with series filter and book details](docs/screenshot-library.png)
 
 ![Comic reader](docs/screenshot-reader.png)
 
 ![Page editor of a comic](docs/screenshot-editor.png)
 
-<sub>Screenshots show [Pepper&amp;Carrot](https://www.peppercarrot.com) by David Revoy, licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).</sub>
+![E-book reader with table of contents](docs/screenshot-epub.png)
+
+![Series with its volumes](docs/screenshot-series.png)
+
+<sub>Screenshots show [Pepper&amp;Carrot](https://www.peppercarrot.com) by David Revoy, licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), and public-domain books from [Project Gutenberg](https://www.gutenberg.org).</sub>
 
 > [!NOTE]
-> **Beta.** The app is in daily production use with a large library (e-books and comics up to 400 MB) and covered by automated tests. Details may still change before 1.0. The editor modifies files; Nextcloud keeps a version of every change, but a backup of your books is still a good idea.
+> **Stable since 1.0.** The app is in daily production use with a large library (e-books and comics up to 400 MB) and covered by automated tests. The API `v1` is stable. The editor modifies files; Nextcloud keeps a version of every change, but a backup of your books is still a good idea.
 
 ## Requirements
 
@@ -142,6 +150,9 @@ sudo -u www-data php occ ebookreader:scan <user> --force --format=cbr
 - Completion status per book (ongoing or completed) and an optional age rating (0, 6, 12, 16, 18; read from ComicInfo.xml `AgeRating` or EPUB `schema:typicalAgeRange`, or set by hand), both shown on the cards and filterable
 - "Continue the series": the next volume appears in "Continue reading" once a volume is finished, and the reader offers it at the end of a book
 - "Continue reading" dashboard widget and an [OPDS catalog](#opds-catalog) for e-reader apps
+- Reading suggestions at the end of a book: the next volume and similar unread titles (same author, genre or tag)
+- Sharing with Nextcloud users and groups: single books, shelves, series (later volumes follow) and folders, read-only. The "Sharing" tab of a book lists everyone who has access, also through folders and Nextcloud shares, and removes an access with one click
+- User interface in 12 languages: English, German, Spanish, French, Italian, Portuguese (Brazil), Japanese, Korean, Chinese (Simplified), Arabic, Turkish and Dari
 
 **Editing**
 - Metadata: title, authors, series and index, description, genres, tags, language, publisher, date, ISBN

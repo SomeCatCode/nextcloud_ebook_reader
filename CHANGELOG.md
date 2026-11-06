@@ -5,6 +5,24 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+## 1.0.1 – 2026-11-06
+
+### Hinzugefügt
+- **Vier neue Sprachen:** Italienisch (`it`), Portugiesisch (Brasilien, `pt_BR`), Koreanisch (`ko`) und Chinesisch (vereinfacht, `zh_CN`). Alle 765 Texte sind übersetzt. Der Eintrag im App Store (`appinfo/info.xml`) hat Name, Kurzbeschreibung und Beschreibung auch in diesen Sprachen. `scripts/l10n.mjs` kennt die Pluralregeln der neuen Sprachen.
+- **Nextcloud Playground:** Die App lässt sich ohne Server im Browser ausprobieren. Der Blueprint `playground/blueprint.json` startet den [Nextcloud Playground](https://github.com/ateeducacion/nextcloud-playground) mit der App und sechs freien Beispielbüchern: drei gemeinfreie EPUBs von Project Gutenberg und drei Episoden Pepper&Carrot von David Revoy (CC BY 4.0). Die README hat dafür eine Schaltfläche.
+  - Die Dateien liegen auf dem Branch `playground`, denn GitHub-Release-Downloads senden keine CORS-Header.
+  - Nach jedem Release ersetzt der neue Job `playground` in `release.yml` das App-Paket auf dem Branch. Der Workflow `playground.yml` macht das auch auf Anforderung.
+
+### Geändert
+- README (Englisch und Deutsch): Die Funktionsliste nennt jetzt die Lesevorschläge, das Teilen mit dem Tab „Freigaben“ und die 12 Sprachen. Die deutsche README nennt die Bildfilter für Comics und das Lesen über öffentliche Freigabe-Links. Der veraltete Hinweis „Öffentliche Freigabe-Links öffnen Bücher nicht im Reader“ ist korrigiert.
+- CI und Release-Workflow: Die Workflows nutzen jetzt Node.js 24 statt Node.js 22. Die Action `softprops/action-gh-release` ist auf v3.0.3 aktualisiert und läuft damit auf Node.js 24. GitHub zeigt keine Warnung zu Node.js 20 mehr.
+- Neue Screenshots für README und App Store, aufgenommen im Nextcloud Playground mit den freien Beispielbüchern: Bibliothek, Comic-Reader, Seiten-Editor und neu E-Book-Reader mit Inhaltsverzeichnis sowie Serie mit ihren Bänden.
+- Die App ist nicht mehr als Beta gekennzeichnet. App-Beschreibung (8 Sprachen) und README nennen keinen Beta-Status mehr.
+- Capability `apiStable` ist jetzt `true`: Die API `v1` ist stabil. Änderungen an `v1` bleiben abwärtskompatibel.
+
+### Behoben
+- `appinfo/info.xml`: `background-jobs` steht jetzt vor `repair-steps`. Das App-Store-Schema verlangt diese Reihenfolge. Vorher war die Datei nach dem Schema ungültig.
+
 ## 1.0.0 – 2026-10-29
 
 ### Hinzugefügt

@@ -30,7 +30,7 @@ class Capabilities implements ICapability {
 			'ebookreader' => [
 				'version' => $this->appManager->getAppVersion(Application::APP_ID),
 				'apiVersion' => 1,
-				'apiStable' => false,
+				'apiStable' => true,
 				'formats' => ['epub', 'mobi', 'azw3', 'fb2', 'fbz', 'cbz', 'cbr', 'cb7', 'cbt'],
 				'editor' => true,
 				'annotations' => true,

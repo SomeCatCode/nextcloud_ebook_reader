@@ -17,6 +17,19 @@ vi.mock('./api.ts', () => ({
 vi.mock('@nextcloud/auth', () => ({ getRequestToken: () => 'token' }))
 vi.mock('@nextcloud/router', () => ({ generateUrl: (u: string) => u }))
 
+/** Blob content as text. Newer Node.js versions build the Blob of a Response with the jsdom Blob, which has no text(). */
+async function textOf(blob: Blob): Promise<string> {
+	if (typeof blob.text === 'function') {
+		return await blob.text()
+	}
+	return await new Promise((resolve, reject) => {
+		const reader = new FileReader()
+		reader.onload = () => resolve(reader.result as string)
+		reader.onerror = () => reject(reader.error)
+		reader.readAsText(blob)
+	})
+}
+
 describe('client cover fallback', () => {
 	const file = new File(['x'], 'a.cbr')
 
@@ -52,7 +65,7 @@ describe('loadBookSource for EPUB', () => {
 		const src = await loadBookSource(epub, signal)
 		expect(src).toMatchObject({ kind: 'remote-zip', name: 'a.epub' })
 		const blob = await (src as { loadEntry: (n: string) => Promise<Blob> }).loadEntry('a.xhtml')
-		expect(await blob.text()).toBe('abc')
+		expect(await textOf(blob)).toBe('abc')
 		expect(fetchMock).toHaveBeenCalledWith('/item/7?id=a.xhtml&v=e1', { credentials: 'same-origin' })
 		expect(api.fetchBookBlob).not.toHaveBeenCalled()
 	})
