@@ -5,6 +5,9 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+### Sicherheit
+- **Abhängigkeiten aktualisiert.** `npm audit` meldete bekannte Lücken in mehreren Paketen. Aktualisiert sind unter anderem `dompurify` (3.4.18), `fast-xml-parser` (5.12.1), `follow-redirects` (1.16.3), `source-map-js` (1.2.4) und `vite` (7.3.8). Keine der Lücken war in der App ausnutzbar: Sie betreffen den Entwicklungsserver, Build-Werkzeuge oder Funktionen, die die App nicht verwendet. Offen bleiben 11 Meldungen mit geringer oder mittlerer Stufe in Paketen von Nextcloud (`@nextcloud/files`, `@nextcloud/dialogs`, `@nextcloud/upload`). Für diese Meldungen gibt es noch keine Korrektur ohne Versionsbruch.
+
 ## 1.0.1 – 2026-11-06
 
 ### Hinzugefügt
