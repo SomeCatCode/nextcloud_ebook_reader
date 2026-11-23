@@ -5,6 +5,9 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+### Hinzugefügt
+- **Hinweis auf die Android-App.** Die Begleit-App „Ebook Reader for Nextcloud“ ist bei [Google Play](https://play.google.com/store/apps/details?id=com.somecatcode.ebookreader) veröffentlicht. Die README (Englisch und Deutsch) hat dafür den neuen Abschnitt „Android-App“ mit Link zu Google Play und zum Quellcode. Die App-Beschreibung in `appinfo/info.xml` nennt die Android-App mit Link in allen 12 Sprachen.
+
 ### Sicherheit
 - **Abhängigkeiten aktualisiert.** `npm audit` meldete bekannte Lücken in mehreren Paketen. Aktualisiert sind unter anderem `dompurify` (3.4.18), `fast-xml-parser` (5.12.1), `follow-redirects` (1.16.3), `source-map-js` (1.2.4) und `vite` (7.3.8). Keine der Lücken war in der App ausnutzbar: Sie betreffen den Entwicklungsserver, Build-Werkzeuge oder Funktionen, die die App nicht verwendet. Offen bleiben 11 Meldungen mit geringer oder mittlerer Stufe in Paketen von Nextcloud (`@nextcloud/files`, `@nextcloud/dialogs`, `@nextcloud/upload`). Für diese Meldungen gibt es noch keine Korrektur ohne Versionsbruch.
 

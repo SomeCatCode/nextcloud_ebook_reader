@@ -15,6 +15,19 @@ It is a regular Nextcloud app (PHP backend, Vue frontend). It needs no extra con
 
 Try the app without a server: [Nextcloud Playground](playground/README.md) runs Nextcloud with the E-Book Reader and six free sample books in your browser. Nothing leaves the browser.
 
+## Android app
+
+[![Get it on Google Play](https://img.shields.io/badge/Google%20Play-Ebook%20Reader%20for%20Nextcloud-01875f?logo=googleplay&logoColor=white)](https://play.google.com/store/apps/details?id=com.somecatcode.ebookreader)
+
+[Ebook Reader for Nextcloud](https://play.google.com/store/apps/details?id=com.somecatcode.ebookreader) is the companion app for Android. It is available on Google Play.
+
+- It reads the books of this Nextcloud app and syncs reading position, highlights, notes and shelves.
+- It saves books, shelves and series for offline reading.
+- It reads books aloud with the voices of the device.
+- It also works without a server, with folders on the phone.
+
+The source code is in the repository [nextcloud_ebook_reader_app](https://github.com/SomeCatCode/nextcloud_ebook_reader_app). Each release there also has an APK file.
+
 ![Library with series filter and book details](docs/screenshot-library.png)
 
 ![Comic reader](docs/screenshot-reader.png)
