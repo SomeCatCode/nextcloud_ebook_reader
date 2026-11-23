@@ -15,6 +15,19 @@ Bibliothek, Reader und Editor für E-Books und Comics direkt in deiner Nextcloud
 
 Probiere die App ohne Server aus: Der [Nextcloud Playground](../../playground/README.md) startet Nextcloud mit dem E-Book Reader und sechs freien Beispielbüchern in deinem Browser. Keine Daten verlassen den Browser.
 
+## Android-App
+
+[![Jetzt bei Google Play](https://img.shields.io/badge/Google%20Play-Ebook%20Reader%20for%20Nextcloud-01875f?logo=googleplay&logoColor=white)](https://play.google.com/store/apps/details?id=com.somecatcode.ebookreader)
+
+[Ebook Reader for Nextcloud](https://play.google.com/store/apps/details?id=com.somecatcode.ebookreader) ist die Begleit-App für Android. Du bekommst sie bei Google Play.
+
+- Sie liest die Bücher dieser Nextcloud-App. Sie synchronisiert Leseposition, Markierungen, Notizen und Regale.
+- Sie speichert Bücher, Regale und Serien für das Lesen ohne Internet.
+- Sie liest Bücher mit den Stimmen des Geräts vor.
+- Sie funktioniert auch ohne Server, mit Ordnern auf dem Handy.
+
+Der Quellcode liegt im Repository [nextcloud_ebook_reader_app](https://github.com/SomeCatCode/nextcloud_ebook_reader_app). Jedes Release dort enthält auch eine APK-Datei.
+
 ![Bibliothek mit Serienfilter und Buchdetails](../screenshot-library.png)
 
 ![Comic-Reader](../screenshot-reader.png)
