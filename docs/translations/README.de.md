@@ -26,13 +26,15 @@ Probiere die App ohne Server aus: Der [Nextcloud Playground](../../playground/RE
 - Sie liest Bücher mit den Stimmen des Geräts vor.
 - Sie funktioniert auch ohne Server, mit Ordnern auf dem Handy.
 
-Der Quellcode liegt im Repository [nextcloud_ebook_reader_app](https://github.com/SomeCatCode/nextcloud_ebook_reader_app). Jedes Release dort enthält auch eine APK-Datei.
+Die Android-App ist nicht quelloffen. Der Quellcode ist im Repository [nextcloud_ebook_reader_app](https://github.com/SomeCatCode/nextcloud_ebook_reader_app) öffentlich einsehbar. Die Lizenz ist proprietär. Die AGPL dieser Nextcloud-App gilt nicht für die Android-App. Jedes Release dort enthält auch eine APK-Datei.
 
-![Bibliothek mit Serienfilter und Buchdetails](../screenshot-library.png)
+Für ein Nextcloud-Konto braucht die Android-App diese Nextcloud-App (ab Version 0.5.0) auf dem Server. Installiere sie aus dem [Nextcloud App Store](https://apps.nextcloud.com/apps/ebookreader).
 
-![Comic-Reader](../screenshot-reader.png)
+![Bibliothek mit Serienfilter und Buchdetails](../screenshot-library-view.png)
 
-![Seiten-Editor eines Comics](../screenshot-editor.png)
+![Comic-Reader](../screenshot-comic.png)
+
+![Seiten-Editor eines Comics](../screenshot-page-editor.png)
 
 ![E-Book-Reader mit Inhaltsverzeichnis](../screenshot-epub.png)
 
@@ -49,7 +51,7 @@ Der Quellcode liegt im Repository [nextcloud_ebook_reader_app](https://github.co
 
 ### Lesen
 - **Formate:** EPUB 2/3, MOBI, AZW3 (KF8), FB2, FB2.ZIP sowie die Comic-Formate CBZ, CBR, CB7 und CBT.
-- Direkt aus der **Files-App** öffnen: per Klick oder über „Im E-Book Reader öffnen“.
+- Direkt aus der **Files-App** öffnen: per Klick oder über „Im E-Book-Reader öffnen“.
 - Paginierte oder scrollende Darstellung, Themes hell, sepia und dunkel, wählbare Schriftart, Schriftgröße und Zeilenhöhe.
 - Inhaltsverzeichnis, Volltextsuche, Tastatur, Tipp-Zonen und Wischgesten.
 - Comics als Einzel- oder Doppelseite, Leserichtung rechts nach links (Manga).
@@ -66,7 +68,7 @@ Der Quellcode liegt im Repository [nextcloud_ebook_reader_app](https://github.co
 - **OPDS-Katalog** für E-Reader-Apps wie KOReader, Moon+ Reader oder Thorium: Bibliothek durchstöbern und Bücher herunterladen (siehe [OPDS-Katalog](#opds-katalog)).
 - Navigation nach **Genres, Tags, Autoren, Serien und Formaten**. Genres und Tags können hierarchisch sein (z. B. `Fantasy/High Fantasy`).
 - **Kombinierbare Filter:** jeden Eintrag ein- oder ausschließen, „alle“ oder „mindestens einer“ müssen passen, dazu Suche und Sortierung. Der Filter steht in der URL und lässt sich als Lesezeichen speichern.
-- **Nachpflegen:** Bücher ohne Genre, Tags, Autor, Serie, Beschreibung, Cover oder Sprache finden und gezielt ergänzen.
+- **Benötigt Aufmerksamkeit:** Bücher ohne Genre, Tags, Autor, Serie, Beschreibung, Cover oder Sprache finden und gezielt ergänzen.
 - **Regale:** manuelle Regale mit eigener Reihenfolge, dazu intelligente Regale, die einen gespeicherten Filter immer aktuell anzeigen.
 - **Serien zusammenfassen:** eine Karte pro Serie mit Bandanzahl und Lesestand.
 - **Mehrfachauswahl:** Autoren, Serie mit automatischer Bandnummerierung, Verlag, Sprache, Genres und Tags für viele Bücher auf einmal ändern. Außerdem Bücher in Regale legen, umbenennen und einsortieren oder löschen (in den Papierkorb).
@@ -122,7 +124,7 @@ Rangfolge beim Einlesen: in der App geänderte Felder, dann die Begleitdatei, da
 
 | | |
 |---|---|
-| Nextcloud | **34** |
+| Nextcloud | **33 bis 35** |
 | PHP | 8.2 oder neuer mit `zip`, `gd`, `dom`, `libxml`, `mbstring`. Das ist in üblichen Installationen und im offiziellen Docker-Image enthalten. |
 | Hintergrundjobs | **Cron** empfohlen. Mit AJAX werden große Bibliotheken nur langsam eingelesen. |
 | Optional | **7-Zip** bzw. `bsdtar` für CBR und CB7 auf dem Server, siehe [Archiv-Programme installieren](#archiv-programme-installieren-7-zip) |
@@ -132,9 +134,21 @@ Rangfolge beim Einlesen: in der App geänderte Felder, dann die Begleitdatei, da
 
 ## Installation
 
-Die App ist noch nicht im Nextcloud App Store.
+### Aus dem Nextcloud App Store (empfohlen)
 
-### Aus einem Release-Paket (empfohlen)
+Die App ist im [Nextcloud App Store](https://apps.nextcloud.com/apps/ebookreader).
+
+1. Öffne in Nextcloud als Administrator **Apps**.
+2. Suche „E-Book Reader“.
+3. Klicke **Herunterladen und aktivieren**.
+
+Oder nutze die Kommandozeile:
+
+```bash
+sudo -u www-data php occ app:install ebookreader
+```
+
+### Aus einem Release-Paket
 
 1. `ebookreader.tar.gz` von der [Releases-Seite](https://github.com/SomeCatCode/nextcloud_ebook_reader/releases/latest) herunterladen. Optional mit der `.sha256`-Datei prüfen:
    ```bash
@@ -154,7 +168,7 @@ Die App ist noch nicht im Nextcloud App Store.
 
 ### Aus dem Quellcode
 
-Dafür brauchst du Node.js ≥ 22. Zur Laufzeit sind keine Composer-Pakete nötig.
+Dafür brauchst du Node.js 22 oder 24. Zur Laufzeit sind keine Composer-Pakete nötig.
 
 ```bash
 cd /var/www/nextcloud/custom_apps && git clone https://github.com/SomeCatCode/nextcloud_ebook_reader.git ebookreader
@@ -284,7 +298,7 @@ Ohne Docker genügt `command -v 7z bsdtar`. Im Konvertieren-Dialog der App siehs
 1. **Bücher ablegen:** Standardmäßig liest die App den Ordner **`/Books`**. In den Einstellungen der App (unten links) kannst du andere oder mehrere Ordner wählen.
 2. **Bibliothek scannen:** Beim ersten Mal auf „Bibliothek scannen“ klicken. Danach erkennt die App Änderungen automatisch.
 3. **Lesen:** ein Buch anklicken und „Lesen“ wählen, oder das Buch direkt in Files öffnen.
-4. **Nachpflegen:** In der Navigation unter „Nachpflegen“ findest du Bücher ohne Genre, Tags und Ähnliches. Mit der Mehrfachauswahl ergänzt du sie gesammelt.
+4. **Nachpflegen:** In der Navigation unter „Benötigt Aufmerksamkeit“ findest du Bücher ohne Genre, Tags und Ähnliches. Mit der Mehrfachauswahl ergänzt du sie gesammelt.
 
 ### `occ`-Befehle
 
@@ -301,6 +315,7 @@ Ohne Docker genügt `command -v 7z bsdtar`. Im Konvertieren-Dialog der App siehs
 |---|---|---|
 | `max_edit_size_mb` | `500` | maximale Dateigröße für den Editor |
 | `archive_cache_mb` | `2048` | lokaler Cache für Bücher auf WebDAV-, SMB- oder S3-Speicher und bei serverseitiger Verschlüsselung |
+| `comic_cache_mb` | `2048` | Cache für skalierte Comic-Seiten in den App-Daten. Über dieser Größe löscht die App die ältesten Seiten. |
 | `opds_enabled` | `true` | OPDS-Katalog auf diesem Server erlaubt (jeder Benutzer schaltet ihn zusätzlich selbst ein) |
 | `async_inline` | `true` | Speichern und Konvertieren direkt nach der Antwort im selben PHP-Prozess ausführen (bei PHP-FPM); `false` überlässt das dem Hintergrundjob |
 
@@ -315,7 +330,7 @@ sudo -u www-data php occ config:app:set ebookreader archive_cache_mb --value=409
 Mit dem OPDS-Katalog (OPDS 1.2, Atom) durchsuchen E-Reader-Apps deine Bibliothek und laden Bücher direkt herunter, ohne den Browser.
 
 **Aktivieren:**
-1. In der App unten links die **Einstellungen** öffnen und im Abschnitt „OPDS-Katalog“ **„Enable the OPDS catalog for my account“** einschalten. Der Katalog ist standardmäßig aus.
+1. In der App unten links die **Einstellungen** öffnen und im Abschnitt „OPDS-Katalog“ **„Den OPDS-Katalog für mein Konto aktivieren“** einschalten. Der Katalog ist standardmäßig aus.
 2. Die angezeigte **Katalog-URL** kopieren, z. B. `https://cloud.example.com/index.php/apps/ebookreader/opds`.
 3. Unter **Einstellungen → Sicherheit** in Nextcloud ein **App-Passwort** erstellen. In der Reader-App den Benutzernamen und dieses App-Passwort eintragen (HTTP Basic), nicht das normale Passwort. Mit einem App-Passwort lässt sich der Zugang jederzeit einzeln widerrufen.
 
@@ -356,7 +371,7 @@ Hinweis: Fortschritt synchronisieren diese Apps nicht über OPDS. Der Lesefortsc
 
 ## Entwicklung
 
-Voraussetzungen: Docker, Node.js ≥ 22, PHP ≥ 8.2 mit `zip` und `gd`.
+Voraussetzungen: Docker, Node.js 22 oder 24, PHP ≥ 8.2 mit `zip` und `gd`.
 
 ```bash
 make build && make dev-up && make enable
