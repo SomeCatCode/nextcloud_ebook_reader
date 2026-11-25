@@ -14,7 +14,7 @@ Nextcloud 34 then runs on http://localhost:8080 (credentials in `docker/docker-c
 
 ## Checks
 
-These checks run in CI and must pass before a pull request is merged. `make openapi` does not run in CI; run it by hand after API changes.
+Run these checks locally before you open a pull request to `dev`. CI runs them for pull requests to `main`, for every release tag and on request (Actions → CI → Run workflow); pushes and pull requests to `dev` start no run. `make openapi` does not run in CI; run it by hand after API changes.
 
 | Command | Purpose |
 |---|---|
