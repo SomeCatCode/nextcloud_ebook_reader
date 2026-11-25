@@ -5,7 +5,8 @@ Releases baut GitHub Actions automatisch ([release.yml](../.github/workflows/rel
 ## Branches und Testbuilds
 
 - Neue Arbeit kommt per Pull Request in den Branch **`dev`**, nicht direkt nach `main`.
-- Jeder Push auf `dev` läuft durch die CI und baut zusätzlich ein installierbares Paket: Im Actions-Lauf unter *Artifacts* liegt `ebookreader-dev-<commit>` mit `ebookreader.tar.gz` und `.sha256` (30 Tage). Zum Testen auf dem eigenen Server entpacken und den Ordner `ebookreader` in `apps/` (bzw. `custom_apps/`) ersetzen, danach `occ upgrade`, falls sich die Version erhöht hat.
+- Die CI läuft nur in drei Fällen: bei einem Pull Request nach `main`, auf Anforderung und als Teil des Release-Workflows. Pushes und Pull Requests nach `dev` starten keinen Lauf. Führe vor einem Pull Request nach `dev` die Prüfungen aus [CONTRIBUTING.md](../CONTRIBUTING.md) lokal aus.
+- Lauf auf Anforderung: **Actions → CI → Run workflow** mit dem Branch, oder `gh workflow run ci.yml --ref <branch>`. Ein solcher Lauf baut zusätzlich ein installierbares Paket: Im Actions-Lauf unter *Artifacts* liegt `ebookreader-dev-<commit>` mit `ebookreader.tar.gz` und `.sha256` (30 Tage). Zum Testen auf dem eigenen Server entpacken und den Ordner `ebookreader` in `apps/` (bzw. `custom_apps/`) ersetzen, danach `occ upgrade`, falls sich die Version erhöht hat.
 - Ist `dev` getestet, wird die Version auf `dev` vorbereitet (Schritte 1 und 2 unten), dann `dev` per Pull Request nach `main` gemergt und auf `main` getaggt.
 
 ## Release

@@ -9,6 +9,8 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 - **Hinweis auf die Android-App.** Die Begleit-App „Ebook Reader for Nextcloud“ ist bei [Google Play](https://play.google.com/store/apps/details?id=com.somecatcode.ebookreader) veröffentlicht. Die README (Englisch und Deutsch) hat dafür den neuen Abschnitt „Android-App“ mit Link zu Google Play und zum Quellcode. Die App-Beschreibung in `appinfo/info.xml` nennt die Android-App mit Link in allen 12 Sprachen.
 
 ### Geändert
+- **CI läuft seltener.** Die CI startet nur noch bei einem Pull Request nach `main`, auf Anforderung (Actions → CI → „Run workflow“) und als Teil des Release-Workflows. Pushes und Pull Requests nach `dev` starten keinen Lauf mehr. Das Testpaket `ebookreader-dev-<commit>` entsteht jetzt bei einem Lauf auf Anforderung.
+- **Englische und deutsche README angeglichen.** Beide Dateien haben jetzt dieselben Abschnitte in derselben Reihenfolge und nennen dieselben Fakten. Die deutsche README hat neu die Abschnitte „Datenablage“, „Sicherheitsmodell“ und „Dienste von Drittanbietern“. Die englische README hat neu unter anderem die Varianten für Docker und All-in-One, die Cron-Zeile, den Absatz zu externem Speicher und weitere Hinweise zu OPDS. Die Bezeichnungen folgen der Oberfläche.
 - **README und Doku geprüft und korrigiert.**
   - Installation: Die README (Englisch und Deutsch) beschreibt jetzt die Installation aus dem [Nextcloud App Store](https://apps.nextcloud.com/apps/ebookreader). Vorher stand dort, dass die App nicht im App Store ist.
   - Android-App: Die README nennt die proprietäre Lizenz der Android-App. Sie nennt auch, dass die Android-App für ein Nextcloud-Konto diese App ab Version 0.5.0 braucht.
