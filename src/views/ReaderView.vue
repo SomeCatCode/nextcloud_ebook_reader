@@ -287,6 +287,7 @@ import ReaderSettings from '../components/reader/ReaderSettings.vue'
 import ReaderToc from '../components/reader/ReaderToc.vue'
 import { createReader, ReaderError } from '../../packages/reader-core/index.ts'
 import { loadLibarchive } from '../components/reader/libarchive.ts'
+import { readerBlockingDirective } from '../cspViolation.ts'
 import { annotationsToMarkdown } from '../services/annotationExport.ts'
 import { getBook, getSettings, getSuggestions, patchAppData, putSettings } from '../services/api.ts'
 import { loadBookSource, needsClientCover, uploadClientCover } from '../services/bookSource.ts'
@@ -1003,10 +1004,36 @@ function keepLocal(): void {
 	void sync?.forceLocal()
 }
 
+let cspBlocked = false
+
+/**
+ * A Content Security Policy of the web server blocks the blob: frame or worker of the reader. Without this message the
+ * loading icon would turn forever, because the browser reports the block only as an event.
+ *
+ * @param e violation reported by the browser
+ */
+function onCspViolation(e: SecurityPolicyViolationEvent): void {
+	if (state.value !== 'loading') {
+		return
+	}
+	const directive = readerBlockingDirective(e)
+	if (!directive) {
+		return
+	}
+	cspBlocked = true
+	state.value = 'error'
+	errorTitle.value = t('ebookreader', 'A security rule of the web server blocks the reader')
+	errorText.value = t('ebookreader', 'The Content Security Policy of the web server does not allow "blob:" in the directive "{directive}". An administrator must add "blob:" to this directive.', { directive })
+	logger.error('ebookreader: Content Security Policy blocks the reader', { directive, blockedURI: e.blockedURI })
+}
+
 /**
  * @param e
  */
 function fail(e: unknown): void {
+	if (cspBlocked) {
+		return // the message about the security rule is more exact than a late error of the reader
+	}
 	state.value = 'error'
 	if (e instanceof ReaderError && e.code === 'drm') {
 		errorTitle.value = t('ebookreader', 'This book is DRM protected')
@@ -1108,6 +1135,7 @@ async function openPublic(): Promise<void> {
 
 onMounted(async () => {
 	window.addEventListener('keydown', onWindowKey)
+	document.addEventListener('securitypolicyviolation', onCspViolation)
 	try {
 		if (publicBook) {
 			await openPublic()
@@ -1162,6 +1190,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
 	abort.abort()
 	window.removeEventListener('keydown', onWindowKey)
+	document.removeEventListener('securitypolicyviolation', onCspViolation)
 	unsubs.forEach((u) => u())
 	if (saveTimer) {
 		clearTimeout(saveTimer)

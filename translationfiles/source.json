@@ -80,6 +80,12 @@
 			]
 		},
 		{
+			"id": "A security rule of the web server blocks the reader",
+			"files": [
+				"src/views/ReaderView.vue"
+			]
+		},
+		{
 			"id": "A shelf with this name already exists.",
 			"files": [
 				"src/components/library/ShelfNameDialog.vue"
@@ -3636,6 +3642,12 @@
 			"id": "The CBZ was created. Move the original CBR file to the trash?",
 			"files": [
 				"src/views/EditorView.vue"
+			]
+		},
+		{
+			"id": "The Content Security Policy of the web server does not allow \"blob:\" in the directive \"{directive}\". An administrator must add \"blob:\" to this directive.",
+			"files": [
+				"src/views/ReaderView.vue"
 			]
 		},
 		{

@@ -369,6 +369,7 @@ None. The app does not contact any external service, contains no analytics, tele
 - MOBI/AZW3 files are never modified; their metadata goes to the sidecar file.
 - In public link shares, guests cannot add highlights, notes or bookmarks.
 - PDF is intentionally not included; Nextcloud has its own viewer.
+- **Own Content Security Policy on the web server.** The reader shows chapters and pages in a frame with a `blob:` address and unpacks RAR and 7z archives in a worker with a `blob:` address. The app allows both in the policy that Nextcloud sends. A default installation needs no change. If your web server or reverse proxy sends an additional `Content-Security-Policy` header, the browser applies both policies and the stricter rule wins. Then your header must allow `blob:` in `frame-src` and in `worker-src` (or in `child-src` or `default-src`, if you only set these). Example for Apache: `Header always set Content-Security-Policy "frame-src 'self' blob:; worker-src 'self' blob:;"`. Without `blob:`, the reader shows the message "A security rule of the web server blocks the reader". Up to version 1.0.2 the loading icon turned forever instead.
 
 ## Acknowledgements
 
