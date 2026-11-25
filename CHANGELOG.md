@@ -5,6 +5,8 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+## 1.0.2 – 2026-11-25
+
 ### Hinzugefügt
 - **Hinweis auf die Android-App.** Die Begleit-App „Ebook Reader for Nextcloud“ ist bei [Google Play](https://play.google.com/store/apps/details?id=com.somecatcode.ebookreader) veröffentlicht. Die README (Englisch und Deutsch) hat dafür den neuen Abschnitt „Android-App“ mit Link zu Google Play und zum Quellcode. Die App-Beschreibung in `appinfo/info.xml` nennt die Android-App mit Link in allen 12 Sprachen.
 
