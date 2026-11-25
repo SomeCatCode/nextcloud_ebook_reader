@@ -54,6 +54,9 @@
 - Convert comics between CBZ, CB7, CBT and EPUB
 - Calibre-compatible sidecar files keep the book file untouched
 
+**Android app**
+[Ebook Reader for Nextcloud](https://play.google.com/store/apps/details?id=com.somecatcode.ebookreader) on Google Play: read offline, sync your reading position, read aloud.
+
 **Requirements**
 Cron for background jobs is recommended. 7-Zip or bsdtar on the server is optional and enables server-side handling of CBR and CB7.
 
@@ -81,6 +84,9 @@ The editor modifies files, so keep a backup of your books.]]></description>
 - Umbenennen und in Ordner einsortieren nach Muster
 - Comics zwischen CBZ, CB7, CBT und EPUB konvertieren
 - Calibre-kompatible Sidecar-Dateien lassen die Buchdatei unverändert
+
+**Android-App**
+[Ebook Reader for Nextcloud](https://play.google.com/store/apps/details?id=com.somecatcode.ebookreader) bei Google Play: offline lesen, Leseposition synchronisieren, vorlesen lassen.
 
 **Voraussetzungen**
 Cron für Hintergrundjobs wird empfohlen. 7-Zip oder bsdtar auf dem Server ist optional und ermöglicht die serverseitige Verarbeitung von CBR und CB7.
@@ -110,6 +116,9 @@ Der Editor verändert Dateien, daher ist ein Backup der Bücher sinnvoll.]]></de
 - Convertir cómics entre CBZ, CB7, CBT y EPUB
 - Archivos sidecar compatibles con Calibre que no modifican el libro
 
+**Aplicación para Android**
+[Ebook Reader for Nextcloud](https://play.google.com/store/apps/details?id=com.somecatcode.ebookreader) en Google Play: lee sin conexión, sincroniza la posición de lectura, escucha la lectura en voz alta.
+
 **Requisitos**
 Se recomienda cron para las tareas en segundo plano. 7-Zip o bsdtar en el servidor es opcional y permite procesar CBR y CB7 en el servidor.
 
@@ -138,6 +147,9 @@ El editor modifica archivos, conviene tener una copia de seguridad.]]></descript
 - コミックを CBZ、CB7、CBT、EPUB 間で変換
 - Calibre 互換のサイドカーファイルで本のファイルはそのまま
 
+**Android アプリ**
+Google Play の [Ebook Reader for Nextcloud](https://play.google.com/store/apps/details?id=com.somecatcode.ebookreader): オフラインで読書、読書位置の同期、読み上げ。
+
 **要件**
 バックグラウンドジョブには cron を推奨します。サーバー上の 7-Zip または bsdtar は任意で、CBR と CB7 のサーバー側処理に使われます。
 
@@ -164,6 +176,9 @@ El editor modifica archivos, conviene tener una copia de seguridad.]]></descript
 - Renommage et rangement dans des dossiers selon un modèle
 - Conversion des bandes dessinées entre CBZ, CB7, CBT et EPUB
 - Les fichiers annexes compatibles Calibre laissent le fichier du livre intact
+
+**Application Android**
+[Ebook Reader for Nextcloud](https://play.google.com/store/apps/details?id=com.somecatcode.ebookreader) sur Google Play : lecture hors ligne, synchronisation de la position de lecture, lecture à voix haute.
 
 **Prérequis**
 Cron est recommandé pour les tâches d’arrière-plan. 7-Zip ou bsdtar sur le serveur est facultatif et permet de traiter les CBR et CB7 côté serveur.
@@ -192,6 +207,9 @@ L’éditeur modifie des fichiers : conservez une sauvegarde de vos livres.]]></
 - تحويل القصص المصوّرة بين CBZ وCB7 وCBT وEPUB
 - ملفات مصاحبة متوافقة مع Calibre تُبقي ملف الكتاب دون مساس
 
+**تطبيق Android**
+[Ebook Reader for Nextcloud](https://play.google.com/store/apps/details?id=com.somecatcode.ebookreader) على Google Play: القراءة دون اتصال، مزامنة موضع القراءة، القراءة بصوت مسموع.
+
 **المتطلبات**
 يوصى باستخدام Cron للمهام الخلفية. وجود 7-Zip أو bsdtar على الخادم اختياري ويتيح معالجة CBR وCB7 على الخادم.
 
@@ -219,6 +237,9 @@ L’éditeur modifie des fichiers : conservez une sauvegarde de vos livres.]]></
 - Çizgi romanları CBZ, CB7, CBT ve EPUB arasında dönüştürme
 - Calibre uyumlu yan dosyalar kitap dosyasına dokunmaz
 
+**Android uygulaması**
+Google Play’de [Ebook Reader for Nextcloud](https://play.google.com/store/apps/details?id=com.somecatcode.ebookreader): çevrimdışı okuma, okuma konumunu eşitleme, sesli okuma.
+
 **Gereksinimler**
 Arka plan işleri için Cron önerilir. Sunucuda 7-Zip veya bsdtar isteğe bağlıdır ve CBR ile CB7 dosyalarının sunucuda işlenmesini sağlar.
 
@@ -245,6 +266,9 @@ Düzenleyici dosyaları değiştirir, bu yüzden kitaplarınızın yedeğini al�
 - تغییر نام و مرتب‌سازی در پوشه‌ها بر اساس الگو
 - تبدیل کمیک‌ها میان CBZ، CB7، CBT و EPUB
 - فایل‌های همراه سازگار با Calibre که فایل کتاب را دست‌نخورده نگه می‌دارند
+
+**برنامهٔ Android**
+[Ebook Reader for Nextcloud](https://play.google.com/store/apps/details?id=com.somecatcode.ebookreader) در Google Play: مطالعهٔ آفلاین، هم‌گام‌سازی موقعیت مطالعه، خواندن با صدای بلند.
 
 **الزامات**
 برای کارهای پس‌زمینه استفاده از Cron توصیه می‌شود. وجود 7-Zip یا bsdtar روی سرور اختیاری است و پردازش CBR و CB7 را روی سرور ممکن می‌کند.
@@ -274,6 +298,9 @@ Düzenleyici dosyaları değiştirir, bu yüzden kitaplarınızın yedeğini al�
 - Conversione dei fumetti tra CBZ, CB7, CBT ed EPUB
 - I file sidecar compatibili con Calibre lasciano invariato il file del libro
 
+**App Android**
+[Ebook Reader for Nextcloud](https://play.google.com/store/apps/details?id=com.somecatcode.ebookreader) su Google Play: lettura offline, sincronizzazione della posizione di lettura, lettura ad alta voce.
+
 **Requisiti**
 Si consiglia Cron per i processi in background. 7-Zip o bsdtar sul server sono facoltativi e permettono di gestire CBR e CB7 sul server.
 
@@ -301,6 +328,9 @@ L'editor modifica i file, quindi conserva un backup dei tuoi libri.]]></descript
 - Renomear e organizar em pastas por padrão
 - Converter quadrinhos entre CBZ, CB7, CBT e EPUB
 - Arquivos auxiliares compatíveis com o Calibre mantêm o arquivo do livro intacto
+
+**App para Android**
+[Ebook Reader for Nextcloud](https://play.google.com/store/apps/details?id=com.somecatcode.ebookreader) no Google Play: leitura offline, sincronização da posição de leitura, leitura em voz alta.
 
 **Requisitos**
 Recomenda-se o Cron para tarefas em segundo plano. 7-Zip ou bsdtar no servidor é opcional e permite processar CBR e CB7 no servidor.
@@ -330,6 +360,9 @@ O editor modifica arquivos, então mantenha um backup dos seus livros.]]></descr
 - 만화를 CBZ, CB7, CBT, EPUB 사이에서 변환
 - Calibre 호환 사이드카 파일로 책 파일을 변경하지 않음
 
+**Android 앱**
+Google Play의 [Ebook Reader for Nextcloud](https://play.google.com/store/apps/details?id=com.somecatcode.ebookreader): 오프라인 읽기, 읽기 위치 동기화, 소리 내어 읽기.
+
 **요구 사항**
 백그라운드 작업에는 cron을 권장합니다. 서버의 7-Zip 또는 bsdtar는 선택 사항이며, 설치하면 CBR과 CB7을 서버에서 처리할 수 있습니다.
 
@@ -358,11 +391,14 @@ O editor modifica arquivos, então mantenha um backup dos seus livros.]]></descr
 - 在 CBZ、CB7、CBT 和 EPUB 之间转换漫画
 - 兼容 Calibre 的附属文件，不改动书籍文件
 
+**Android 应用**
+Google Play 上的 [Ebook Reader for Nextcloud](https://play.google.com/store/apps/details?id=com.somecatcode.ebookreader)：离线阅读、同步阅读位置、朗读。
+
 **要求**
 建议为后台任务使用 cron。服务器上的 7-Zip 或 bsdtar 为可选项，可在服务器端处理 CBR 和 CB7。
 
 编辑器会修改文件，请备份你的书籍。]]></description>
-	<version>1.0.1</version>
+	<version>1.0.2</version>
 	<licence>AGPL-3.0-or-later</licence>
 	<author mail="it@wasmitleder.de">Felix Kurth</author>
 	<namespace>EbookReader</namespace>
@@ -375,11 +411,11 @@ O editor modifica arquivos, então mantenha um backup dos seus livros.]]></descr
 	<website>https://github.com/SomeCatCode/nextcloud_ebook_reader</website>
 	<bugs>https://github.com/SomeCatCode/nextcloud_ebook_reader/issues</bugs>
 	<repository type="git">https://github.com/SomeCatCode/nextcloud_ebook_reader.git</repository>
-	<screenshot>https://raw.githubusercontent.com/SomeCatCode/nextcloud_ebook_reader/main/docs/screenshot-library.png</screenshot>
-	<screenshot>https://raw.githubusercontent.com/SomeCatCode/nextcloud_ebook_reader/main/docs/screenshot-reader.png</screenshot>
+	<screenshot>https://raw.githubusercontent.com/SomeCatCode/nextcloud_ebook_reader/main/docs/screenshot-library-view.png</screenshot>
+	<screenshot>https://raw.githubusercontent.com/SomeCatCode/nextcloud_ebook_reader/main/docs/screenshot-comic.png</screenshot>
 	<screenshot>https://raw.githubusercontent.com/SomeCatCode/nextcloud_ebook_reader/main/docs/screenshot-epub.png</screenshot>
 	<screenshot>https://raw.githubusercontent.com/SomeCatCode/nextcloud_ebook_reader/main/docs/screenshot-series.png</screenshot>
-	<screenshot>https://raw.githubusercontent.com/SomeCatCode/nextcloud_ebook_reader/main/docs/screenshot-editor.png</screenshot>
+	<screenshot>https://raw.githubusercontent.com/SomeCatCode/nextcloud_ebook_reader/main/docs/screenshot-page-editor.png</screenshot>
 	<dependencies>
 		<php min-version="8.2"/>
 		<nextcloud min-version="33" max-version="35"/>

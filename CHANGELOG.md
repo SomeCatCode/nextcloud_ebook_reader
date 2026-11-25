@@ -5,6 +5,28 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+## 1.0.2 – 2026-11-25
+
+### Hinzugefügt
+- **Hinweis auf die Android-App.** Die Begleit-App „Ebook Reader for Nextcloud“ ist bei [Google Play](https://play.google.com/store/apps/details?id=com.somecatcode.ebookreader) veröffentlicht. Die README (Englisch und Deutsch) hat dafür den neuen Abschnitt „Android-App“ mit Link zu Google Play und zum Quellcode. Die App-Beschreibung in `appinfo/info.xml` nennt die Android-App mit Link in allen 12 Sprachen.
+
+### Geändert
+- **CI läuft seltener.** Die CI startet nur noch bei einem Pull Request nach `main`, auf Anforderung (Actions → CI → „Run workflow“) und als Teil des Release-Workflows. Pushes und Pull Requests nach `dev` starten keinen Lauf mehr. Das Testpaket `ebookreader-dev-<commit>` entsteht jetzt bei einem Lauf auf Anforderung.
+- **Englische und deutsche README angeglichen.** Beide Dateien haben jetzt dieselben Abschnitte in derselben Reihenfolge und nennen dieselben Fakten. Die deutsche README hat neu die Abschnitte „Datenablage“, „Sicherheitsmodell“ und „Dienste von Drittanbietern“. Die englische README hat neu unter anderem die Varianten für Docker und All-in-One, die Cron-Zeile, den Absatz zu externem Speicher und weitere Hinweise zu OPDS. Die Bezeichnungen folgen der Oberfläche.
+- **README und Doku geprüft und korrigiert.**
+  - Installation: Die README (Englisch und Deutsch) beschreibt jetzt die Installation aus dem [Nextcloud App Store](https://apps.nextcloud.com/apps/ebookreader). Vorher stand dort, dass die App nicht im App Store ist.
+  - Android-App: Die README nennt die proprietäre Lizenz der Android-App. Sie nennt auch, dass die Android-App für ein Nextcloud-Konto diese App ab Version 0.5.0 braucht.
+  - Deutsche README: Nextcloud 33 bis 35 statt 34, Admin-Schlüssel `comic_cache_mb` ergänzt, Bezeichnungen wie in der Oberfläche („Benötigt Aufmerksamkeit“, „Den OPDS-Katalog für mein Konto aktivieren“, „Im E-Book-Reader öffnen“).
+  - Englische README: Die Liste der Datenbanktabellen nennt die vier Tabellen für Freigaben.
+  - `CONTRIBUTING.md`: alle 12 Sprachen, Node.js 22 oder 24, Hinweis zu `make openapi`.
+  - `docs/RELEASING.md`: Variable `APPSTORE_PUBLISH`, Job `playground`, aktuelle Beispielversionen.
+
+### Behoben
+- **Veraltete Bilder im Nextcloud App Store.** Der App Store speichert Screenshots je Adresse. Drei Bilder hatten nach dem Austausch in 1.0.1 dieselbe Adresse, deshalb zeigte der App Store weiter die alten Bilder. Die drei Dateien haben jetzt neue Namen: `screenshot-library-view.png`, `screenshot-comic.png`, `screenshot-page-editor.png`. README und `appinfo/info.xml` nutzen die neuen Namen.
+
+### Sicherheit
+- **Abhängigkeiten aktualisiert.** `npm audit` meldete bekannte Lücken in mehreren Paketen. Aktualisiert sind unter anderem `dompurify` (3.4.18), `fast-xml-parser` (5.12.1), `follow-redirects` (1.16.3), `source-map-js` (1.2.4) und `vite` (7.3.8). Keine der Lücken war in der App ausnutzbar: Sie betreffen den Entwicklungsserver, Build-Werkzeuge oder Funktionen, die die App nicht verwendet. Offen bleiben 11 Meldungen mit geringer oder mittlerer Stufe in Paketen von Nextcloud (`@nextcloud/files`, `@nextcloud/dialogs`, `@nextcloud/upload`). Für diese Meldungen gibt es noch keine Korrektur ohne Versionsbruch.
+
 ## 1.0.1 – 2026-11-06
 
 ### Hinzugefügt

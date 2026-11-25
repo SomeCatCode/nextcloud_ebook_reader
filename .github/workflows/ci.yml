@@ -1,9 +1,12 @@
 name: CI
 
+# Runs for pull requests to main (the release pull request), on request (Actions -> CI -> Run workflow, or
+# `gh workflow run ci.yml --ref <branch>`) and as part of the release workflow (workflow_call).
+# Pushes and pull requests to dev do not start a run.
 on:
-  push:
-    branches: [main, dev, 'ci/**']
   pull_request:
+    branches: [main]
+  workflow_dispatch:
   workflow_call:
 
 permissions:
@@ -212,9 +215,9 @@ jobs:
       - run: npm test
       - run: npm run build
 
-  # Installable test build for every push to dev (download from the run's artifacts, install manually).
+  # Installable test build of a manual run (download from the run's artifacts, install manually).
   dev-package:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    if: github.event_name == 'workflow_dispatch'
     needs: [php, js]
     runs-on: ubuntu-24.04
     steps:

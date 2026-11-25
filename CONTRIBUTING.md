@@ -4,7 +4,7 @@ Bug reports and feature requests are welcome as [issues](https://github.com/Some
 
 ## Development setup
 
-Requirements: Docker, Node.js 22 or later, PHP 8.2 or later with `zip` and `gd`.
+Requirements: Docker, Node.js 22 or 24, PHP 8.2 or later with `zip` and `gd`.
 
 ```sh
 make build && make dev-up && make enable
@@ -14,7 +14,7 @@ Nextcloud 34 then runs on http://localhost:8080 (credentials in `docker/docker-c
 
 ## Checks
 
-All of these run in CI and must pass before a pull request is merged:
+Run these checks locally before you open a pull request to `dev`. CI runs them for pull requests to `main`, for every release tag and on request (Actions → CI → Run workflow); pushes and pull requests to `dev` start no run. `make openapi` does not run in CI; run it by hand after API changes.
 
 | Command | Purpose |
 |---|---|
@@ -54,10 +54,10 @@ l10n/<lang>.js                generated from the json file, loaded by Nextcloud 
 translationfiles/source.json  generated catalogue of all source strings (do not edit)
 ```
 
-Languages: `de` (informal, "du"), `de_DE` (formal, "Sie"), `es`, `ja`. English is the source language.
+Languages: `de` (informal, "du"), `de_DE` (formal, "Sie"), `es`, `fr`, `it`, `pt_BR`, `ja`, `ko`, `zh_CN`, `ar`, `tr`, `fa`. English is the source language.
 
 - Write texts as literals: `t('ebookreader', 'Saved {count} books', { count })`, `n('ebookreader', '%n book', '%n books', count)` in Vue/TS, `$this->l10n->t('Author: %s', [$name])` / `->n(…)` in PHP. The extractor can not see texts passed in variables; for wrappers that forward a variable, mark the line with `// l10n-ignore` and keep the literal calls elsewhere (see `tr()` in `src/editor/useEditorState.ts`).
-- Translations keep every placeholder of the source (`{name}`, `%s`, `%1$s`, `%d`, `%n`). Plural entries use the key `_<singular>_::_<plural>_` and an array with one entry per plural form (two for de/es, one for ja); the singular form may drop `%n`.
+- Translations keep every placeholder of the source (`{name}`, `%s`, `%1$s`, `%d`, `%n`). Plural entries use the key `_<singular>_::_<plural>_` and an array with one entry per plural form (the number follows the plural rules of the language: two for de/es, one for ja, six for ar); the singular form may drop `%n`.
 
 | Command | Purpose |
 |---|---|
