@@ -1,0 +1,76 @@
+{
+  "$schema": "https://raw.githubusercontent.com/ateeducacion/nextcloud-playground/main/assets/blueprints/blueprint-schema.json",
+  "meta": {
+    "title": "E-Book Reader",
+    "author": "SomeCatCode",
+    "description": "Nextcloud with the E-Book Reader app and free sample books: three public-domain EPUBs from Project Gutenberg and three Pepper&Carrot episodes by David Revoy (CC BY 4.0)."
+  },
+  "debug": {
+    "enabled": false
+  },
+  "landingPage": "/index.php/apps/ebookreader/",
+  "siteOptions": {
+    "title": "E-Book Reader Playground",
+    "locale": "en",
+    "timezone": "UTC"
+  },
+  "admin": {
+    "username": "admin",
+    "password": "admin",
+    "email": "admin@example.com"
+  },
+  "steps": [
+    {
+      "step": "disableApp",
+      "app": "firstrunwizard"
+    },
+    {
+      "step": "setConfig",
+      "app": "core",
+      "key": "whatsNewEnabled",
+      "value": "no"
+    },
+    {
+      "step": "installApp",
+      "appId": "ebookreader",
+      "url": "https://raw.githubusercontent.com/SomeCatCode/nextcloud_ebook_reader/playground/ebookreader.zip"
+    },
+    {
+      "step": "writeFile",
+      "path": "/admin/files/Books/Alice in Wonderland.epub",
+      "url": "https://raw.githubusercontent.com/SomeCatCode/nextcloud_ebook_reader/playground/books/alice-in-wonderland.epub"
+    },
+    {
+      "step": "writeFile",
+      "path": "/admin/files/Books/Frankenstein.epub",
+      "url": "https://raw.githubusercontent.com/SomeCatCode/nextcloud_ebook_reader/playground/books/frankenstein.epub"
+    },
+    {
+      "step": "writeFile",
+      "path": "/admin/files/Books/Die Verwandlung.epub",
+      "url": "https://raw.githubusercontent.com/SomeCatCode/nextcloud_ebook_reader/playground/books/die-verwandlung.epub"
+    },
+    {
+      "step": "writeFile",
+      "path": "/admin/files/Books/Comics/Pepper&Carrot/Pepper&Carrot 01 - Potion of Flight.cbz",
+      "url": "https://raw.githubusercontent.com/SomeCatCode/nextcloud_ebook_reader/playground/books/pepper-and-carrot-01.cbz"
+    },
+    {
+      "step": "writeFile",
+      "path": "/admin/files/Books/Comics/Pepper&Carrot/Pepper&Carrot 02 - Rainbow Potions.cbz",
+      "url": "https://raw.githubusercontent.com/SomeCatCode/nextcloud_ebook_reader/playground/books/pepper-and-carrot-02.cbz"
+    },
+    {
+      "step": "writeFile",
+      "path": "/admin/files/Books/Comics/Pepper&Carrot/Pepper&Carrot 03 - The Secret Ingredients.cbz",
+      "url": "https://raw.githubusercontent.com/SomeCatCode/nextcloud_ebook_reader/playground/books/pepper-and-carrot-03.cbz"
+    },
+    {
+      "step": "runOcc",
+      "args": [
+        "ebookreader:scan",
+        "admin"
+      ]
+    }
+  ]
+}
