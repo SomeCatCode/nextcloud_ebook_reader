@@ -26,13 +26,15 @@ Try the app without a server: [Nextcloud Playground](playground/README.md) runs 
 - It reads books aloud with the voices of the device.
 - It also works without a server, with folders on the phone.
 
-The source code is in the repository [nextcloud_ebook_reader_app](https://github.com/SomeCatCode/nextcloud_ebook_reader_app). Each release there also has an APK file.
+The Android app is not open source. Its source code is public for reference in the repository [nextcloud_ebook_reader_app](https://github.com/SomeCatCode/nextcloud_ebook_reader_app), under a proprietary license. The AGPL of this Nextcloud app does not apply to the Android app. Each release there also has an APK file.
 
-![Library with series filter and book details](docs/screenshot-library.png)
+For a Nextcloud account, the Android app needs this Nextcloud app (version 0.5.0 or later) on the server. Install it from the [Nextcloud App Store](https://apps.nextcloud.com/apps/ebookreader).
 
-![Comic reader](docs/screenshot-reader.png)
+![Library with series filter and book details](docs/screenshot-library-view.png)
 
-![Page editor of a comic](docs/screenshot-editor.png)
+![Comic reader](docs/screenshot-comic.png)
+
+![Page editor of a comic](docs/screenshot-page-editor.png)
 
 ![E-book reader with table of contents](docs/screenshot-epub.png)
 
@@ -53,7 +55,19 @@ The source code is in the repository [nextcloud_ebook_reader_app](https://github
 
 ## Installation
 
-The app is not yet in the Nextcloud App Store. Install it from a release package:
+Install the app from the [Nextcloud App Store](https://apps.nextcloud.com/apps/ebookreader):
+
+1. Open **Apps** in Nextcloud as an administrator.
+2. Search for "E-Book Reader".
+3. Click **Download and enable**.
+
+Or use the command line:
+
+```sh
+sudo -u www-data php occ app:install ebookreader
+```
+
+As an alternative, install the app from a release package:
 
 ```sh
 cd /var/www/nextcloud/custom_apps
@@ -85,7 +99,7 @@ The official image does not run cron by itself; add a service with the same volu
 
 **Nextcloud All-in-One.** Same commands with the container `nextcloud-aio-nextcloud`; cron and permissions are already set up.
 
-**From source.** Requires Node.js 22 or later; no Composer packages are needed at runtime.
+**From source.** Requires Node.js 22 or 24; no Composer packages are needed at runtime.
 
 ```sh
 cd /var/www/nextcloud/custom_apps && git clone https://github.com/SomeCatCode/nextcloud_ebook_reader.git ebookreader
@@ -238,7 +252,7 @@ sudo -u www-data php occ config:app:set ebookreader archive_cache_mb --value=409
 ## Data layout
 
 - **Your books** stay where they are; the app never moves or copies them on its own. Sidecar files (`.<book file>.opf`) are created next to books when metadata is edited.
-- **Database tables** (prefix `ebookreader_`): `books`, `tags`, `progress`, `annotations`, `shelves`, `shelf_books`, `tasks`. Everything is per user and removed when a user is deleted.
+- **Database tables** (prefix `ebookreader_`): `books`, `tags`, `progress`, `annotations`, `shelves`, `shelf_books`, `tasks`, `file_shares`, `folder_shares`, `series_shares`, `shelf_shares`. Everything is per user and removed when a user is deleted.
 - **App data:** cached scaled comic pages (`comic-pages`, bounded by `comic_cache_mb`), regenerated on demand.
 - **Temporary directory:** a bounded archive cache (`archive_cache_mb`) for books on external or encrypted storage.
 
