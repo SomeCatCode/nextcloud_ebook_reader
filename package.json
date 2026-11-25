@@ -36,7 +36,7 @@
 		"dompurify": "^3.2.0",
 		"fflate": "^0.8.2",
 		"libarchive.js": "^2.0.2",
-		"pinia": "^3.0.0",
+		"pinia": "^4.1.0",
 		"vue": "^3.5.0",
 		"vue-draggable-plus": "^0.6.0",
 		"vue-router": "^4.5.0"
