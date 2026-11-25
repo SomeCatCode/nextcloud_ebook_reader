@@ -5,6 +5,9 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), die V
 
 ## [Unreleased]
 
+### Behoben
+- **Reader: Meldung statt endlosem Ladesymbol bei eigener Content Security Policy.** Wenn der Webserver oder ein Reverse Proxy einen eigenen Header `Content-Security-Policy` sendet, der `blob:` in `frame-src` oder `worker-src` nicht erlaubt, blockiert der Browser den Reader. Bisher drehte sich das Ladesymbol ohne Ende. Jetzt zeigt der Reader die Meldung „Eine Sicherheitsregel des Webservers blockiert den Reader“ und nennt die Direktive, die `blob:` erlauben muss. Die Meldung ist in alle 12 Sprachen übersetzt. Die README beschreibt den Fall unter „Bekannte Einschränkungen“ ([#58](https://github.com/SomeCatCode/nextcloud_ebook_reader/issues/58)).
+
 ## 1.0.2 – 2026-11-25
 
 ### Hinzugefügt

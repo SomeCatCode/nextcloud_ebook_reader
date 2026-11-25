@@ -369,6 +369,7 @@ Keine. Die App kontaktiert keinen externen Dienst. Die App enthält keine Analys
 - Die App verändert MOBI/AZW3-Dateien nie. Die Metadaten dieser Dateien landen in der Sidecar-Datei.
 - In öffentlichen Freigabe-Links können Gäste keine Markierungen, Notizen oder Lesezeichen anlegen.
 - PDF ist bewusst nicht dabei. Nextcloud hat dafür einen eigenen Viewer.
+- **Eigene Content Security Policy im Webserver.** Der Reader zeigt Kapitel und Seiten in einem Frame mit einer `blob:`-Adresse. RAR- und 7z-Archive entpackt er in einem Worker mit einer `blob:`-Adresse. Die App erlaubt beides in der Policy, die Nextcloud sendet. Eine Standardinstallation braucht keine Änderung. Wenn dein Webserver oder Reverse Proxy einen zusätzlichen Header `Content-Security-Policy` sendet, wendet der Browser beide Policies an, und die strengere Regel gewinnt. Dann muss dein Header `blob:` in `frame-src` und in `worker-src` erlauben (oder in `child-src` oder `default-src`, wenn du nur diese setzt). Beispiel für Apache: `Header always set Content-Security-Policy "frame-src 'self' blob:; worker-src 'self' blob:;"`. Ohne `blob:` zeigt der Reader die Meldung „Eine Sicherheitsregel des Webservers blockiert den Reader“. Bis Version 1.0.2 drehte sich stattdessen das Ladesymbol ohne Ende.
 
 ## Danksagung
 
