@@ -44,7 +44,7 @@
 	"devDependencies": {
 		"@nextcloud/eslint-config": "^9.0.0",
 		"@nextcloud/vite-config": "^2.5.0",
-		"@types/node": "^22.20.4",
+		"@types/node": "^26.6.6",
 		"@vue/test-utils": "^2.4.0",
 		"eslint": "^10.0.0",
 		"jsdom": "^26.0.0",
